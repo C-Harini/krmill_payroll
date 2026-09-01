@@ -1,0 +1,2 @@
+what happens when i regenerate the attendance management after assigning a shift ot the employee with new shift 
+and why is the late period not shown as present with permission but just present even though the person is taken extra time than their grace time

@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    /* =========================================================================
+     GLOBAL EXTENDED VERTICAL TABULAR SCROLL & STICKY HEADER SYSTEM
+     Applies to all tables across all pages in the application.
+     ========================================================================= */
+
+    /* Any container with overflow-x-auto or table wrapper gets extended 75vh vertical scroll */
+    .overflow-x-auto,
+    .table-container {
+        max-height: 75vh;
+        overflow-y: auto;
+        overflow-x: auto;
+        scrollbar-width: thin;
+        scrollbar-color: #94a3b8 #f1f5f9;
+    }
+
+    /* Custom Webkit Scrollbars for smooth table movement */
+    .overflow-x-auto::-webkit-scrollbar,
+    .table-container::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+
+    .overflow-x-auto::-webkit-scrollbar-track,
+    .table-container::-webkit-scrollbar-track {
+        background: #f8fafc;
+        border-radius: 4px;
+    }
+
+    .overflow-x-auto::-webkit-scrollbar-thumb,
+    .table-container::-webkit-scrollbar-thumb {
+        background-color: #cbd5e1;
+        border-radius: 4px;
+        border: 2px solid #f8fafc;
+    }
+
+    .overflow-x-auto::-webkit-scrollbar-thumb:hover,
+    .table-container::-webkit-scrollbar-thumb:hover {
+        background-color: #94a3b8;
+    }
+
+    /* Separate borders ensure sticky headers don't collapse or glitch while scrolling */
+    table {
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+    }
+
+    /* Global Sticky Table Header */
+    table thead {
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 25 !important;
+    }
+
+    table thead tr {
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 25 !important;
+    }
+
+    table thead th {
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 25 !important;
+        background-color: inherit;
+        background-clip: padding-box;
+    }
+
+    /* Sticky Table Footer for totals and summaries */
+    table tfoot {
+        position: sticky !important;
+        bottom: 0 !important;
+        z-index: 20 !important;
+    }
+
+    table tfoot tr {
+        position: sticky !important;
+        bottom: 0 !important;
+        z-index: 20 !important;
+    }
+
+    table tfoot td,
+    table tfoot th {
+        position: sticky !important;
+        bottom: 0 !important;
+        z-index: 20 !important;
+        background-color: inherit;
+        background-clip: padding-box;
+    }
+}

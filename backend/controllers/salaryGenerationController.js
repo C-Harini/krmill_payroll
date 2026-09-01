@@ -1058,9 +1058,9 @@ async function generateForMonth({
       const exists = await SalaryGeneration.findOne({
         where: { employeeId: emp.id, salaryMonth: month, salaryYear: year },
       });
-      if (exists) {
+      if (exists && exists.status === "Paid") {
         results.skipped++;
-        console.log("  → SKIPPED (already exists)");
+        console.log("  → SKIPPED (already paid)");
         continue;
       }
 
@@ -1219,7 +1219,7 @@ async function generateForMonth({
         `  gross=₹${calc.grossEarned} ded=₹${totalDeductions} net=₹${netSalary} rounded=₹${netRounded}`,
       );
 
-      const salaryGen = await SalaryGeneration.create({
+      const genData = {
         employeeId: emp.id,
         employeeSalaryMasterId: salaryMaster.id,
         companyId,
@@ -1259,13 +1259,27 @@ async function generateForMonth({
         empPfType,
         status: "Generated",
         generatedBy: null,
-      });
+      };
 
-      await writeDetails(salaryGen.id, calc, misc, loanEmi);
+      let salaryGenId;
+      if (exists) {
+        // Clean out previous detail rows and update existing master row
+        await SalaryGenerationDetail.destroy({
+          where: { salaryGenerationId: exists.id },
+        });
+        await exists.update(genData);
+        salaryGenId = exists.id;
+        console.log(`  → OVERWRITTEN id=${exists.id}`);
+      } else {
+        const created = await SalaryGeneration.create(genData);
+        salaryGenId = created.id;
+        console.log(`  → CREATED id=${created.id}`);
+      }
+
+      await writeDetails(salaryGenId, calc, misc, loanEmi);
       if (loanEmi > 0) await updateLoans(emp.id, companyId);
 
       results.generated++;
-      console.log(`  → SUCCESS id=${salaryGen.id}`);
     } catch (err) {
       console.error(`[SalaryGen] Error emp=${emp.id}:`, err.message);
       results.errors.push({

@@ -895,49 +895,36 @@ exports.saveOneIncentive = async (req, res) => {
         .json({ message: "companyId, month, year, record required" });
     }
 
-    let shiftTypeId = r.shiftTypeId;
-    let departmentId = r.departmentId;
+    let shiftTypeId = (r.shiftTypeId && r.shiftTypeId > 0) ? r.shiftTypeId : null;
+    let departmentId = r.departmentId || null;
 
-    if (!shiftTypeId || !departmentId) {
+    if (!departmentId || !shiftTypeId) {
       const emp = await Employee.findByPk(r.employeeId, {
         attributes: ["shiftTypeId", "departmentId"],
       });
-      if (!shiftTypeId) shiftTypeId = emp?.shiftTypeId || null;
       if (!departmentId) departmentId = emp?.departmentId || null;
-    }
-
-    if (!shiftTypeId) {
-      return res
-        .status(400)
-        .json({ message: "Cannot save: employee has no shiftTypeId assigned" });
-    }
-    if (!departmentId) {
-      return res
-        .status(400)
-        .json({
-          message: "Cannot save: employee has no departmentId assigned",
-        });
+      if (!shiftTypeId && emp?.shiftTypeId > 0) shiftTypeId = emp.shiftTypeId;
     }
 
     await AttendanceIncentive.upsert({
-      companyId,
-      employeeId: r.employeeId,
-      departmentId,
-      categoryId: r.categoryId || null,
+      companyId: parseInt(companyId, 10),
+      employeeId: parseInt(r.employeeId, 10),
+      departmentId: departmentId ? parseInt(departmentId, 10) : null,
+      categoryId: r.categoryId ? parseInt(r.categoryId, 10) : null,
       month: parseInt(month, 10),
       year: parseInt(year, 10),
-      adjustedDays: r.adjustedDays,
-      slabDays: r.slabDays || 0,
-      incentive: r.incentive,
-      ratePerDay: r.ratePerDay,
-      shiftKey: r.shiftKey,
+      adjustedDays: r.adjustedDays !== undefined && r.adjustedDays !== null ? parseInt(r.adjustedDays, 10) : 0,
+      slabDays: r.slabDays ? parseInt(r.slabDays, 10) : 0,
+      incentive: r.incentive !== undefined && r.incentive !== null ? parseFloat(r.incentive) : 0,
+      ratePerDay: r.ratePerDay !== undefined && r.ratePerDay !== null ? parseFloat(r.ratePerDay) : 0,
+      shiftKey: r.shiftKey || null,
       shiftLabel: r.shiftLabel || null,
       tier: r.tier || null,
-      maleOverrideApplied: r.maleOverrideApplied || false,
+      maleOverrideApplied: !!r.maleOverrideApplied,
       savedAt: new Date(),
-      shiftTypeId,
+      shiftTypeId: shiftTypeId ? parseInt(shiftTypeId, 10) : null,
       days: r.payableDays || r.rawDays || r.adjustedDays || 0,
-      entryDate: new Date(),
+      entryDate: null,
       slot: 0,
     });
 
@@ -963,7 +950,7 @@ exports.bulkSaveIncentives = async (req, res) => {
     }
 
     const missingIds = records
-      .filter((r) => !r.shiftTypeId || !r.departmentId)
+      .filter((r) => !r.departmentId)
       .map((r) => r.employeeId);
 
     const empLookup = {};
@@ -977,35 +964,30 @@ exports.bulkSaveIncentives = async (req, res) => {
 
     const ops = records.map((r) => {
       const empData = empLookup[r.employeeId] || {};
-      const shiftTypeId = r.shiftTypeId || empData.shiftTypeId || null;
       const departmentId = r.departmentId || empData.departmentId || null;
-
-      if (!shiftTypeId) {
-        console.warn(
-          `Skipping employeeId ${r.employeeId}: no shiftTypeId found`,
-        );
-        return Promise.resolve();
-      }
+      const shiftTypeId = (r.shiftTypeId && r.shiftTypeId > 0)
+        ? r.shiftTypeId
+        : (empData.shiftTypeId > 0 ? empData.shiftTypeId : null);
 
       return AttendanceIncentive.upsert({
-        companyId,
-        employeeId: r.employeeId,
-        departmentId,
-        categoryId: r.categoryId || null,
-        month,
-        year,
-        adjustedDays: r.adjustedDays,
-        slabDays: r.slabDays || 0,
-        incentive: r.incentive,
-        ratePerDay: r.ratePerDay,
-        shiftKey: r.shiftKey,
+        companyId: parseInt(companyId, 10),
+        employeeId: parseInt(r.employeeId, 10),
+        departmentId: departmentId ? parseInt(departmentId, 10) : null,
+        categoryId: r.categoryId ? parseInt(r.categoryId, 10) : null,
+        month: parseInt(month, 10),
+        year: parseInt(year, 10),
+        adjustedDays: r.adjustedDays !== undefined && r.adjustedDays !== null ? parseInt(r.adjustedDays, 10) : 0,
+        slabDays: r.slabDays ? parseInt(r.slabDays, 10) : 0,
+        incentive: r.incentive !== undefined && r.incentive !== null ? parseFloat(r.incentive) : 0,
+        ratePerDay: r.ratePerDay !== undefined && r.ratePerDay !== null ? parseFloat(r.ratePerDay) : 0,
+        shiftKey: r.shiftKey || null,
         shiftLabel: r.shiftLabel || null,
         tier: r.tier || null,
-        maleOverrideApplied: r.maleOverrideApplied || false,
+        maleOverrideApplied: !!r.maleOverrideApplied,
         savedAt: new Date(),
-        shiftTypeId,
+        shiftTypeId: shiftTypeId ? parseInt(shiftTypeId, 10) : null,
         days: r.payableDays || r.rawDays || r.adjustedDays || 0,
-        entryDate: new Date(),
+        entryDate: null,
         slot: 0,
       });
     });

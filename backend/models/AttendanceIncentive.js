@@ -3,9 +3,9 @@ module.exports = (sequelize, DataTypes) => {
     "AttendanceIncentive",
     {
       companyId: { type: DataTypes.INTEGER, allowNull: false },
-      departmentId: { type: DataTypes.INTEGER, allowNull: false },
+      departmentId: { type: DataTypes.INTEGER, allowNull: true },
       employeeId: { type: DataTypes.INTEGER, allowNull: false },
-      shiftTypeId: { type: DataTypes.INTEGER, allowNull: false },
+      shiftTypeId: { type: DataTypes.INTEGER, allowNull: true },
       days: { type: DataTypes.INTEGER, allowNull: true },
       entryDate: { type: DataTypes.DATEONLY, allowNull: true },
       slabDays: { type: DataTypes.INTEGER, allowNull: true },

@@ -377,6 +377,8 @@ const {
   Designation,
   DepartmentAttendance,
 } = require("../models");
+const { isDateLocked } = require("../utils/attendanceLockUtil");
+const moment = require("moment");
 
 // ✅ Helper: Get active basicSalary from EmployeeSalaryMasters
 const getActiveBasicSalary = (salaries) => {
@@ -508,6 +510,14 @@ exports.createOTHours = async (req, res) => {
       });
     }
 
+    if (await isDateLocked(companyId, date)) {
+      return res.status(403).json({
+        success: false,
+        message: `OT hours entry is LOCKED for ${moment(date).format("YYYY-MM-DD")}. Please unlock the date in the Strength Report to make changes.`,
+        isLocked: true,
+      });
+    }
+
     // Validate entries
     for (const entry of entries) {
       if (!entry.employeeId || entry.otHours === undefined || entry.otHours === null) {
@@ -566,6 +576,14 @@ exports.updateOTHours = async (req, res) => {
       return res.status(404).json({ message: "OT Hours record not found" });
     }
 
+    if (await isDateLocked(record.companyId, record.date)) {
+      return res.status(403).json({
+        success: false,
+        message: `OT hours entry is LOCKED for ${moment(record.date).format("YYYY-MM-DD")}. Please unlock the date in the Strength Report to make changes.`,
+        isLocked: true,
+      });
+    }
+
     if (otHours !== undefined && otHours !== null) {
       if (otHours < 0) {
         return res.status(400).json({ message: "OT Hours cannot be negative" });
@@ -599,6 +617,14 @@ exports.deleteOTHours = async (req, res) => {
       return res.status(404).json({ message: "OT Hours record not found" });
     }
 
+    if (await isDateLocked(record.companyId, record.date)) {
+      return res.status(403).json({
+        success: false,
+        message: `OT hours entry is LOCKED for ${moment(record.date).format("YYYY-MM-DD")}. Please unlock the date in the Strength Report to make changes.`,
+        isLocked: true,
+      });
+    }
+
     await record.destroy();
 
     return res.json({
@@ -614,6 +640,15 @@ exports.deleteOTHours = async (req, res) => {
 exports.deleteOTHoursByEmployeeAndDate = async (req, res) => {
   try {
     const { employeeId, date } = req.params;
+
+    const firstRec = await OTHours.findOne({ where: { employeeId } });
+    if (firstRec && (await isDateLocked(firstRec.companyId, date))) {
+      return res.status(403).json({
+        success: false,
+        message: `OT hours entry is LOCKED for ${moment(date).format("YYYY-MM-DD")}. Please unlock the date in the Strength Report to make changes.`,
+        isLocked: true,
+      });
+    }
 
     const startDate = new Date(date);
     const endDate = new Date(date);
@@ -958,9 +993,16 @@ exports.saveOTHoursMultipleEntry = async (req, res) => {
     });
   }
 
+  if (await isDateLocked(companyId, date)) {
+    return res.status(403).json({
+      success: false,
+      message: `Overtime entry is LOCKED for ${moment(date).format("YYYY-MM-DD")}. Please unlock the date in the Strength Report to make changes.`,
+      isLocked: true,
+    });
+  }
+
   const { sequelize, ShiftType } = require("../models");
   const transaction = await sequelize.transaction();
-  const moment = require("moment");
 
   try {
     const targetDate = moment(date).format("YYYY-MM-DD");
@@ -1129,14 +1171,21 @@ exports.saveOTHoursMultipleEntry = async (req, res) => {
 };
 
 exports.updateSingleOTEntry = async (req, res) => {
-  const { id } = req.params;
   const { workedDeptId, shiftId, fromTime, toTime, otType, otHours: inputHours, userId, date } = req.body;
-
-  const moment = require("moment");
+  const { id } = req.params;
   try {
     const otRecord = await OTHours.findByPk(id);
     if (!otRecord) {
       return res.status(404).json({ success: false, message: "OT record not found" });
+    }
+
+    const targetDate = date || otRecord.date;
+    if (await isDateLocked(otRecord.companyId, targetDate)) {
+      return res.status(403).json({
+        success: false,
+        message: `Overtime entry is LOCKED for ${moment(targetDate).format("YYYY-MM-DD")}. Please unlock the date in the Strength Report to make changes.`,
+        isLocked: true,
+      });
     }
 
     let calculatedOt = parseFloat(inputHours || otRecord.otHours || 0);
@@ -1210,8 +1259,26 @@ exports.deleteOTHoursMultipleEntry = async (req, res) => {
   const { ids, companyId, date, employeeIds } = req.body;
 
   try {
-    const moment = require("moment");
     const targetDate = date ? moment(date).format("YYYY-MM-DD") : null;
+
+    if (companyId && targetDate && (await isDateLocked(companyId, targetDate))) {
+      return res.status(403).json({
+        success: false,
+        message: `Overtime entry is LOCKED for ${targetDate}. Please unlock the date in the Strength Report to make changes.`,
+        isLocked: true,
+      });
+    }
+
+    if (Array.isArray(ids) && ids.length > 0) {
+      const firstRec = await OTHours.findByPk(ids[0]);
+      if (firstRec && (await isDateLocked(firstRec.companyId, firstRec.date))) {
+        return res.status(403).json({
+          success: false,
+          message: `Overtime entry is LOCKED for ${moment(firstRec.date).format("YYYY-MM-DD")}. Please unlock the date in the Strength Report to make changes.`,
+          isLocked: true,
+        });
+      }
+    }
 
     if (Array.isArray(ids) && ids.length > 0) {
       await OTHours.destroy({

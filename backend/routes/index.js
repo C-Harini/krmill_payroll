@@ -4,15 +4,15 @@ const router = express.Router();
 // Import other route files
 const companyRoutes = require('./company');
 const departmentRoutes = require('./department');
-const designationRoutes  = require('./designation');
-const employmentTypeRoutes  = require('./employmentType');
-const employergradeRoutes  = require('./employerGrade');
-const leavePolicyRoutes  = require('./leavePolicy');
+const designationRoutes = require('./designation');
+const employmentTypeRoutes = require('./employmentType');
+const employergradeRoutes = require('./employerGrade');
+const leavePolicyRoutes = require('./leavePolicy');
 const leavePeriodRoutes = require('./leavePeriod');
 const leaveTypeRoutes = require('./leaveType');
 const holidayListRoutes = require('./holidayList');
 const holidayRoutes = require('./holiday');
-const shiftTypeRoutes = require('./shiftType'); 
+const shiftTypeRoutes = require('./shiftType');
 const shiftAssignmentRoutes = require('./shiftAssignment');
 const busRoutes = require('./bus');
 const biometricDeviceRoutes = require('./biometricDevice');
@@ -31,7 +31,7 @@ const statuatoryReportsRoutes = require('./statutoryReports');
 const authRoutes = require('./auth');
 const additionalSalaryRoutes = require("./additionalSalaryRoutes");
 const leaveRequestRoutes = require('./leaveRequest');
-const attendanceIncentiveRoutes=require("./AttendanceIncentiveRoutes");
+const attendanceIncentiveRoutes = require("./AttendanceIncentiveRoutes");
 const hostelAttendanceIncentiveRoutes = require("./HostelAttendanceIncentiveRoutes");
 const employeeShiftRoutes = require("./employeeShifts");
 const employeeLoanRoutes = require("./employeeLoan");
@@ -47,11 +47,13 @@ const reportRoutes = require('./reportRoutes');
 const holidaySalaryRoutes = require('./holidaySalaryRoutes');
 const attendanceReportRoutes = require('./attendanceReportRoutes');
 const lunchRoutes = require('./lunchRoutes');
+const attendanceLockRoutes = require('./attendanceLockRoutes');
 
 // ... inside the function
 
 // Define API routes
-router.use("/attendance-incentives",attendanceIncentiveRoutes); 
+router.use('/attendance-lock', attendanceLockRoutes);
+router.use("/attendance-incentives", attendanceIncentiveRoutes);
 router.use('/companies', companyRoutes);
 router.use('/departments', departmentRoutes);
 router.use('/designations', designationRoutes);
@@ -62,16 +64,16 @@ router.use('/leave-periods', leavePeriodRoutes);
 router.use('/leave-types', leaveTypeRoutes);
 router.use('/holiday-lists', holidayListRoutes);
 router.use('/holidays', holidayRoutes);
-router.use('/shift-types', shiftTypeRoutes); 
+router.use('/shift-types', shiftTypeRoutes);
 router.use('/shift-assignments', shiftAssignmentRoutes);
 router.use('/buses', busRoutes);
 router.use('/biometric-devices', biometricDeviceRoutes);
 router.use('/employees', employeeRoutes);
 router.use('/leave-allocations', leaveAllocationRoutes);
-router.use('/auth',authRoutes); // Auth routes
-router.use("/additional-salaries", additionalSalaryRoutes); 
+router.use('/auth', authRoutes); // Auth routes
+router.use("/additional-salaries", additionalSalaryRoutes);
 router.use("/hostel-attendance-incentives", hostelAttendanceIncentiveRoutes);
-router.use("/employee-shifts", employeeShiftRoutes);    
+router.use("/employee-shifts", employeeShiftRoutes);
 // ⭐ NEW: Leave request routes
 router.use('/leave-requests', leaveRequestRoutes);
 
@@ -91,7 +93,7 @@ router.use("/eight-eight", eightEightRoutes);
 router.use("/castes", casteRoutes);
 router.use("/religions", religionRoutes);
 router.use('/categories', categoryRoutes);
-router.use('/strength-report',strengthReport);
+router.use('/strength-report', strengthReport);
 router.use('/strength-report-old', strengthReportOld);
 router.use('/deductions', deductionRoutes);
 router.use('/reports', reportRoutes);

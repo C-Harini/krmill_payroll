@@ -50,6 +50,7 @@ const {
   invalidateShiftCache,
 } = require("../services/attendanceProcessor");
 const regenerateQueue = require("../services/attendanceRegenerateQueue");
+const { isDateLocked } = require("../utils/attendanceLockUtil");
 
 // ============================================================
 // PUNCH WEBHOOK
@@ -586,6 +587,15 @@ exports.updateAttendance = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Record not found" });
     }
+
+    if (await isDateLocked(record.companyId, record.attendanceDate)) {
+      return res.status(403).json({
+        success: false,
+        message: `Attendance is LOCKED for ${moment(record.attendanceDate).format("YYYY-MM-DD")}. Please unlock the date in the Strength Report to make changes.`,
+        isLocked: true,
+      });
+    }
+
     await record.update(req.body);
     const updated = await Attendance.findByPk(req.params.id, {
       include: [
@@ -628,6 +638,15 @@ exports.deleteAttendance = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Record not found" });
     }
+
+    if (await isDateLocked(record.companyId, record.attendanceDate)) {
+      return res.status(403).json({
+        success: false,
+        message: `Attendance is LOCKED for ${moment(record.attendanceDate).format("YYYY-MM-DD")}. Please unlock the date in the Strength Report to make changes.`,
+        isLocked: true,
+      });
+    }
+
     await record.destroy();
     return res.status(200).json({ success: true, message: "Deleted" });
   } catch (err) {
@@ -988,6 +1007,14 @@ exports.saveMultipleEntryAttendance = async (req, res) => {
     });
   }
 
+  if (await isDateLocked(companyId, attendanceDate)) {
+    return res.status(403).json({
+      success: false,
+      message: `Manual attendance entry is LOCKED for ${moment(attendanceDate).format("YYYY-MM-DD")}. Please unlock the date in the Strength Report to make changes.`,
+      isLocked: true,
+    });
+  }
+
   const { sequelize, ShiftType, Category } = require("../models");
   const transaction = await sequelize.transaction();
 
@@ -1156,11 +1183,27 @@ exports.saveMultipleEntryAttendance = async (req, res) => {
 exports.deleteMultipleEntryAttendance = async (req, res) => {
   const { ids, companyId, attendanceDate, employeeIds } = req.body;
 
-  const { sequelize } = require("../models");
-  const transaction = await sequelize.transaction();
-
   try {
     const dateStr = attendanceDate ? moment(attendanceDate).format("YYYY-MM-DD") : null;
+
+    if (companyId && dateStr && (await isDateLocked(companyId, dateStr))) {
+      return res.status(403).json({
+        success: false,
+        message: `Manual attendance entry is LOCKED for ${dateStr}. Please unlock the date in the Strength Report to make changes.`,
+        isLocked: true,
+      });
+    }
+
+    if (Array.isArray(ids) && ids.length > 0) {
+      const firstRec = await DepartmentAttendance.findByPk(ids[0]);
+      if (firstRec && (await isDateLocked(firstRec.companyId, firstRec.attendanceDate))) {
+        return res.status(403).json({
+          success: false,
+          message: `Manual attendance entry is LOCKED for ${moment(firstRec.attendanceDate).format("YYYY-MM-DD")}. Please unlock the date in the Strength Report to make changes.`,
+          isLocked: true,
+        });
+      }
+    }
 
     if (Array.isArray(ids) && ids.length > 0) {
       const recordsToDelete = await DepartmentAttendance.findAll({
@@ -1246,6 +1289,15 @@ exports.updateMultipleEntryAttendance = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "Attendance record not found",
+      });
+    }
+
+    const targetDate = attendanceDate || record.attendanceDate;
+    if (await isDateLocked(record.companyId, targetDate)) {
+      return res.status(403).json({
+        success: false,
+        message: `Manual attendance entry is LOCKED for ${moment(targetDate).format("YYYY-MM-DD")}. Please unlock the date in the Strength Report to make changes.`,
+        isLocked: true,
       });
     }
 

@@ -36,6 +36,13 @@ const StrengthReport = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Lock status states
+  const [isLocked, setIsLocked] = useState(false);
+  const [lockLoading, setLockLoading] = useState(false);
+  const [lockDetails, setLockDetails] = useState(null);
+  const [showLockConfirm, setShowLockConfirm] = useState(false);
+  const [lockMsg, setLockMsg] = useState("");
+
   const currentShiftCols =
     activeTab === "with_s_ot" ? SHIFT_COLS_WITH_S_OT : SHIFT_COLS_WITHOUT_S_OT;
   const shiftColSpan = currentShiftCols.length;
@@ -48,12 +55,33 @@ const StrengthReport = () => {
         const data = await apiRequest("/companies");
         const list = Array.isArray(data) ? data : (data.data || []);
         setCompanies(list);
+        if (list.length > 0 && !companyId) {
+          setCompanyId(list[0].id);
+        }
       } catch (err) {
         console.error("Failed to load companies:", err.message);
       }
     };
     loadCompanies();
   }, []);
+
+  // ── Check Lock Status on company or date change ──────────
+  const checkLockStatus = useCallback(async () => {
+    if (!companyId || !date) return;
+    try {
+      const res = await apiRequest(`/attendance-lock/status?companyId=${companyId}&date=${date}`);
+      if (res.success) {
+        setIsLocked(res.isLocked);
+        setLockDetails(res.lockDetails);
+      }
+    } catch (err) {
+      console.error("Failed to check lock status:", err);
+    }
+  }, [companyId, date]);
+
+  useEffect(() => {
+    checkLockStatus();
+  }, [checkLockStatus]);
 
   // ── Fetch report ────────────────────────────────────────
   const fetchReport = useCallback(async () => {
@@ -63,12 +91,15 @@ const StrengthReport = () => {
     }
     setLoading(true);
     setError("");
+    setLockMsg("");
     try {
       const res = await apiRequest(
         `/strength-report?companyId=${companyId}&date=${date}`,
       );
       if (res.success) {
         setReport(res.data);
+        setIsLocked(!!res.data.isLocked);
+        setLockDetails(res.data.lockDetails || null);
       } else {
         setError(res.error || "Failed to fetch report");
       }
@@ -78,6 +109,51 @@ const StrengthReport = () => {
       setLoading(false);
     }
   }, [companyId, date]);
+
+  // ── Toggle Lock ─────────────────────────────────────────
+  const handleToggleLock = async () => {
+    if (!companyId || !date) {
+      setError("Please select company and date first");
+      return;
+    }
+    const targetState = !isLocked;
+    setLockLoading(true);
+    setError("");
+    try {
+      const res = await apiRequest("/attendance-lock/toggle", {
+        method: "POST",
+        body: JSON.stringify({
+          companyId: parseInt(companyId, 10),
+          date,
+          isLocked: targetState,
+        }),
+      });
+
+      if (res.success) {
+        setIsLocked(targetState);
+        setLockDetails(res.data);
+        setLockMsg(
+          targetState
+            ? `🔒 Manual attendance and OT entries for ${date} are now LOCKED.`
+            : `🔓 Manual attendance and OT entries for ${date} are now UNLOCKED.`
+        );
+        if (report) {
+          setReport((prev) => ({
+            ...prev,
+            isLocked: targetState,
+            lockDetails: res.data,
+          }));
+        }
+      } else {
+        setError(res.message || "Failed to toggle lock status");
+      }
+    } catch (err) {
+      setError(err.message || "Failed to toggle lock status");
+    } finally {
+      setLockLoading(false);
+      setShowLockConfirm(false);
+    }
+  };
 
   // ── Export to Excel ─────────────────────────────────────
   const exportExcel = useCallback(async () => {
@@ -191,6 +267,25 @@ const StrengthReport = () => {
           {loading ? "Generating..." : "Generate"}
         </button>
 
+        {/* Lock / Unlock Controls */}
+        <div style={styles.lockContainer}>
+          <div style={isLocked ? styles.lockBadgeLocked : styles.lockBadgeOpen}>
+            {isLocked ? "🔒 Locked" : "🔓 Open"}
+          </div>
+          <button
+            style={isLocked ? styles.btnUnlock : styles.btnLock}
+            onClick={() => setShowLockConfirm(true)}
+            disabled={lockLoading || !companyId || !date}
+            title={
+              isLocked
+                ? "Click to unlock manual attendance and OT entry for this date"
+                : "Click to lock manual attendance and OT entry for this date"
+            }
+          >
+            {lockLoading ? "Updating..." : isLocked ? "🔓 Unlock Date" : "🔒 Lock Date"}
+          </button>
+        </div>
+
         {report && (
           <>
             <button style={styles.btnSecondary} onClick={exportExcel}>
@@ -203,8 +298,51 @@ const StrengthReport = () => {
         )}
       </div>
 
+      {/* Lock Success Notification Banner */}
+      {lockMsg && (
+        <div style={{ ...styles.lockSuccessBanner, ...styles.noPrint }}>
+          {lockMsg}
+        </div>
+      )}
+
       {/* Error */}
       {error && <div style={{ ...styles.error, ...styles.noPrint }}>{error}</div>}
+
+      {/* Lock/Unlock Confirmation Modal */}
+      {showLockConfirm && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalContent}>
+            <h3 style={styles.modalTitle}>
+              {isLocked ? "🔓 Unlock Manual Entries?" : "🔒 Lock Manual Entries?"}
+            </h3>
+            <p style={styles.modalText}>
+              {isLocked
+                ? `Are you sure you want to UNLOCK manual attendance and OT hours entries for ${date}? HR and Admin users will be permitted to add, edit, or delete manual entries for this day.`
+                : `Are you sure you want to LOCK manual attendance and OT hours entries for ${date}? Once locked, no manual attendance, OT hours, or 8-8 entries can be added, edited, or deleted on both HR and Admin interfaces until unlocked.`}
+            </p>
+            <div style={styles.modalActions}>
+              <button
+                style={styles.modalBtnCancel}
+                onClick={() => setShowLockConfirm(false)}
+                disabled={lockLoading}
+              >
+                Cancel
+              </button>
+              <button
+                style={isLocked ? styles.modalBtnUnlockConfirm : styles.modalBtnLockConfirm}
+                onClick={handleToggleLock}
+                disabled={lockLoading}
+              >
+                {lockLoading
+                  ? "Processing..."
+                  : isLocked
+                    ? "Yes, Unlock Date"
+                    : "Yes, Lock Date"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Report Table Container */}
       {report && (
@@ -636,6 +774,136 @@ const styles = {
     borderRadius: 6,
     cursor: "pointer",
     transition: "background-color 0.2s",
+  },
+  lockContainer: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "#fff",
+    padding: "4px 8px",
+    borderRadius: 6,
+    border: "1px solid #e2e8f0",
+  },
+  lockBadgeLocked: {
+    padding: "5px 10px",
+    borderRadius: 4,
+    fontSize: 12,
+    fontWeight: 700,
+    backgroundColor: "#fee2e2",
+    color: "#991b1b",
+    border: "1px solid #fca5a5",
+    display: "inline-flex",
+    alignItems: "center",
+  },
+  lockBadgeOpen: {
+    padding: "5px 10px",
+    borderRadius: 4,
+    fontSize: 12,
+    fontWeight: 700,
+    backgroundColor: "#dcfce7",
+    color: "#166534",
+    border: "1px solid #86efac",
+    display: "inline-flex",
+    alignItems: "center",
+  },
+  btnLock: {
+    padding: "8px 16px",
+    fontSize: 12,
+    fontWeight: 700,
+    background: "#dc2626",
+    color: "#fff",
+    border: "none",
+    borderRadius: 6,
+    cursor: "pointer",
+    transition: "background-color 0.2s",
+  },
+  btnUnlock: {
+    padding: "8px 16px",
+    fontSize: 12,
+    fontWeight: 700,
+    background: "#059669",
+    color: "#fff",
+    border: "none",
+    borderRadius: 6,
+    cursor: "pointer",
+    transition: "background-color 0.2s",
+  },
+  lockSuccessBanner: {
+    padding: "10px 16px",
+    background: "#ecfdf5",
+    color: "#065f46",
+    border: "1px solid #a7f3d0",
+    borderRadius: 6,
+    marginBottom: 16,
+    fontSize: 13,
+    fontWeight: 600,
+  },
+  modalOverlay: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 9999,
+  },
+  modalContent: {
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    padding: 24,
+    maxWidth: 480,
+    width: "90%",
+    boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+  },
+  modalTitle: {
+    margin: "0 0 12px",
+    fontSize: 18,
+    fontWeight: 700,
+    color: "#0f172a",
+  },
+  modalText: {
+    fontSize: 14,
+    color: "#475569",
+    lineHeight: "1.5",
+    marginBottom: 24,
+  },
+  modalActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 12,
+  },
+  modalBtnCancel: {
+    padding: "8px 16px",
+    fontSize: 13,
+    fontWeight: 600,
+    backgroundColor: "#f1f5f9",
+    color: "#475569",
+    border: "1px solid #cbd5e1",
+    borderRadius: 6,
+    cursor: "pointer",
+  },
+  modalBtnLockConfirm: {
+    padding: "8px 18px",
+    fontSize: 13,
+    fontWeight: 600,
+    backgroundColor: "#dc2626",
+    color: "#ffffff",
+    border: "none",
+    borderRadius: 6,
+    cursor: "pointer",
+  },
+  modalBtnUnlockConfirm: {
+    padding: "8px 18px",
+    fontSize: 13,
+    fontWeight: 600,
+    backgroundColor: "#059669",
+    color: "#ffffff",
+    border: "none",
+    borderRadius: 6,
+    cursor: "pointer",
   },
   error: {
     padding: "12px 20px",

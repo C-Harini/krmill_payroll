@@ -2,6 +2,7 @@ const db = require("../models");
 const { EightEightEntry, Employee, Category, ShiftType } = db;
 const { Op } = require("sequelize");
 const moment = require("moment");
+const { isDateLocked } = require("../utils/attendanceLockUtil");
 
 // ============================================================
 // EIGHT-EIGHT MULTIPLE ENTRY CONTROLLER
@@ -146,6 +147,14 @@ exports.saveEightEightMultipleEntry = async (req, res) => {
     });
   }
 
+  if (await isDateLocked(companyId, date)) {
+    return res.status(403).json({
+      success: false,
+      message: `8-8 entry is LOCKED for ${moment(date).format("YYYY-MM-DD")}. Please unlock the date in the Strength Report to make changes.`,
+      isLocked: true,
+    });
+  }
+
   const { sequelize } = db;
   const transaction = await sequelize.transaction();
 
@@ -222,6 +231,14 @@ exports.deleteEightEight = async (req, res) => {
       });
     }
 
+    if (await isDateLocked(record.companyId, record.date)) {
+      return res.status(403).json({
+        success: false,
+        message: `8-8 entry is LOCKED for ${moment(record.date).format("YYYY-MM-DD")}. Please unlock the date in the Strength Report to make changes.`,
+        isLocked: true,
+      });
+    }
+
     await record.destroy();
     console.log(`[deleteEightEight] Successfully deleted 8-8 record with ID: ${id}`);
     return res.status(200).json({
@@ -249,6 +266,14 @@ exports.saveEightEightBulkCounts = async (req, res) => {
     return res.status(400).json({
       success: false,
       message: "Missing required parameters"
+    });
+  }
+
+  if (await isDateLocked(companyId, date)) {
+    return res.status(403).json({
+      success: false,
+      message: `Bulk 8-8 counts are LOCKED for ${moment(date).format("YYYY-MM-DD")}. Please unlock the date in the Strength Report to make changes.`,
+      isLocked: true,
     });
   }
 
@@ -333,7 +358,7 @@ exports.getEightEightBulkHistory = async (req, res) => {
       },
       order: [["date", "DESC"]]
     });
-    
+
     const grouped = {};
     entries.forEach(e => {
       const dStr = moment(e.date).format("YYYY-MM-DD");
@@ -347,7 +372,7 @@ exports.getEightEightBulkHistory = async (req, res) => {
       }
       grouped[dStr][e.entryType] = parseFloat(e.hours) || 0;
     });
-    
+
     const history = Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date));
     return res.status(200).json({ success: true, history });
   } catch (err) {
@@ -361,7 +386,16 @@ exports.deleteEightEightBulkCounts = async (req, res) => {
   if (!date) {
     return res.status(400).json({ success: false, message: "Date is required" });
   }
-  
+
+  const effectiveCompanyId = companyId || 1;
+  if (await isDateLocked(effectiveCompanyId, date)) {
+    return res.status(403).json({
+      success: false,
+      message: `Bulk 8-8 counts are LOCKED for ${moment(date).format("YYYY-MM-DD")}. Please unlock the date in the Strength Report to make changes.`,
+      isLocked: true,
+    });
+  }
+
   const { sequelize } = db;
   const transaction = await sequelize.transaction();
   try {

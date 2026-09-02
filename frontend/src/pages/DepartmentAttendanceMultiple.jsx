@@ -60,6 +60,9 @@ const DepartmentAttendanceMultiple = () => {
   const [selectedLeftEmpIds, setSelectedLeftEmpIds] = useState(new Set());
   const [leftSearch, setLeftSearch] = useState("");
 
+  // Lock status
+  const [isLocked, setIsLocked] = useState(false);
+
   // Right Grid: Saved Data
   const [savedData, setSavedData] = useState([]);
   const [selectedSavedIds, setSelectedSavedIds] = useState(new Set());
@@ -93,6 +96,22 @@ const DepartmentAttendanceMultiple = () => {
       fetchCategories(selectedCompanyId);
     }
   }, [selectedCompanyId]);
+
+  // Check Lock Status on company and date change
+  useEffect(() => {
+    const checkLock = async () => {
+      if (!selectedCompanyId || !entryDate) return;
+      try {
+        const res = await API.get("/attendance-lock/status", {
+          params: { companyId: selectedCompanyId, date: entryDate },
+        });
+        setIsLocked(!!res.data?.isLocked);
+      } catch (e) {
+        console.error("Lock check error:", e);
+      }
+    };
+    checkLock();
+  }, [selectedCompanyId, entryDate]);
 
   // Load Grids when Dept, Date, or Shift changes
   useEffect(() => {
@@ -342,6 +361,11 @@ const DepartmentAttendanceMultiple = () => {
 
   // --- Action Handlers ---
   const handleSaveAttendance = async () => {
+    if (isLocked) {
+      toast.error(`Manual attendance entry is LOCKED for ${entryDate}. Unlock it in the Strength Report to save changes.`);
+      return;
+    }
+
     if (selectedLeftEmpIds.size === 0) {
       toast.warning("Please check one or more employees from the list to save attendance.");
       return;
@@ -390,6 +414,11 @@ const DepartmentAttendanceMultiple = () => {
   };
 
   const handleMultiDelete = async () => {
+    if (isLocked) {
+      toast.error(`Manual attendance entry is LOCKED for ${entryDate}. Unlock it in the Strength Report to delete records.`);
+      return;
+    }
+
     if (selectedSavedIds.size === 0) {
       toast.info("Please select saved entries from the 'Saved Data' table to delete.");
       return;
@@ -467,6 +496,10 @@ const DepartmentAttendanceMultiple = () => {
 
   const handleUpdateSingleAttendance = async () => {
     if (!editRecord) return;
+    if (isLocked) {
+      toast.error(`Manual attendance entry is LOCKED for ${editDate || entryDate}. Unlock it in the Strength Report to edit records.`);
+      return;
+    }
     setLoading(true);
     try {
       const statusMap = {
@@ -543,6 +576,17 @@ const DepartmentAttendanceMultiple = () => {
             </span>
           </div>
         </div>
+
+        {/* Locked Warning Banner */}
+        {isLocked && (
+          <div className="mx-5 mt-4 p-3.5 bg-rose-50 border border-rose-300 rounded-xl flex items-center gap-3 text-rose-900 text-xs font-bold shadow-sm">
+            <AlertCircle size={20} className="text-rose-600 shrink-0" />
+            <div>
+              <span className="font-extrabold uppercase tracking-wide mr-1">🔒 Date Locked:</span>
+              Manual attendance entry is <strong>LOCKED</strong> for {entryDate}. You cannot save, edit, or delete records for this date unless it is unlocked in the Strength Report page.
+            </div>
+          </div>
+        )}
 
         {/* Form Controls Section - Blue Styled Inputs */}
         <div className="p-5 bg-gradient-to-b from-blue-50/50 to-white border-b border-blue-100">
@@ -773,7 +817,7 @@ const DepartmentAttendanceMultiple = () => {
 
                 <button
                   onClick={handleMultiDelete}
-                  disabled={selectedSavedIds.size === 0}
+                  disabled={selectedSavedIds.size === 0 || isLocked}
                   className="bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold px-3 py-1 rounded-lg shadow border border-rose-700 transition-all flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Trash2 size={13} />
@@ -898,11 +942,11 @@ const DepartmentAttendanceMultiple = () => {
           {/* Save Button */}
           <button
             onClick={handleSaveAttendance}
-            disabled={selectedLeftEmpIds.size === 0 || loading}
+            disabled={selectedLeftEmpIds.size === 0 || loading || isLocked}
             className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-sm px-8 py-2.5 rounded-xl shadow-lg border border-emerald-700 transition-all flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Save size={18} />
-            <span>Save</span>
+            <span>{isLocked ? "Locked" : "Save"}</span>
           </button>
 
           {/* Cancel Button */}

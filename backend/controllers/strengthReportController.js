@@ -418,12 +418,22 @@ exports.getStrengthReport = async (req, res) => {
       total: round(totalRegular + sumRawHands + sumMultiSkill + sumContractDoffer + sumSemiContract + totalOtConversion + trgStrength),
     };
 
+    // ── 9. Fetch Lock Status for date ─────────────────────────
+    const lockRecord = await db.AttendanceLock.findOne({
+      where: {
+        companyId: parseInt(companyId, 10),
+        lockDate: targetDate,
+      },
+    });
+
     return res.json({
       success: true,
       data: {
         date,
         companyId: parseInt(companyId),
         companyName: company.name,
+        isLocked: lockRecord ? !!lockRecord.isLocked : false,
+        lockDetails: lockRecord || null,
         threeShiftData,
         grandTotal,
         bottomAbstract,

@@ -78,8 +78,13 @@ db.Deduction = require("./Deduction")(sequelize, Sequelize.DataTypes);
 // holilday salary
 db.HolidaySalary = require("./HolidaySalary")(sequelize, Sequelize.DataTypes);
 db.DiscrepancyApproval = require("./DiscrepancyApproval")(sequelize, Sequelize.DataTypes);
+db.AttendanceLock = require("./AttendanceLock")(sequelize, Sequelize.DataTypes);
 // --- Set up the associations between models ---
 db.EmployeeDocument = require('./EmployeeDocument')(sequelize, Sequelize.DataTypes);
+
+// Company → AttendanceLock
+db.Company.hasMany(db.AttendanceLock, { foreignKey: "companyId", onDelete: "CASCADE" });
+db.AttendanceLock.belongsTo(db.Company, { foreignKey: "companyId" });
 
 // Company → StrengthReport
 db.Company.hasMany(db.StrengthReport, { foreignKey: "companyId", onDelete: "CASCADE" });

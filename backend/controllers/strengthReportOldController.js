@@ -367,14 +367,14 @@ exports.exportStrengthReportExcel = async (req, res) => {
     });
 
     const dateLabel = formatDateLabel(date);
-    const TITLE_BG   = "FF1E3A8A";
-    const HEADER_FG  = "FFFFFFFF";
+    const TITLE_BG = "FF1E3A8A";
+    const HEADER_FG = "FFFFFFFF";
     const SHIFT_A_BG = "FFDBEAFE";
     const SHIFT_B_BG = "FFFDE68A";
     const SHIFT_C_BG = "FFD1FAE5";
     const OVERALL_BG = "FFE9D5FF";
-    const CAT_BG     = "FFF1F5F9";
-    const GRAND_BG   = "FFE2E8F0";
+    const CAT_BG = "FFF1F5F9";
+    const GRAND_BG = "FFE2E8F0";
 
     // Total columns: 1 (Dept) + 3 shifts × 3 cols + 3 (Req/STR/HOT) = 13
     const TOTAL_COLS = 13;
@@ -412,13 +412,13 @@ exports.exportStrengthReportExcel = async (req, res) => {
       return c;
     };
 
-    ws.mergeCells(3, 1, 4, 1); setCell(3, 1, "Deptname",  "FFF1F5F9", { align: "left" });
-    ws.mergeCells(3, 2, 3, 4); setCell(3, 2, "A",         SHIFT_A_BG, { fontColor: "FF1E40AF" });
-    ws.mergeCells(3, 5, 3, 7); setCell(3, 5, "B",         SHIFT_B_BG, { fontColor: "FF92400E" });
-    ws.mergeCells(3, 8, 3, 10); setCell(3, 8, "C",        SHIFT_C_BG, { fontColor: "FF065F46" });
-    ws.mergeCells(3, 11, 4, 11); setCell(3, 11, "Req",    OVERALL_BG);
-    ws.mergeCells(3, 12, 4, 12); setCell(3, 12, "STR",    OVERALL_BG);
-    ws.mergeCells(3, 13, 4, 13); setCell(3, 13, "H.OT",   OVERALL_BG);
+    ws.mergeCells(3, 1, 4, 1); setCell(3, 1, "Deptname", "FFF1F5F9", { align: "left" });
+    ws.mergeCells(3, 2, 3, 4); setCell(3, 2, "A", SHIFT_A_BG, { fontColor: "FF1E40AF" });
+    ws.mergeCells(3, 5, 3, 7); setCell(3, 5, "B", SHIFT_B_BG, { fontColor: "FF92400E" });
+    ws.mergeCells(3, 8, 3, 10); setCell(3, 8, "C", SHIFT_C_BG, { fontColor: "FF065F46" });
+    ws.mergeCells(3, 11, 4, 11); setCell(3, 11, "Req", OVERALL_BG);
+    ws.mergeCells(3, 12, 4, 12); setCell(3, 12, "STR", OVERALL_BG);
+    ws.mergeCells(3, 13, 4, 13); setCell(3, 13, "H.OT", OVERALL_BG);
 
     // Row 4: Sub-headers for shifts
     const subHeaders = ["Strength", "S OT", "H OT"];

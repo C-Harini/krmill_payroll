@@ -265,6 +265,9 @@ function App() {
 
         </Route>
 
+        <Route path="/strength-report" element={<Navigate to="/dashboard/strength-report" replace />} />
+        <Route path="/strength-report-old" element={<Navigate to="/dashboard/strength-report-old" replace />} />
+
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>

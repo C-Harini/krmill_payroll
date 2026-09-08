@@ -6,6 +6,8 @@
 // ============================================================
 
 import React, { useState, useCallback, useEffect } from "react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { apiRequest } from "../utils/apiCaller";
 
 const SHIFT_COLS_WITH_S_OT = [
@@ -27,6 +29,53 @@ const SHIFT_COLS_WITHOUT_S_OT = [
   { key: "total", label: "Total" },
 ];
 
+// ── Helper Functions ──────────────────────────────────────────
+function getYesterday() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split("T")[0];
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function cell(val) {
+  if (val === 0 || val === null || val === undefined) return "-";
+  return val;
+}
+
+function diffColor(val) {
+  if (val < 0) return "#dc2626"; // red-600
+  if (val > 0) return "#15803d"; // green-700
+  return "#64748b"; // slate-500
+}
+
+function diffDisplay(val) {
+  if (val === 0 || val === null || val === undefined) return "-";
+  if (val > 0) return `+${val}`;
+  return val;
+}
+
+function groupByCategory(data) {
+  if (!data || !Array.isArray(data)) return {};
+  const groups = {};
+  data.forEach((dept) => {
+    const cat = dept.categoryName || "OTHERS";
+    if (!groups[cat]) {
+      groups[cat] = [];
+    }
+    groups[cat].push(dept);
+  });
+  return groups;
+}
+
 const StrengthReport = () => {
   const [activeTab, setActiveTab] = useState("with_s_ot");
   const [companyId, setCompanyId] = useState("");
@@ -47,6 +96,10 @@ const StrengthReport = () => {
     activeTab === "with_s_ot" ? SHIFT_COLS_WITH_S_OT : SHIFT_COLS_WITHOUT_S_OT;
   const shiftColSpan = currentShiftCols.length;
   const totalTableCols = 2 + shiftColSpan * 3 + 2;
+
+  const groupedData = React.useMemo(() => {
+    return report && report.threeShiftData ? groupByCategory(report.threeShiftData) : {};
+  }, [report]);
 
   // ── Fetch company list on mount ──────────────────────────
   useEffect(() => {
@@ -110,6 +163,13 @@ const StrengthReport = () => {
     }
   }, [companyId, date]);
 
+  // ── Auto-fetch report on mount and parameter change ──────
+  useEffect(() => {
+    if (companyId && date) {
+      fetchReport();
+    }
+  }, [companyId, date, fetchReport]);
+
   // ── Toggle Lock ─────────────────────────────────────────
   const handleToggleLock = async () => {
     if (!companyId || !date) {
@@ -169,35 +229,258 @@ const StrengthReport = () => {
           },
         }
       );
+      if (!response.ok) throw new Error("Failed to export Excel");
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download =
+      const fileName =
         activeTab === "without_s_ot"
-          ? `Strength_Report_Without_SOT_${date}.xlsx`
-          : `Strength_Report_${date}.xlsx`;
+          ? `strength_report_without_s_ot_${date}.xlsx`
+          : `strength_report_${date}.xlsx`;
+      a.download = fileName;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (err) {
       alert("Export failed: " + err.message);
     }
   }, [report, companyId, date, activeTab]);
 
-  // Group departments by Category Name
-  const groupByCategory = (data) => {
-    const groups = {};
-    data.forEach((dept) => {
-      const cat = dept.categoryName || "OTHERS";
-      if (!groups[cat]) {
-        groups[cat] = [];
-      }
-      groups[cat].push(dept);
-    });
-    return groups;
-  };
+  // ── Export to PDF ───────────────────────────────────────
+  const exportPDF = useCallback(() => {
+    if (!report) return;
+    try {
+      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const pageW = doc.internal.pageSize.getWidth();
+      const isWithoutSOT = activeTab === "without_s_ot";
 
-  const groupedData = report ? groupByCategory(report.threeShiftData) : {};
+      // 1. Company & Report Title
+      doc.setFillColor(30, 58, 138);
+      doc.rect(0, 0, pageW, 16, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "bold");
+      doc.text(report.companyName || "Strength Report", 14, 10);
+
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      const dateText = `Strength Report ${isWithoutSOT ? "(Without S OT) " : ""}- From ${formatDate(report.date)} to ${formatDate(report.date)}`;
+      doc.text(dateText, pageW - 14, 10, { align: "right" });
+
+      // 2. Build Table Headers
+      const subCols = isWithoutSOT ? SHIFT_COLS_WITHOUT_S_OT : SHIFT_COLS_WITH_S_OT;
+      const shiftSpan = subCols.length;
+
+      const headerRow1 = [
+        { content: "Dept. Name", rowSpan: 2, styles: { halign: "left", valign: "middle", fontStyle: "bold" } },
+        { content: "Day STD", rowSpan: 2, styles: { halign: "center", valign: "middle", fontStyle: "bold" } },
+        { content: "SHIFT I", colSpan: shiftSpan, styles: { halign: "center", fontStyle: "bold", fillColor: [239, 246, 255], textColor: [30, 64, 175] } },
+        { content: "SHIFT II", colSpan: shiftSpan, styles: { halign: "center", fontStyle: "bold", fillColor: [254, 242, 242], textColor: [153, 27, 27] } },
+        { content: "SHIFT III", colSpan: shiftSpan, styles: { halign: "center", fontStyle: "bold", fillColor: [240, 253, 244], textColor: [22, 101, 52] } },
+        { content: "OVER ALL", colSpan: 2, styles: { halign: "center", fontStyle: "bold", fillColor: [248, 250, 252], textColor: [51, 65, 85] } },
+      ];
+
+      const headerRow2 = [];
+      subCols.forEach((c) => headerRow2.push({ content: c.label, styles: { halign: "center", fontSize: 6.5, fillColor: [239, 246, 255], textColor: [30, 64, 175] } }));
+      subCols.forEach((c) => headerRow2.push({ content: c.label, styles: { halign: "center", fontSize: 6.5, fillColor: [254, 242, 242], textColor: [153, 27, 27] } }));
+      subCols.forEach((c) => headerRow2.push({ content: c.label, styles: { halign: "center", fontSize: 6.5, fillColor: [240, 253, 244], textColor: [22, 101, 52] } }));
+      headerRow2.push({ content: "Con Total", styles: { halign: "center", fontSize: 6.5, fontStyle: "bold" } });
+      headerRow2.push({ content: "Diff", styles: { halign: "center", fontSize: 6.5, fontStyle: "bold" } });
+
+      const totalColsCount = 2 + shiftSpan * 3 + 2;
+
+      // 3. Build Table Body
+      const bodyRows = [];
+      Object.entries(groupedData).forEach(([categoryName, depts]) => {
+        bodyRows.push([
+          {
+            content: categoryName.toUpperCase(),
+            colSpan: totalColsCount,
+            styles: { fontStyle: "bold", fillColor: [226, 232, 240], textColor: [30, 41, 59], fontSize: 7, halign: "left" },
+          },
+        ]);
+
+        depts.forEach((dept) => {
+          const rowData = [
+            { content: dept.departmentName, styles: { fontStyle: "bold", halign: "left" } },
+            { content: String(dept.dayStd || "-"), styles: { halign: "center" } },
+          ];
+
+          ["shiftI", "shiftII", "shiftIII"].forEach((s) => {
+            subCols.forEach((c) => {
+              const v = dept[s][c.key];
+              rowData.push({ content: String(cell(v)), styles: { halign: "center" } });
+            });
+          });
+
+          rowData.push({ content: String(cell(dept.overallTotal)), styles: { halign: "center", fontStyle: "bold" } });
+          rowData.push({ content: String(diffDisplay(dept.diff)), styles: { halign: "center", fontStyle: "bold" } });
+
+          bodyRows.push(rowData);
+        });
+      });
+
+      // Grand Total Row
+      const grandTotalRow = [
+        { content: "Grand Total", styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "left" } },
+        { content: String(report.grandTotal.dayStd), styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "center" } },
+      ];
+      ["shiftI", "shiftII", "shiftIII"].forEach((s) => {
+        subCols.forEach((c) => {
+          const v = report.grandTotal[s][c.key];
+          grandTotalRow.push({ content: String(cell(v)), styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "center" } });
+        });
+      });
+      grandTotalRow.push({ content: String(report.grandTotal.overallTotal), styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "center" } });
+      grandTotalRow.push({ content: String(diffDisplay(report.grandTotal.diff)), styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "center" } });
+      bodyRows.push(grandTotalRow);
+
+      autoTable(doc, {
+        startY: 20,
+        head: [headerRow1, headerRow2],
+        body: bodyRows,
+        theme: "grid",
+        styles: {
+          fontSize: 6,
+          cellPadding: 0.8,
+          lineColor: [203, 213, 225],
+          lineWidth: 0.1,
+          valign: "middle",
+        },
+        headStyles: {
+          fillColor: [241, 245, 249],
+          textColor: [30, 41, 59],
+          fontStyle: "bold",
+        },
+        margin: { left: 8, right: 8 },
+        didDrawPage: (data) => {
+          doc.setFontSize(7);
+          doc.setTextColor(100);
+          doc.text(`Page ${data.pageNumber}`, pageW - 14, doc.internal.pageSize.getHeight() - 5, { align: "right" });
+        },
+      });
+
+      let finalY = doc.lastAutoTable.finalY + 5;
+      if (finalY > doc.internal.pageSize.getHeight() - 45) {
+        doc.addPage();
+        finalY = 12;
+      }
+
+      const abstractStartY = finalY;
+
+      // Abstract 1: TRG / CON. SHIFT ABSTRACT
+      const abs1Rows = [
+        { label: "Contract Doffer", key: "contractDoffer" },
+        { label: "Semi Contract", key: "semiContract" },
+        { label: "Rawhands", key: "rawHands" },
+        { label: "Multi Skill", key: "multiSkill" },
+      ].map((row) => {
+        const s1 = report.bottomAbstract[row.key].shiftI;
+        const s2 = report.bottomAbstract[row.key].shiftII;
+        const s3 = report.bottomAbstract[row.key].shiftIII;
+        const tot = Math.round((s1 + s2 + s3) * 10) / 10;
+        return [row.label, cell(s1), cell(s2), cell(s3), cell(tot)];
+      });
+
+      autoTable(doc, {
+        startY: abstractStartY,
+        margin: { left: 8 },
+        tableWidth: 85,
+        head: [
+          [{ content: "TRG / CON. SHIFT ABSTRACT", colSpan: 5, styles: { halign: "center", fontStyle: "bold", fillColor: [30, 58, 138], textColor: [255, 255, 255] } }],
+          ["Category", "SHIFT I", "SHIFT II", "SHIFT III", "TOTAL"].map((h) => ({ content: h, styles: { halign: "center", fontStyle: "bold", fillColor: [241, 245, 249] } })),
+        ],
+        body: abs1Rows,
+        theme: "grid",
+        styles: { fontSize: 6, cellPadding: 0.8, halign: "center" },
+        columnStyles: { 0: { halign: "left", fontStyle: "bold" }, 4: { fontStyle: "bold" } },
+      });
+
+      // Abstract 2: ATTENDANCE ABSTRACT
+      const abs2Rows = [
+        ["100% Work Load", report.attendanceAbstract.workLoad100],
+        ["OT Conversion", report.attendanceAbstract.otConversion],
+        ["Trg. Conversion", report.attendanceAbstract.trgConversion],
+        [{ content: "Total", styles: { fontStyle: "bold" } }, { content: String(report.attendanceAbstract.total), styles: { fontStyle: "bold" } }],
+        [{ content: "Trg. Work", styles: { fontStyle: "bold", textColor: [2, 132, 199] } }, { content: String(report.attendanceAbstract.trgWork), styles: { fontStyle: "bold", textColor: [2, 132, 199] } }],
+      ];
+
+      autoTable(doc, {
+        startY: abstractStartY,
+        margin: { left: 100 },
+        tableWidth: 80,
+        head: [
+          [{ content: "ATTENDANCE ABSTRACT", colSpan: 2, styles: { halign: "center", fontStyle: "bold", fillColor: [30, 58, 138], textColor: [255, 255, 255] } }],
+        ],
+        body: abs2Rows,
+        theme: "grid",
+        styles: { fontSize: 6, cellPadding: 1 },
+        columnStyles: { 0: { halign: "left" }, 1: { halign: "center", fontStyle: "bold" } },
+      });
+
+      // Abstract 3: TRAINEE ABSTRACT
+      const abs3Rows = [
+        ["100% Work Load", report.traineeAbstract.workLoad100],
+        ["Raw hands", report.traineeAbstract.rawHands],
+        ["Multi Skill", report.traineeAbstract.multiSkill],
+      ];
+      if (report.traineeAbstract.contractDoffer > 0) {
+        abs3Rows.push(["Contract Doffer", report.traineeAbstract.contractDoffer]);
+      }
+      if (report.traineeAbstract.semiContract > 0) {
+        abs3Rows.push(["Semi Contract", report.traineeAbstract.semiContract]);
+      }
+      abs3Rows.push(
+        ["OT Conversion", report.traineeAbstract.otConversion],
+        ["Trg. Strength", report.traineeAbstract.trgStrength],
+        [{ content: "Total", styles: { fontStyle: "bold" } }, { content: String(report.traineeAbstract.total), styles: { fontStyle: "bold" } }]
+      );
+
+      autoTable(doc, {
+        startY: abstractStartY,
+        margin: { left: 188 },
+        tableWidth: 80,
+        head: [
+          [{ content: "TRAINEE ABSTRACT", colSpan: 2, styles: { halign: "center", fontStyle: "bold", fillColor: [30, 58, 138], textColor: [255, 255, 255] } }],
+        ],
+        body: abs3Rows,
+        theme: "grid",
+        styles: { fontSize: 6, cellPadding: 0.8 },
+        columnStyles: { 0: { halign: "left" }, 1: { halign: "center", fontStyle: "bold" } },
+      });
+
+      const lastBottomY = Math.max(doc.lastAutoTable.finalY + 6, abstractStartY + 28);
+      let sigY = lastBottomY;
+      if (sigY > doc.internal.pageSize.getHeight() - 14) {
+        doc.addPage();
+        sigY = 16;
+      }
+
+      const sigRoles = ["PREPARED", "AM (Trg)", "M (QAT)", "AM(Prod)", "Sr.M (M)", "M (Ele)", "AM (Pers)", "PM", "GM (T)", "MD"];
+      const sigSpacing = (pageW - 20) / sigRoles.length;
+      doc.setFontSize(6);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(71, 85, 105);
+
+      sigRoles.forEach((role, i) => {
+        const x = 10 + i * sigSpacing;
+        doc.setDrawColor(148, 163, 184);
+        doc.setLineWidth(0.3);
+        doc.line(x, sigY, x + sigSpacing - 4, sigY);
+        doc.text(role, x + (sigSpacing - 4) / 2, sigY + 3.5, { align: "center" });
+      });
+
+      const fileName = isWithoutSOT
+        ? `strength_report_without_s_ot_${date}.pdf`
+        : `strength_report_${date}.pdf`;
+      doc.save(fileName);
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+      alert("Failed to download PDF: " + err.message);
+    }
+  }, [report, activeTab, groupedData, date]);
 
   return (
     <div style={styles.container}>
@@ -288,11 +571,14 @@ const StrengthReport = () => {
 
         {report && (
           <>
-            <button style={styles.btnSecondary} onClick={exportExcel}>
-              Export Excel
+            <button style={styles.btnSecondary} onClick={exportExcel} title="Download Excel Spreadsheet">
+              📊 Download Excel
             </button>
-            <button style={styles.btnSecondary} onClick={() => window.print()}>
-              Print / PDF
+            <button style={styles.btnSecondary} onClick={exportPDF} title="Download PDF Document">
+              📄 Download PDF
+            </button>
+            <button style={styles.btnSecondary} onClick={() => window.print()} title="Print Document">
+              🖨️ Print
             </button>
           </>
         )}
@@ -625,40 +911,6 @@ const StrengthReport = () => {
     </div>
   );
 };
-
-// ── Helpers ───────────────────────────────────────────────────
-
-function getYesterday() {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().split("T")[0];
-}
-
-function formatDate(dateStr) {
-  const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-}
-
-function cell(val) {
-  if (val === 0 || val === null || val === undefined) return "-";
-  return val;
-}
-
-function diffColor(val) {
-  if (val < 0) return "#dc2626"; // red-600
-  if (val > 0) return "#15803d"; // green-700
-  return "#64748b"; // slate-500
-}
-
-function diffDisplay(val) {
-  if (val === 0) return "-";
-  if (val > 0) return `+${val}`;
-  return val;
-}
 
 // ── Styles ────────────────────────────────────────────────────
 

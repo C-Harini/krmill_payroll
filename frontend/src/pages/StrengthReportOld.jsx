@@ -19,9 +19,17 @@
 // ============================================================
 
 import React, { useState, useCallback, useEffect } from "react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { apiRequest } from "../utils/apiCaller";
 
 // ── Helpers ───────────────────────────────────────────────────
+function getYesterday() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split("T")[0];
+}
+
 function fmtDate(dateStr) {
   if (!dateStr) return "";
   const d = new Date(dateStr + "T00:00:00");
@@ -44,14 +52,54 @@ function cvN(val) {
   return val;
 }
 
+function rnd(v) {
+  return Math.round((v || 0) * 10) / 10;
+}
+
+function hasData(dept) {
+  return true;
+}
+
+function computeCatTotal(depts) {
+  const acc = {
+    req: 0,
+    shiftA: { strength: 0, sotCount: 0, hotHours: 0 },
+    shiftB: { strength: 0, sotCount: 0, hotHours: 0 },
+    shiftC: { strength: 0, sotCount: 0, hotHours: 0 },
+    totalStrength: 0,
+    totalHot: 0,
+  };
+  (depts || []).forEach((d) => {
+    if (!hasData(d)) return;
+    acc.req += d.req || 0;
+    ["shiftA", "shiftB", "shiftC"].forEach((s) => {
+      acc[s].strength += d[s]?.strength || 0;
+      acc[s].sotCount += d[s]?.sotCount || 0;
+      acc[s].hotHours += d[s]?.hotHours || 0;
+    });
+    acc.totalStrength += d.totalStrength || 0;
+    acc.totalHot += d.totalHot || 0;
+  });
+  ["shiftA", "shiftB", "shiftC"].forEach((s) => {
+    acc[s].strength = rnd(acc[s].strength);
+    acc[s].hotHours = rnd(acc[s].hotHours);
+  });
+  acc.req = rnd(acc.req);
+  acc.totalStrength = rnd(acc.totalStrength);
+  acc.totalHot = rnd(acc.totalHot);
+  return acc;
+}
+
 // ── Component ──────────────────────────────────────────────────
 const StrengthReportOld = () => {
   const [companyId, setCompanyId] = useState("");
   const [companies, setCompanies] = useState([]);
-  const [date, setDate] = useState("2025-12-15");
+  const [date, setDate] = useState(getYesterday());
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const dateLabel = fmtDate(date);
 
   // Load companies on mount
   useEffect(() => {
@@ -59,6 +107,9 @@ const StrengthReportOld = () => {
       .then((data) => {
         const list = Array.isArray(data) ? data : data.data || [];
         setCompanies(list);
+        if (list.length > 0 && !companyId) {
+          setCompanyId(list[0].id);
+        }
       })
       .catch((err) => console.error("Failed to load companies:", err.message));
   }, []);
@@ -87,6 +138,13 @@ const StrengthReportOld = () => {
     }
   }, [companyId, date]);
 
+  // Auto-fetch report on company/date change
+  useEffect(() => {
+    if (companyId && date) {
+      fetchReport();
+    }
+  }, [companyId, date, fetchReport]);
+
   // Export Excel
   const exportExcel = useCallback(async () => {
     if (!report) return;
@@ -100,54 +158,162 @@ const StrengthReportOld = () => {
           },
         }
       );
+      if (!response.ok) throw new Error("Failed to export Excel");
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Strength_Report_${date}.xlsx`;
+      a.download = `strength_report_${date}.xlsx`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (err) {
       alert("Export failed: " + err.message);
     }
   }, [report, companyId, date]);
 
-  // ── Compute category sub-totals ────────────────────────────
-  const computeCatTotal = (depts) => {
-    const acc = {
-      req: 0,
-      shiftA: { strength: 0, sotCount: 0, hotHours: 0 },
-      shiftB: { strength: 0, sotCount: 0, hotHours: 0 },
-      shiftC: { strength: 0, sotCount: 0, hotHours: 0 },
-      totalStrength: 0,
-      totalHot: 0,
-    };
-    depts.forEach((d) => {
-      if (!hasData(d)) return;
-      acc.req += d.req || 0;
-      ["shiftA", "shiftB", "shiftC"].forEach((s) => {
-        acc[s].strength += d[s].strength || 0;
-        acc[s].sotCount += d[s].sotCount || 0;
-        acc[s].hotHours += d[s].hotHours || 0;
+  // Export PDF
+  const exportPDF = useCallback(() => {
+    if (!report) return;
+    try {
+      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const pageW = doc.internal.pageSize.getWidth();
+
+      doc.setFillColor(30, 58, 138);
+      doc.rect(0, 0, pageW, 16, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "bold");
+      doc.text(report.companyName || "Strength Report", 14, 10);
+
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Strength Report  From ${dateLabel}  to  ${dateLabel}`, pageW - 14, 10, { align: "right" });
+
+      const headerRow1 = [
+        { content: "Deptname", rowSpan: 2, styles: { halign: "left", valign: "middle", fontStyle: "bold" } },
+        { content: "A", colSpan: 3, styles: { halign: "center", fontStyle: "bold", fillColor: [239, 246, 255], textColor: [30, 64, 175] } },
+        { content: "B", colSpan: 3, styles: { halign: "center", fontStyle: "bold", fillColor: [254, 242, 242], textColor: [153, 27, 27] } },
+        { content: "C", colSpan: 3, styles: { halign: "center", fontStyle: "bold", fillColor: [240, 253, 244], textColor: [22, 101, 52] } },
+        { content: "Req", rowSpan: 2, styles: { halign: "center", valign: "middle", fontStyle: "bold", fillColor: [248, 250, 252] } },
+        { content: "STR", rowSpan: 2, styles: { halign: "center", valign: "middle", fontStyle: "bold", fillColor: [248, 250, 252] } },
+        { content: "H.OT", rowSpan: 2, styles: { halign: "center", valign: "middle", fontStyle: "bold", fillColor: [248, 250, 252] } },
+      ];
+
+      const headerRow2 = [
+        { content: "Strength", styles: { halign: "center", fontSize: 6.5, fillColor: [239, 246, 255] } },
+        { content: "S OT", styles: { halign: "center", fontSize: 6.5, fillColor: [239, 246, 255] } },
+        { content: "H OT", styles: { halign: "center", fontSize: 6.5, fillColor: [239, 246, 255] } },
+        { content: "Strength", styles: { halign: "center", fontSize: 6.5, fillColor: [254, 242, 242] } },
+        { content: "S OT", styles: { halign: "center", fontSize: 6.5, fillColor: [254, 242, 242] } },
+        { content: "H OT", styles: { halign: "center", fontSize: 6.5, fillColor: [254, 242, 242] } },
+        { content: "Strength", styles: { halign: "center", fontSize: 6.5, fillColor: [240, 253, 244] } },
+        { content: "S OT", styles: { halign: "center", fontSize: 6.5, fillColor: [240, 253, 244] } },
+        { content: "H OT", styles: { halign: "center", fontSize: 6.5, fillColor: [240, 253, 244] } },
+      ];
+
+      const bodyRows = [];
+      (report.categoryGroups || []).forEach((group) => {
+        bodyRows.push([
+          { content: group.categoryName.toUpperCase(), colSpan: 13, styles: { fontStyle: "bold", fillColor: [226, 232, 240], fontSize: 7, halign: "left" } },
+        ]);
+
+        const visibleDepts = group.departments || [];
+        visibleDepts.forEach((dept) => {
+          bodyRows.push([
+            { content: dept.departmentName, styles: { fontStyle: "bold", halign: "left" } },
+            { content: String(cv(dept.shiftA.strength)), styles: { halign: "center" } },
+            { content: String(cvN(dept.shiftA.sotCount)), styles: { halign: "center" } },
+            { content: String(cv(dept.shiftA.hotHours)), styles: { halign: "center" } },
+            { content: String(cv(dept.shiftB.strength)), styles: { halign: "center" } },
+            { content: String(cvN(dept.shiftB.sotCount)), styles: { halign: "center" } },
+            { content: String(cv(dept.shiftB.hotHours)), styles: { halign: "center" } },
+            { content: String(cv(dept.shiftC.strength)), styles: { halign: "center" } },
+            { content: String(cvN(dept.shiftC.sotCount)), styles: { halign: "center" } },
+            { content: String(cv(dept.shiftC.hotHours)), styles: { halign: "center" } },
+            { content: String(cv(dept.req)), styles: { halign: "center", fontStyle: "bold" } },
+            { content: String(cv(dept.totalStrength)), styles: { halign: "center", fontStyle: "bold" } },
+            { content: String(cv(dept.totalHot)), styles: { halign: "center", fontStyle: "bold" } },
+          ]);
+        });
+
+        const catTotal = computeCatTotal(visibleDepts);
+        bodyRows.push([
+          { content: `TOTAL ${group.categoryName.toUpperCase()}`, styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "left" } },
+          { content: String(cv(catTotal.shiftA.strength)), styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: String(cvN(catTotal.shiftA.sotCount)), styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: String(cv(catTotal.shiftA.hotHours)), styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: String(cv(catTotal.shiftB.strength)), styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: String(cvN(catTotal.shiftB.sotCount)), styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: String(cv(catTotal.shiftB.hotHours)), styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: String(cv(catTotal.shiftC.strength)), styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: String(cvN(catTotal.shiftC.sotCount)), styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: String(cv(catTotal.shiftC.hotHours)), styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: String(cv(catTotal.req)), styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: String(cv(catTotal.totalStrength)), styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: String(cv(catTotal.totalHot)), styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+        ]);
       });
-      acc.totalStrength += d.totalStrength || 0;
-      acc.totalHot += d.totalHot || 0;
-    });
-    ["shiftA", "shiftB", "shiftC"].forEach((s) => {
-      acc[s].strength = rnd(acc[s].strength);
-      acc[s].hotHours = rnd(acc[s].hotHours);
-    });
-    acc.req = rnd(acc.req);
-    acc.totalStrength = rnd(acc.totalStrength);
-    acc.totalHot = rnd(acc.totalHot);
-    return acc;
-  };
 
-  const rnd = (v) => Math.round(v * 10) / 10;
+      // Grand total
+      bodyRows.push([
+        { content: "GRAND TOTAL", styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "left" } },
+        { content: String(cv(report.grandTotal.shiftA.strength)), styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "center" } },
+        { content: String(cvN(report.grandTotal.shiftA.sotCount)), styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "center" } },
+        { content: String(cv(report.grandTotal.shiftA.hotHours)), styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "center" } },
+        { content: String(cv(report.grandTotal.shiftB.strength)), styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "center" } },
+        { content: String(cvN(report.grandTotal.shiftB.sotCount)), styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "center" } },
+        { content: String(cv(report.grandTotal.shiftB.hotHours)), styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "center" } },
+        { content: String(cv(report.grandTotal.shiftC.strength)), styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "center" } },
+        { content: String(cvN(report.grandTotal.shiftC.sotCount)), styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "center" } },
+        { content: String(cv(report.grandTotal.shiftC.hotHours)), styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "center" } },
+        { content: String(cv(report.grandTotal.req)), styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "center" } },
+        { content: String(cv(report.grandTotal.totalStrength)), styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "center" } },
+        { content: String(cv(report.grandTotal.totalHot)), styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "center" } },
+      ]);
 
-  const hasData = (dept) => true;
+      autoTable(doc, {
+        startY: 20,
+        head: [headerRow1, headerRow2],
+        body: bodyRows,
+        theme: "grid",
+        styles: { fontSize: 6.5, cellPadding: 0.8, lineColor: [203, 213, 225], lineWidth: 0.1, valign: "middle" },
+        headStyles: { fillColor: [241, 245, 249], textColor: [30, 41, 59], fontStyle: "bold" },
+        margin: { left: 8, right: 8 },
+        didDrawPage: (data) => {
+          doc.setFontSize(7);
+          doc.setTextColor(100);
+          doc.text(`Page ${data.pageNumber}`, pageW - 14, doc.internal.pageSize.getHeight() - 5, { align: "right" });
+        },
+      });
 
-  const dateLabel = fmtDate(date);
+      let sigY = doc.lastAutoTable.finalY + 8;
+      if (sigY > doc.internal.pageSize.getHeight() - 14) {
+        doc.addPage();
+        sigY = 16;
+      }
+
+      const sigRoles = ["PREPARED", "AM (Trg)", "M (QAT)", "AM(Prod)", "Sr.M (M)", "M (Ele)", "AM (Pers)", "PM", "GM (T)", "MANAGING DIRECTOR"];
+      const sigSpacing = (pageW - 20) / sigRoles.length;
+      doc.setFontSize(6);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(71, 85, 105);
+
+      sigRoles.forEach((role, i) => {
+        const x = 10 + i * sigSpacing;
+        doc.setDrawColor(148, 163, 184);
+        doc.setLineWidth(0.3);
+        doc.line(x, sigY, x + sigSpacing - 4, sigY);
+        doc.text(role, x + (sigSpacing - 4) / 2, sigY + 3.5, { align: "center" });
+      });
+
+      doc.save(`strength_report_${date}.pdf`);
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+      alert("Failed to download PDF: " + err.message);
+    }
+  }, [report, dateLabel, date]);
 
   return (
     <div style={S.container}>
@@ -188,10 +354,13 @@ const StrengthReportOld = () => {
           {report && (
             <>
               <button style={S.btnSecondary} onClick={exportExcel}>
-                Export Excel
+                📊 Download Excel
+              </button>
+              <button style={S.btnSecondary} onClick={exportPDF}>
+                📄 Download PDF
               </button>
               <button style={S.btnSecondary} onClick={() => window.print()}>
-                Print / PDF
+                🖨️ Print
               </button>
             </>
           )}

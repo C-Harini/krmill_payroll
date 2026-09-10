@@ -102,7 +102,7 @@ exports.fetchHolidayAttendance = async (req, res) => {
         companyId,
         attendanceDate: date,
         status: {
-          [Op.in]: ["Present", "Present with Permission", "Half Day"],
+          [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"],
         },
       },
       include: [
@@ -166,7 +166,7 @@ exports.fetchHolidayAttendance = async (req, res) => {
 
     for (const att of attendances) {
       const emp = att.employee;
-      const isHalfDay = att.status === "Half Day";
+      const isHalfDay = att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave";
 
       for (const holiday of holidays) {
         // Check if a HolidaySalary record already exists
@@ -235,7 +235,7 @@ exports.fetchHolidayAttendance = async (req, res) => {
     const workerRows = rows.filter((r) => r.isWorker);
     const summary = {
       totalPresent: rows.length,
-      halfDay: rows.filter((r) => r.attendanceStatus === "Half Day").length,
+      halfDay: rows.filter((r) => r.attendanceStatus === "Half Day" || r.attendanceStatus === "Present/Leave (P/L)").length,
       totalPay: workerRows.reduce((s, r) => s + (r.holidayPay || 0), 0),
       paid: workerRows.filter((r) => r.status === "Paid").length,
       pending: workerRows.filter((r) => r.status === "Pending").length,
@@ -364,7 +364,7 @@ exports.getMonthReport = async (req, res) => {
       }
       const g = groupMap[key];
       g.present++;
-      if (r.attendanceStatus === "Half Day") g.halfDay++;
+      if (r.attendanceStatus === "Half Day" || r.attendanceStatus === "Present/Leave (P/L)") g.halfDay++;
       if (r.isWorker) {
         const pay = parseFloat(r.holidayPay || 0);
         g.totalPay += pay;

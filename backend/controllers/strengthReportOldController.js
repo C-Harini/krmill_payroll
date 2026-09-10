@@ -85,7 +85,7 @@ exports.getStrengthReport = async (req, res) => {
       where: {
         companyId,
         attendanceDate: date,
-        status: { [Op.in]: ["Present", "Present with Permission", "Half Day"] },
+        status: { [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"] },
       },
       attributes: ["id", "employeeId", "shiftName", "status", "overtimeHours"],
       include: [
@@ -121,8 +121,8 @@ exports.getStrengthReport = async (req, res) => {
       if (sn === "B" || sn === "II" || sn === "2") shiftKey = "B";
       else if (sn === "C" || sn === "III" || sn === "3") shiftKey = "C";
 
-      // Strength: 0.5 for Half Day, 1.0 otherwise
-      const strengthVal = att.status === "Half Day" ? 0.5 : 1.0;
+      // Strength: 0.5 for Half Day / Present/Leave, 1.0 otherwise
+      const strengthVal = (att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave") ? 0.5 : 1.0;
       const otHours = parseFloat(att.overtimeHours) || 0;
 
       deptMap[deptId].shifts[shiftKey].strength += strengthVal;
@@ -269,7 +269,7 @@ exports.exportStrengthReportExcel = async (req, res) => {
       where: {
         companyId,
         attendanceDate: date,
-        status: { [Op.in]: ["Present", "Present with Permission", "Half Day"] },
+        status: { [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"] },
       },
       attributes: ["id", "employeeId", "shiftName", "status", "overtimeHours"],
       include: [
@@ -296,7 +296,7 @@ exports.exportStrengthReportExcel = async (req, res) => {
       if (sn === "B" || sn === "II" || sn === "2") shiftKey = "B";
       else if (sn === "C" || sn === "III" || sn === "3") shiftKey = "C";
 
-      const strengthVal = att.status === "Half Day" ? 0.5 : 1.0;
+      const strengthVal = (att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave") ? 0.5 : 1.0;
       const otHours = parseFloat(att.overtimeHours) || 0;
 
       deptMap[deptId].shifts[shiftKey].strength += strengthVal;

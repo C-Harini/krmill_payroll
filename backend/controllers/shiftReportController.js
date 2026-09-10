@@ -254,7 +254,8 @@ exports.getShiftReport = async (req, res) => {
           case "Present": return "P";
           case "Present with Permission": return "WP";
           case "Absent": return "A";
-          case "Half Day": return "P/L";
+          case "Half Day":
+          case "Present/Leave (P/L)": return "P/L";
           case "Leave": return "L";
           case "Holiday": return "NH";
           case "Week Off": return "W";
@@ -294,7 +295,7 @@ exports.getShiftReport = async (req, res) => {
               wCount += 1;
             } else if (rec.status === "Holiday") {
               nhCount += 1;
-            } else if (rec.status === "Half Day") {
+            } else if (rec.status === "Half Day" || rec.status === "Present/Leave (P/L)") {
               pCount += 0.5;
               lCount += 0.5;
             }
@@ -463,7 +464,7 @@ exports.getShiftReport = async (req, res) => {
         where: {
           companyId,
           attendanceDate: { [Op.between]: [start, end] },
-          status: { [Op.in]: ["Present", "Present with Permission", "Half Day"] },
+          status: { [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"] },
         },
         attributes: ["employeeId", "attendanceDate", "shiftName", "workingHours", "overtimeHours"],
         raw: true,

@@ -64,7 +64,7 @@ exports.getAttendanceReport = async (req, res) => {
           moment(endDate).format("YYYY-MM-DD"),
         ],
       },
-      status: { [Op.in]: ["Present", "Present with Permission", "Half Day"] },
+      status: { [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"] },
     };
     if (empIdList) where.employeeId = { [Op.in]: empIdList };
 

@@ -11,42 +11,42 @@ const emptyRelation = () => ({
 });
 
 const relationColors = {
-  Father:   'bg-blue-50   text-blue-700   border-blue-200',
-  Mother:   'bg-pink-50   text-pink-700   border-pink-200',
-  Spouse:   'bg-rose-50   text-rose-700   border-rose-200',
-  Son:      'bg-cyan-50   text-cyan-700   border-cyan-200',
+  Father: 'bg-blue-50   text-blue-700   border-blue-200',
+  Mother: 'bg-pink-50   text-pink-700   border-pink-200',
+  Spouse: 'bg-rose-50   text-rose-700   border-rose-200',
+  Son: 'bg-cyan-50   text-cyan-700   border-cyan-200',
   Daughter: 'bg-purple-50 text-purple-700 border-purple-200',
-  Brother:  'bg-amber-50  text-amber-700  border-amber-200',
-  Sister:   'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200',
-  Other:    'bg-gray-50   text-gray-600   border-gray-200',
+  Brother: 'bg-amber-50  text-amber-700  border-amber-200',
+  Sister: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200',
+  Other: 'bg-gray-50   text-gray-600   border-gray-200',
 };
 
 const relationIcons = {
-  Father:   '👨',
-  Mother:   '👩',
-  Spouse:   '💑',
-  Son:      '👦',
+  Father: '👨',
+  Mother: '👩',
+  Spouse: '💑',
+  Son: '👦',
   Daughter: '👧',
-  Brother:  '🧑',
-  Sister:   '👱‍♀️',
-  Other:    '🧑‍🤝‍🧑',
+  Brother: '🧑',
+  Sister: '👱‍♀️',
+  Other: '🧑‍🤝‍🧑',
 };
 
 const safe = (val) => (val === null || val === undefined ? '' : String(val));
 
 const EmployeeRelations = () => {
-  const [companies, setCompanies]                       = useState([]);
-  const [departments, setDepartments]                   = useState([]);
-  const [employees, setEmployees]                       = useState([]);
-  const [selectedCompanyId, setSelectedCompanyId]       = useState('');
+  const [companies, setCompanies] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState('');
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
-  const [selectedEmployeeId, setSelectedEmployeeId]     = useState('');
-  const [selectedEmployee, setSelectedEmployee]         = useState(null);
-  const [relations, setRelations]                       = useState([]);
-  const [saving, setSaving]                             = useState(false);
-  const [loading, setLoading]                           = useState(false);
-  const [successMsg, setSuccessMsg]                     = useState('');
-  const [errorMsg, setErrorMsg]                         = useState('');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [relations, setRelations] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
   const apiUrl = import.meta.env.VITE_API_URL;
 
@@ -123,10 +123,10 @@ const EmployeeRelations = () => {
           setSelectedEmployee(emp);
           const normalized = Array.isArray(emp.relations)
             ? emp.relations.map((r) => ({
-                id: r.id ?? undefined,
-                name: safe(r.name), age: safe(r.age),
-                relation: safe(r.relation), occupation: safe(r.occupation), salary: safe(r.salary),
-              }))
+              id: r.id ?? undefined,
+              name: safe(r.name), age: safe(r.age),
+              relation: safe(r.relation), occupation: safe(r.occupation), salary: safe(r.salary),
+            }))
             : [];
           setRelations(normalized);
         } else {
@@ -179,11 +179,11 @@ const EmployeeRelations = () => {
     try {
       const token = localStorage.getItem('authToken');
       const payload = relations.map((r) => ({
-        name:       r.name.trim(),
-        age:        r.age !== '' ? parseInt(r.age) : null,
-        relation:   r.relation,
+        name: r.name.trim(),
+        age: r.age !== '' ? parseInt(r.age) : null,
+        relation: r.relation,
         occupation: r.occupation.trim() !== '' ? r.occupation.trim() : null,
-        salary:     r.salary !== '' ? parseFloat(r.salary) : null,
+        salary: r.salary !== '' ? parseFloat(r.salary) : null,
       }));
 
       const res = await fetch(`${apiUrl}/employees/${selectedEmployeeId}/relations`, {
@@ -202,10 +202,10 @@ const EmployeeRelations = () => {
       const result = await res.json();
       const saved = Array.isArray(result.relations)
         ? result.relations.map((r) => ({
-            id: r.id ?? undefined,
-            name: safe(r.name), age: safe(r.age),
-            relation: safe(r.relation), occupation: safe(r.occupation), salary: safe(r.salary),
-          }))
+          id: r.id ?? undefined,
+          name: safe(r.name), age: safe(r.age),
+          relation: safe(r.relation), occupation: safe(r.occupation), salary: safe(r.salary),
+        }))
         : [];
 
       setRelations(saved);
@@ -486,7 +486,7 @@ const EmployeeRelations = () => {
                           <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full border font-medium ${relationColors[rel.relation] || relationColors['Other']}`}>
                             {relationIcons[rel.relation]} {rel.relation}
                             {rel.name && ` · ${rel.name}`}
-                            {rel.age  && `, ${rel.age} yrs`}
+                            {rel.age && `, ${rel.age} yrs`}
                           </span>
                         </div>
                       )}

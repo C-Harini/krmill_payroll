@@ -731,7 +731,7 @@ exports.getAttendanceIncentives = async (req, res) => {
           let daysWorked = 0;
           if (att.status === "Present" || att.status === "Present with Permission") {
             daysWorked = 1;
-          } else if (att.status === "Half Day") {
+          } else if (att.status === "Half Day" || att.status === "Present/Leave (P/L)") {
             daysWorked = 0.5;
           }
 

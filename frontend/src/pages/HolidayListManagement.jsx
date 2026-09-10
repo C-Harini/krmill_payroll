@@ -34,15 +34,15 @@ const HolidayListManagement = () => {
     // --- Effects ---
     useEffect(() => {
         const fetchCompanies = async () => {
-            try { 
-                const data = await apiRequest('/companies'); 
-                setCompanies(data); 
-                if (data.length > 0) setSelectedCompanyId(data[0].id); 
+            try {
+                const data = await apiRequest('/companies');
+                setCompanies(data);
+                if (data.length > 0) setSelectedCompanyId(data[0].id);
             }
-            catch (err) { 
-                setError(err.message); 
-            } finally { 
-                setLoading(false); 
+            catch (err) {
+                setError(err.message);
+            } finally {
+                setLoading(false);
             }
         };
         fetchCompanies();
@@ -52,65 +52,65 @@ const HolidayListManagement = () => {
         if (!selectedCompanyId) return;
         const fetchLists = async () => {
             setLoading(true);
-            try { 
-                const data = await apiRequest(`/holiday-lists?companyId=${selectedCompanyId}`); 
-                setLists(data); 
+            try {
+                const data = await apiRequest(`/holiday-lists?companyId=${selectedCompanyId}`);
+                setLists(data);
             }
-            catch (err) { 
-                setError(err.message); 
-            } finally { 
-                setLoading(false); 
+            catch (err) {
+                setError(err.message);
+            } finally {
+                setLoading(false);
             }
         };
         fetchLists();
     }, [selectedCompanyId]);
-    
+
     // --- List Handlers ---
     const handleCompanyChange = (e) => setSelectedCompanyId(e.target.value);
-    const openAddListModal = () => { 
-        setEditingList(null); 
-        setListFormData({ name: '', startDate: '', endDate: '', weekOffs: { sunday: true, saturday: false, friday: false }, status: 'Active' }); 
-        setIsListModalOpen(true); 
+    const openAddListModal = () => {
+        setEditingList(null);
+        setListFormData({ name: '', startDate: '', endDate: '', weekOffs: { sunday: true, saturday: false, friday: false }, status: 'Active' });
+        setIsListModalOpen(true);
     };
-    const openEditListModal = (list) => { 
-        setEditingList(list); 
-        setListFormData({ ...list, weekOffs: list.weekOffs || { sunday: true, saturday: false, friday: false } }); 
-        setIsListModalOpen(true); 
+    const openEditListModal = (list) => {
+        setEditingList(list);
+        setListFormData({ ...list, weekOffs: list.weekOffs || { sunday: true, saturday: false, friday: false } });
+        setIsListModalOpen(true);
     };
     const closeListModal = () => setIsListModalOpen(false);
     const handleListFormSubmit = async (e) => {
         e.preventDefault();
         try {
-            if (editingList) 
+            if (editingList)
                 await apiRequest(`/holiday-lists/${editingList.id}`, { method: 'PUT', body: JSON.stringify({ ...listFormData, companyId: selectedCompanyId }) });
-            else 
+            else
                 await apiRequest('/holiday-lists', { method: 'POST', body: JSON.stringify({ ...listFormData, companyId: selectedCompanyId }) });
             const data = await apiRequest(`/holiday-lists?companyId=${selectedCompanyId}`);
             setLists(data);
             closeListModal();
-        } catch (err) { 
-            window.alert(err.message); 
+        } catch (err) {
+            window.alert(err.message);
         }
     };
-    const handleDeleteList = async (id) => { 
-        if (!window.confirm('Are you sure? This will delete all holidays in this list.')) return; 
-        try { 
-            await apiRequest(`/holiday-lists/${id}`, { method: 'DELETE' }); 
-            setLists(lists.filter(l => l.id !== id)); 
-        } catch (err) { 
-            window.alert(err.message); 
-        } 
+    const handleDeleteList = async (id) => {
+        if (!window.confirm('Are you sure? This will delete all holidays in this list.')) return;
+        try {
+            await apiRequest(`/holiday-lists/${id}`, { method: 'DELETE' });
+            setLists(lists.filter(l => l.id !== id));
+        } catch (err) {
+            window.alert(err.message);
+        }
     };
 
     // --- Holiday Handlers ---
     const openHolidayModal = async (listId) => {
         setCurrentListId(listId);
-        try { 
-            const data = await apiRequest(`/holidays/list/${listId}`); 
-            setHolidays(data); 
+        try {
+            const data = await apiRequest(`/holidays/list/${listId}`);
+            setHolidays(data);
         }
-        catch (err) { 
-            window.alert(err.message); 
+        catch (err) {
+            window.alert(err.message);
         }
         setEditingHoliday(null);
         setHolidayFormData({ date: '', description: '' });
@@ -134,8 +134,8 @@ const HolidayListManagement = () => {
             setHolidayFormData({ date: '', description: '' });
             setEditingHoliday(null);
             setShowAddHolidayForm(false);
-        } catch (err) { 
-            window.alert(err.message); 
+        } catch (err) {
+            window.alert(err.message);
         }
     };
     const openEditHolidayModal = (holiday) => {
@@ -143,19 +143,19 @@ const HolidayListManagement = () => {
         setHolidayFormData({ date: holiday.date, description: holiday.description });
         setShowAddHolidayForm(false);
     };
-    const handleDeleteHoliday = async (id) => { 
-        if (!window.confirm('Delete this holiday?')) return; 
-        try { 
-            await apiRequest(`/holidays/${id}`, { method: 'DELETE' }); 
-            setHolidays(holidays.filter(h => h.id !== id)); 
-        } catch (err) { 
-            window.alert(err.message); 
-        } 
+    const handleDeleteHoliday = async (id) => {
+        if (!window.confirm('Delete this holiday?')) return;
+        try {
+            await apiRequest(`/holidays/${id}`, { method: 'DELETE' });
+            setHolidays(holidays.filter(h => h.id !== id));
+        } catch (err) {
+            window.alert(err.message);
+        }
     };
 
     // --- Import Handlers ---
-    const openImportModal = () => { 
-        setIsImportModalOpen(true); 
+    const openImportModal = () => {
+        setIsImportModalOpen(true);
     };
     const handleFileUpload = async (e) => {
         e.preventDefault();
@@ -164,7 +164,7 @@ const HolidayListManagement = () => {
             window.alert('Please select a file to upload.');
             return;
         }
-        
+
         const formData = new FormData();
         formData.append('holidaysFile', file);
         formData.append('holidayListId', currentListId);
@@ -202,20 +202,20 @@ const HolidayListManagement = () => {
                 setImportProgress(status);
                 if (status.status === 'completed') {
                     clearInterval(pollingIntervalRef.current);
-                    setTimeout(() => { 
-                        setIsProgressModalOpen(false); 
-                        window.alert('Import completed!'); 
-                        openHolidayModal(currentListId); 
+                    setTimeout(() => {
+                        setIsProgressModalOpen(false);
+                        window.alert('Import completed!');
+                        openHolidayModal(currentListId);
                     }, 1500);
                 } else if (status.status === 'failed') {
-                    clearInterval(pollingIntervalRef.current); 
-                    setIsProgressModalOpen(false); 
+                    clearInterval(pollingIntervalRef.current);
+                    setIsProgressModalOpen(false);
                     window.alert(`Import failed: ${status.error}`);
                 }
-            } catch (err) { 
-                console.error(err); 
-                clearInterval(pollingIntervalRef.current); 
-                setIsProgressModalOpen(false); 
+            } catch (err) {
+                console.error(err);
+                clearInterval(pollingIntervalRef.current);
+                setIsProgressModalOpen(false);
             }
         }, 1000);
     };
@@ -243,9 +243,9 @@ const HolidayListManagement = () => {
                     <label htmlFor="company-select" className="block text-sm font-semibold text-slate-700 mb-2">
                         Select Company:
                     </label>
-                    <select 
+                    <select
                         id="company-select"
-                        value={selectedCompanyId} 
+                        value={selectedCompanyId}
                         onChange={handleCompanyChange}
                         className="w-full md:w-80 px-4 py-2 border-2 border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 bg-white"
                     >
@@ -263,17 +263,17 @@ const HolidayListManagement = () => {
                 {/* Search and Action Bar */}
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
                     <div className="flex-1 relative">
-                        <input 
+                        <input
                             type="text"
-                            placeholder="Search Lists..." 
+                            placeholder="Search Lists..."
                             className="w-full px-4 py-2 pl-10 border-2 border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-slate-700"
                         />
                         <svg className="absolute left-3 top-2.5 h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
                     </div>
-                    <button 
-                        onClick={openAddListModal} 
+                    <button
+                        onClick={openAddListModal}
                         className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
                     >
                         + Add List
@@ -306,7 +306,7 @@ const HolidayListManagement = () => {
                                     </tr>
                                 ) : lists.length > 0 ? (
                                     lists.map((list, index) => (
-                                        <tr 
+                                        <tr
                                             key={list.id}
                                             className={`border-b border-slate-200 hover:bg-blue-50 transition-colors duration-150 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}
                                         >
@@ -315,32 +315,31 @@ const HolidayListManagement = () => {
                                             <td className="px-6 py-4 text-sm text-slate-700">{list.startDate}</td>
                                             <td className="px-6 py-4 text-sm text-slate-700">{list.endDate}</td>
                                             <td className="px-6 py-4 text-sm">
-                                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
-                                                    list.status === 'Active' 
-                                                        ? 'bg-green-100 text-green-700 border border-green-300' 
+                                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${list.status === 'Active'
+                                                        ? 'bg-green-100 text-green-700 border border-green-300'
                                                         : 'bg-red-100 text-red-700 border border-red-300'
-                                                }`}>
+                                                    }`}>
                                                     {list.status === 'Active' ? '✓' : '✕'} {list.status}
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 text-center">
                                                 <div className="flex items-center justify-center gap-2">
-                                                    <button 
-                                                        onClick={() => openHolidayModal(list.id)} 
+                                                    <button
+                                                        onClick={() => openHolidayModal(list.id)}
                                                         title="Manage Holidays"
                                                         className="p-2 text-amber-600 hover:bg-amber-100 rounded-lg transition-colors duration-200"
                                                     >
                                                         📅
                                                     </button>
-                                                    <button 
-                                                        onClick={() => openEditListModal(list)} 
+                                                    <button
+                                                        onClick={() => openEditListModal(list)}
                                                         title="Edit List"
                                                         className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors duration-200"
                                                     >
                                                         ✏️
                                                     </button>
-                                                    <button 
-                                                        onClick={() => handleDeleteList(list.id)} 
+                                                    <button
+                                                        onClick={() => handleDeleteList(list.id)}
                                                         title="Delete List"
                                                         className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors duration-200"
                                                     >
@@ -379,9 +378,9 @@ const HolidayListManagement = () => {
                             {/* Company Field */}
                             <div className="mb-6">
                                 <label className="block text-sm font-semibold text-slate-700 mb-2">Company</label>
-                                <input 
-                                    type="text" 
-                                    value={selectedCompany?.name || ''} 
+                                <input
+                                    type="text"
+                                    value={selectedCompany?.name || ''}
                                     disabled
                                     className="w-full px-4 py-2 bg-slate-100 border-2 border-slate-300 rounded-lg text-slate-600 cursor-not-allowed"
                                 />
@@ -392,10 +391,10 @@ const HolidayListManagement = () => {
                                 <label className="block text-sm font-semibold text-slate-700 mb-2">
                                     List Name <span className="text-red-500">*</span>
                                 </label>
-                                <input 
-                                    type="text" 
-                                    value={listFormData.name} 
-                                    onChange={e => setListFormData({ ...listFormData, name: e.target.value })} 
+                                <input
+                                    type="text"
+                                    value={listFormData.name}
+                                    onChange={e => setListFormData({ ...listFormData, name: e.target.value })}
                                     required
                                     className="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-slate-700"
                                     placeholder="e.g., 2024 Holiday Calendar"
@@ -408,10 +407,10 @@ const HolidayListManagement = () => {
                                     <label className="block text-sm font-semibold text-slate-700 mb-2">
                                         Start Date <span className="text-red-500">*</span>
                                     </label>
-                                    <input 
-                                        type="date" 
-                                        value={listFormData.startDate} 
-                                        onChange={e => setListFormData({ ...listFormData, startDate: e.target.value })} 
+                                    <input
+                                        type="date"
+                                        value={listFormData.startDate}
+                                        onChange={e => setListFormData({ ...listFormData, startDate: e.target.value })}
                                         required
                                         className="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-slate-700"
                                     />
@@ -420,10 +419,10 @@ const HolidayListManagement = () => {
                                     <label className="block text-sm font-semibold text-slate-700 mb-2">
                                         End Date <span className="text-red-500">*</span>
                                     </label>
-                                    <input 
-                                        type="date" 
-                                        value={listFormData.endDate} 
-                                        onChange={e => setListFormData({ ...listFormData, endDate: e.target.value })} 
+                                    <input
+                                        type="date"
+                                        value={listFormData.endDate}
+                                        onChange={e => setListFormData({ ...listFormData, endDate: e.target.value })}
                                         required
                                         className="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-slate-700"
                                     />
@@ -437,30 +436,30 @@ const HolidayListManagement = () => {
                                 </label>
                                 <div className="flex gap-6">
                                     <label className="flex items-center cursor-pointer">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={listFormData.weekOffs.sunday} 
-                                            onChange={e => setListFormData({...listFormData, weekOffs: {...listFormData.weekOffs, sunday: e.target.checked}})}
+                                        <input
+                                            type="checkbox"
+                                            checked={listFormData.weekOffs.sunday}
+                                            onChange={e => setListFormData({ ...listFormData, weekOffs: { ...listFormData.weekOffs, sunday: e.target.checked } })}
                                             className="h-4 w-4 text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
-                                        /> 
+                                        />
                                         <span className="ml-2 text-slate-700 font-medium">Sunday</span>
                                     </label>
                                     <label className="flex items-center cursor-pointer">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={listFormData.weekOffs.saturday} 
-                                            onChange={e => setListFormData({...listFormData, weekOffs: {...listFormData.weekOffs, saturday: e.target.checked}})}
+                                        <input
+                                            type="checkbox"
+                                            checked={listFormData.weekOffs.saturday}
+                                            onChange={e => setListFormData({ ...listFormData, weekOffs: { ...listFormData.weekOffs, saturday: e.target.checked } })}
                                             className="h-4 w-4 text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
-                                        /> 
+                                        />
                                         <span className="ml-2 text-slate-700 font-medium">Saturday</span>
                                     </label>
                                     <label className="flex items-center cursor-pointer">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={listFormData.weekOffs.friday} 
-                                            onChange={e => setListFormData({...listFormData, weekOffs: {...listFormData.weekOffs, friday: e.target.checked}})}
+                                        <input
+                                            type="checkbox"
+                                            checked={listFormData.weekOffs.friday}
+                                            onChange={e => setListFormData({ ...listFormData, weekOffs: { ...listFormData.weekOffs, friday: e.target.checked } })}
                                             className="h-4 w-4 text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
-                                        /> 
+                                        />
                                         <span className="ml-2 text-slate-700 font-medium">Friday</span>
                                     </label>
                                 </div>
@@ -473,22 +472,22 @@ const HolidayListManagement = () => {
                                 </label>
                                 <div className="flex gap-6">
                                     <label className="flex items-center cursor-pointer">
-                                        <input 
-                                            type="radio" 
-                                            name="listStatus" 
-                                            value="Active" 
-                                            checked={listFormData.status === 'Active'} 
+                                        <input
+                                            type="radio"
+                                            name="listStatus"
+                                            value="Active"
+                                            checked={listFormData.status === 'Active'}
                                             onChange={e => setListFormData({ ...listFormData, status: e.target.value })}
                                             className="h-4 w-4 text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
                                         />
                                         <span className="ml-2 text-slate-700 font-medium">Active</span>
                                     </label>
                                     <label className="flex items-center cursor-pointer">
-                                        <input 
-                                            type="radio" 
-                                            name="listStatus" 
-                                            value="Inactive" 
-                                            checked={listFormData.status === 'Inactive'} 
+                                        <input
+                                            type="radio"
+                                            name="listStatus"
+                                            value="Inactive"
+                                            checked={listFormData.status === 'Inactive'}
                                             onChange={e => setListFormData({ ...listFormData, status: e.target.value })}
                                             className="h-4 w-4 text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
                                         />
@@ -499,15 +498,15 @@ const HolidayListManagement = () => {
 
                             {/* Form Actions */}
                             <div className="flex justify-end gap-4">
-                                <button 
-                                    type="button" 
-                                    onClick={closeListModal} 
+                                <button
+                                    type="button"
+                                    onClick={closeListModal}
                                     className="px-6 py-2 border-2 border-slate-300 text-slate-700 font-semibold rounded-lg hover:bg-slate-50 transition-colors duration-200"
                                 >
                                     Cancel
                                 </button>
-                                <button 
-                                    type="submit" 
+                                <button
+                                    type="submit"
                                     className="px-6 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
                                 >
                                     {editingList ? 'Update List' : 'Save List'}
@@ -531,14 +530,14 @@ const HolidayListManagement = () => {
                         <div className="p-8">
                             {/* Action Bar */}
                             <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-3 mb-6">
-                                <button 
-                                    onClick={() => setShowAddHolidayForm(true)} 
+                                <button
+                                    onClick={() => setShowAddHolidayForm(true)}
                                     className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
                                 >
                                     + Add Holiday
                                 </button>
-                                <button 
-                                    onClick={openImportModal} 
+                                <button
+                                    onClick={openImportModal}
                                     className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
                                 >
                                     📤 Import Holidays
@@ -559,7 +558,7 @@ const HolidayListManagement = () => {
                                     <tbody>
                                         {holidays.length > 0 ? (
                                             holidays.map((h, index) => (
-                                                <tr 
+                                                <tr
                                                     key={h.id}
                                                     className={`border-b border-slate-200 hover:bg-amber-50 transition-colors duration-150 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}
                                                 >
@@ -570,14 +569,14 @@ const HolidayListManagement = () => {
                                                     <td className="px-6 py-4 text-sm text-slate-700">{h.description}</td>
                                                     <td className="px-6 py-4 text-center">
                                                         <div className="flex items-center justify-center gap-2">
-                                                            <button 
-                                                                onClick={() => openEditHolidayModal(h)} 
+                                                            <button
+                                                                onClick={() => openEditHolidayModal(h)}
                                                                 className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors duration-200"
                                                             >
                                                                 ✏️
                                                             </button>
-                                                            <button 
-                                                                onClick={() => handleDeleteHoliday(h.id)} 
+                                                            <button
+                                                                onClick={() => handleDeleteHoliday(h.id)}
                                                                 className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors duration-200"
                                                             >
                                                                 🗑️
@@ -596,7 +595,7 @@ const HolidayListManagement = () => {
                                     </tbody>
                                 </table>
                             </div>
-                            
+
                             {/* Holiday Form */}
                             {(showAddHolidayForm || editingHoliday) && (
                                 <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-6">
@@ -609,10 +608,10 @@ const HolidayListManagement = () => {
                                                 <label className="block text-sm font-semibold text-slate-700 mb-2">
                                                     Date <span className="text-red-500">*</span>
                                                 </label>
-                                                <input 
-                                                    type="date" 
-                                                    value={holidayFormData.date} 
-                                                    onChange={e => setHolidayFormData({...holidayFormData, date: e.target.value})} 
+                                                <input
+                                                    type="date"
+                                                    value={holidayFormData.date}
+                                                    onChange={e => setHolidayFormData({ ...holidayFormData, date: e.target.value })}
                                                     required
                                                     className="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-slate-700"
                                                 />
@@ -621,26 +620,26 @@ const HolidayListManagement = () => {
                                                 <label className="block text-sm font-semibold text-slate-700 mb-2">
                                                     Description <span className="text-red-500">*</span>
                                                 </label>
-                                                <input 
-                                                    type="text" 
-                                                    placeholder="Holiday name" 
-                                                    value={holidayFormData.description} 
-                                                    onChange={e => setHolidayFormData({...holidayFormData, description: e.target.value})} 
+                                                <input
+                                                    type="text"
+                                                    placeholder="Holiday name"
+                                                    value={holidayFormData.description}
+                                                    onChange={e => setHolidayFormData({ ...holidayFormData, description: e.target.value })}
                                                     required
                                                     className="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-slate-700"
                                                 />
                                             </div>
                                             <div className="flex gap-2">
-                                                <button 
-                                                    type="submit" 
+                                                <button
+                                                    type="submit"
                                                     className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
                                                 >
                                                     Save
                                                 </button>
                                                 {showAddHolidayForm && (
-                                                    <button 
-                                                        type="button" 
-                                                        onClick={() => setShowAddHolidayForm(false)} 
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowAddHolidayForm(false)}
                                                         className="flex-1 px-4 py-2 border-2 border-slate-300 text-slate-700 font-semibold rounded-lg hover:bg-slate-50 transition-colors duration-200"
                                                     >
                                                         Cancel
@@ -654,8 +653,8 @@ const HolidayListManagement = () => {
 
                             {/* Close Button */}
                             <div className="flex justify-end">
-                                <button 
-                                    onClick={closeHolidayModal} 
+                                <button
+                                    onClick={closeHolidayModal}
                                     className="px-6 py-2 border-2 border-slate-300 text-slate-700 font-semibold rounded-lg hover:bg-slate-50 transition-colors duration-200"
                                 >
                                     Close
@@ -688,10 +687,10 @@ const HolidayListManagement = () => {
                                 <label className="block text-sm font-semibold text-slate-700 mb-2">
                                     Choose File (.xlsx, .xls, .csv) <span className="text-red-500">*</span>
                                 </label>
-                                <input 
-                                    type="file" 
-                                    ref={fileInputRef} 
-                                    accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" 
+                                <input
+                                    type="file"
+                                    ref={fileInputRef}
+                                    accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
                                     required
                                     className="w-full px-4 py-2 border-2 border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-slate-700"
                                 />
@@ -699,15 +698,15 @@ const HolidayListManagement = () => {
 
                             {/* Form Actions */}
                             <div className="flex justify-end gap-4">
-                                <button 
-                                    type="button" 
-                                    onClick={() => setIsImportModalOpen(false)} 
+                                <button
+                                    type="button"
+                                    onClick={() => setIsImportModalOpen(false)}
                                     className="px-6 py-2 border-2 border-slate-300 text-slate-700 font-semibold rounded-lg hover:bg-slate-50 transition-colors duration-200"
                                 >
                                     Cancel
                                 </button>
-                                <button 
-                                    type="submit" 
+                                <button
+                                    type="submit"
                                     className="px-6 py-2 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
                                 >
                                     Upload
@@ -723,12 +722,12 @@ const HolidayListManagement = () => {
                 <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                     <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-8">
                         <h2 className="text-2xl font-bold text-slate-800 mb-6">⏳ Importing Holidays...</h2>
-                        
+
                         {/* Progress Bar */}
                         <div className="mb-6">
                             <div className="w-full bg-slate-200 rounded-full h-4 overflow-hidden">
-                                <div 
-                                    className="bg-gradient-to-r from-blue-600 to-blue-700 h-full transition-all duration-300" 
+                                <div
+                                    className="bg-gradient-to-r from-blue-600 to-blue-700 h-full transition-all duration-300"
                                     style={{ width: `${importProgress.progress}%` }}
                                 ></div>
                             </div>

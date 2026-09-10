@@ -1404,7 +1404,7 @@ module.exports = {
             pivotMap[shiftName] = { shift: shiftName, present: 0, absent: 0, leave: 0 };
           }
           const status = String(r.status || "").toLowerCase();
-          if (r.entryType === "HR_VERIFIED" && (status === "present" || status === "pr" || status === "present with permission" || status === "half day" || status === "p")) {
+          if (r.entryType === "HR_VERIFIED" && (status === "present" || status === "pr" || status === "present with permission" || status === "half day" || status === "present/leave (p/l)" || status === "p/l" || status === "p")) {
             pivotMap[shiftName].present += 1;
           } else if (status === "leave" || status === "lv" || status === "l" || status === "holiday" || status === "week off") {
             pivotMap[shiftName].leave += 1;

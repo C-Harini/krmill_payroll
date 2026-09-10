@@ -54,7 +54,7 @@ const fmtHours = (wh) => {
 };
 
 const statusLabel = (status) =>
-  ({ "Present": "P", "Present with Permission": "WP", "Half Day": "HD" }[status] || "P");
+  ({ "Present": "P", "Present with Permission": "WP", "Present/Leave (P/L)": "P/L", "Present/Leave": "P/L", "Half Day": "P/L" }[status] || "P");
 
 const getUniqueShifts = (groupedData) => {
   if (!groupedData) return [];
@@ -459,7 +459,7 @@ export default function AttendanceReport() {
         <div style={s.legend}>
           <span style={s.li}><span style={s.dotG}></span> P = Present</span>
           <span style={s.li}><span style={s.dotA}></span> WP = With Permission</span>
-          <span style={s.li}><span style={s.dotB}></span> HD = Half Day</span>
+          <span style={s.li}><span style={{ ...s.dotB, background: "#f59e0b" }}></span> P/L = Present/Leave</span>
           <span style={{ ...s.li, borderLeft: "3px solid #dc2626", paddingLeft: 6 }}>
             <span style={{ textDecoration: "underline", color: "#dc2626" }}>Underline</span> = Late arrival
           </span>
@@ -549,7 +549,9 @@ function StatusChip({ status }) {
   const m = {
     "Present": { bg: "#dcfce7", color: "#166534", label: "P" },
     "Present with Permission": { bg: "#fef9c3", color: "#854d0e", label: "WP" },
-    "Half Day": { bg: "#ffedd5", color: "#9a3412", label: "HD" },
+    "Present/Leave (P/L)": { bg: "#fef3c7", color: "#b45309", label: "P/L" },
+    "Present/Leave": { bg: "#fef3c7", color: "#b45309", label: "P/L" },
+    "Half Day": { bg: "#fef3c7", color: "#b45309", label: "P/L" },
   };
   const cfg = m[status] || { bg: "#f1f5f9", color: "#475569", label: "?" };
   return (

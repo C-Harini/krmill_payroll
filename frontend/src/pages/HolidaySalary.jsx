@@ -286,7 +286,7 @@ export default function HolidaySalary() {
           {fetchResult?.isHoliday && isWorker && (
             <div style={styles.summaryRow}>
               <MetricCard label="Workers present" value={fetchResult.summary.totalPresent} color="#185FA5" />
-              <MetricCard label="Half day" value={fetchResult.summary.halfDay} color="#BA7517" />
+              <MetricCard label="Present/Leave" value={fetchResult.summary.halfDay} color="#BA7517" />
               <MetricCard label="Total holiday pay" value={fmt(fetchResult.summary.totalPay)} color="#BA7517" />
               <MetricCard label="Paid" value={fetchResult.summary.paid} color="#3B6D11" />
               <MetricCard label="Pending" value={fetchResult.summary.pending} color="#A32D2D" />
@@ -301,7 +301,7 @@ export default function HolidaySalary() {
               </div>
               <div style={styles.summaryRow}>
                 <MetricCard label="Employees present" value={fetchResult.summary.totalPresent} color="#185FA5" />
-                <MetricCard label="Half day" value={fetchResult.summary.halfDay} color="#BA7517" />
+                <MetricCard label="Present/Leave" value={fetchResult.summary.halfDay} color="#BA7517" />
               </div>
             </>
           )}
@@ -370,7 +370,7 @@ export default function HolidaySalary() {
                                 {row.holidayPay != null
                                   ? <>
                                       {fmt(row.holidayPay)}
-                                      {row.attendanceStatus === "Half Day" && <span style={styles.halfNote}> (½)</span>}
+                                      {(row.attendanceStatus === "Half Day" || row.attendanceStatus === "Present/Leave (P/L)") && <span style={styles.halfNote}> (½)</span>}
                                     </>
                                   : <span style={styles.naText}>—</span>}
                               </td>
@@ -478,7 +478,7 @@ export default function HolidaySalary() {
                       <th style={styles.th}>Date</th>
                       <th style={styles.th}>Emp. type</th>
                       <th style={styles.th}>Present</th>
-                      <th style={styles.th}>Half day</th>
+                      <th style={styles.th}>Present/Leave</th>
                       <th style={styles.th}>Total pay</th>
                       <th style={styles.th}>Paid</th>
                       <th style={styles.th}>Pending</th>
@@ -543,7 +543,7 @@ function ShiftChip({ shift }) {
 }
 
 function AttChip({ status }) {
-  if (status === "Half Day") return <span style={{ ...styles.chip, background: "#FAEEDA", color: "#854F0B" }}>Half Day</span>;
+  if (status === "Half Day" || status === "Present/Leave (P/L)" || status === "Present/Leave") return <span style={{ ...styles.chip, background: "#FAEEDA", color: "#854F0B" }}>Present/Leave (P/L)</span>;
   return <span style={{ ...styles.chip, background: "#EAF3DE", color: "#27500A" }}>Present</span>;
 }
 

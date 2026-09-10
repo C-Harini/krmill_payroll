@@ -131,16 +131,16 @@ const EmployeeDocuments = () => {
           setSelectedEmployee(emp);
           const docs = emp.documents || {};
           setFormData({
-            aadhaarNumber:        docs.aadhaarNumber        || '',
-            passportNumber:       docs.passportNumber       || '',
-            voterIdNumber:        docs.voterIdNumber        || '',
+            aadhaarNumber: docs.aadhaarNumber || '',
+            passportNumber: docs.passportNumber || '',
+            voterIdNumber: docs.voterIdNumber || '',
             drivingLicenseNumber: docs.drivingLicenseNumber || '',
-            panNumber:            docs.panNumber            || '',
-            aadhaarDocument:        null,
-            passportDocument:       null,
-            voterIdDocument:        null,
+            panNumber: docs.panNumber || '',
+            aadhaarDocument: null,
+            passportDocument: null,
+            voterIdDocument: null,
             drivingLicenseDocument: null,
-            panDocument:            null,
+            panDocument: null,
           });
         }
       } catch (err) {
@@ -176,11 +176,11 @@ const EmployeeDocuments = () => {
       const token = localStorage.getItem('authToken');
       const payload = new FormData();
 
-      payload.append('aadhaarNumber',        formData.aadhaarNumber        || '');
-      payload.append('passportNumber',       formData.passportNumber       || '');
-      payload.append('voterIdNumber',        formData.voterIdNumber        || '');
+      payload.append('aadhaarNumber', formData.aadhaarNumber || '');
+      payload.append('passportNumber', formData.passportNumber || '');
+      payload.append('voterIdNumber', formData.voterIdNumber || '');
       payload.append('drivingLicenseNumber', formData.drivingLicenseNumber || '');
-      payload.append('panNumber',            formData.panNumber            || '');
+      payload.append('panNumber', formData.panNumber || '');
 
       ['aadhaarDocument', 'passportDocument', 'voterIdDocument', 'drivingLicenseDocument', 'panDocument']
         .forEach((field) => {
@@ -243,27 +243,27 @@ const EmployeeDocuments = () => {
   };
 
   const docFields = [
-    { key: 'aadhaar',        label: 'Aadhaar',          numberField: 'aadhaarNumber',        fileField: 'aadhaarDocument',        placeholder: 'XXXX XXXX XXXX',    icon: '🪪', color: 'blue' },
-    { key: 'pan',            label: 'PAN Card',          numberField: 'panNumber',            fileField: 'panDocument',            placeholder: 'ABCDE1234F',         icon: '💳', color: 'indigo' },
-    { key: 'passport',       label: 'Passport',          numberField: 'passportNumber',       fileField: 'passportDocument',       placeholder: 'A1234567',           icon: '📘', color: 'sky' },
-    { key: 'voterId',        label: 'Voter ID',          numberField: 'voterIdNumber',        fileField: 'voterIdDocument',        placeholder: 'ABC1234567',         icon: '🗳️', color: 'violet' },
-    { key: 'drivingLicense', label: 'Driving License',   numberField: 'drivingLicenseNumber', fileField: 'drivingLicenseDocument', placeholder: 'DL-0420110012345',   icon: '🚗', color: 'cyan' },
+    { key: 'aadhaar', label: 'Aadhaar', numberField: 'aadhaarNumber', fileField: 'aadhaarDocument', placeholder: 'XXXX XXXX XXXX', icon: '🪪', color: 'blue' },
+    { key: 'pan', label: 'PAN Card', numberField: 'panNumber', fileField: 'panDocument', placeholder: 'ABCDE1234F', icon: '💳', color: 'indigo' },
+    { key: 'passport', label: 'Passport', numberField: 'passportNumber', fileField: 'passportDocument', placeholder: 'A1234567', icon: '📘', color: 'sky' },
+    { key: 'voterId', label: 'Voter ID', numberField: 'voterIdNumber', fileField: 'voterIdDocument', placeholder: 'ABC1234567', icon: '🗳️', color: 'violet' },
+    { key: 'drivingLicense', label: 'Driving License', numberField: 'drivingLicenseNumber', fileField: 'drivingLicenseDocument', placeholder: 'DL-0420110012345', icon: '🚗', color: 'cyan' },
   ];
 
   const cardAccent = {
-    blue:   'border-blue-200   hover:border-blue-400   hover:shadow-blue-100',
+    blue: 'border-blue-200   hover:border-blue-400   hover:shadow-blue-100',
     indigo: 'border-indigo-200 hover:border-indigo-400 hover:shadow-indigo-100',
-    sky:    'border-sky-200    hover:border-sky-400    hover:shadow-sky-100',
+    sky: 'border-sky-200    hover:border-sky-400    hover:shadow-sky-100',
     violet: 'border-violet-200 hover:border-violet-400 hover:shadow-violet-100',
-    cyan:   'border-cyan-200   hover:border-cyan-400   hover:shadow-cyan-100',
+    cyan: 'border-cyan-200   hover:border-cyan-400   hover:shadow-cyan-100',
   };
 
   const iconBg = {
-    blue:   'bg-blue-50   text-blue-500',
+    blue: 'bg-blue-50   text-blue-500',
     indigo: 'bg-indigo-50 text-indigo-500',
-    sky:    'bg-sky-50    text-sky-500',
+    sky: 'bg-sky-50    text-sky-500',
     violet: 'bg-violet-50 text-violet-500',
-    cyan:   'bg-cyan-50   text-cyan-500',
+    cyan: 'bg-cyan-50   text-cyan-500',
   };
 
   return (

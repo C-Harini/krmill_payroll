@@ -105,7 +105,7 @@ exports.getStrengthReport = async (req, res) => {
         companyId,
         attendanceDate: date,
         status: {
-          [Op.in]: ["Present", "Present with Permission", "Half Day"],
+          [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"],
         },
       },
       attributes: ["id", "employeeId", "shiftName", "status", "overtimeHours"],
@@ -181,7 +181,7 @@ exports.getStrengthReport = async (req, res) => {
       else if (shift === "C" || shift === "SUP_C" || (shift && (shift.endsWith("_C") || shift.endsWith(" C")))) shiftKey = "C";
       else if (shift === "A" || shift === "SUP_A" || (shift && (shift.endsWith("_A") || shift.endsWith(" A")))) shiftKey = "A";
 
-      const strengthVal = att.status === "Half Day" ? 0.5 : 1.0;
+      const strengthVal = (att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave") ? 0.5 : 1.0;
       const ot = parseFloat(att.overtimeHours) || 0;
 
       const isTrainee = !!emp.isTrainee;
@@ -252,7 +252,7 @@ exports.getStrengthReport = async (req, res) => {
       else if (shift === "C" || shift === "SUP_C" || (shift && (shift.endsWith("_C") || shift.endsWith(" C")))) shiftKey = "shiftIII";
       else if (shift === "A" || shift === "SUP_A" || (shift && (shift.endsWith("_A") || shift.endsWith(" A")))) shiftKey = "shiftI";
 
-      const strengthVal = att.status === "Half Day" ? 0.5 : 1.0;
+      const strengthVal = (att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave") ? 0.5 : 1.0;
       const deptName = dept.departmentname.toUpperCase();
 
       if (deptName === 'CONT. DOFFER' || deptName.includes('CONTRACT DOFFER')) {
@@ -532,7 +532,7 @@ exports.exportStrengthReportExcel = async (req, res) => {
         companyId,
         attendanceDate: date,
         status: {
-          [Op.in]: ["Present", "Present with Permission", "Half Day"],
+          [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"],
         },
       },
       attributes: ["id", "employeeId", "shiftName", "status", "overtimeHours"],
@@ -606,7 +606,7 @@ exports.exportStrengthReportExcel = async (req, res) => {
       else if (shift === "C" || shift === "SUP_C" || (shift && (shift.endsWith("_C") || shift.endsWith(" C")))) shiftKey = "C";
       else if (shift === "A" || shift === "SUP_A" || (shift && (shift.endsWith("_A") || shift.endsWith(" A")))) shiftKey = "A";
 
-      const strengthVal = att.status === "Half Day" ? 0.5 : 1.0;
+      const strengthVal = (att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave") ? 0.5 : 1.0;
       const ot = parseFloat(att.overtimeHours) || 0;
 
       const isTrainee = !!emp.isTrainee;
@@ -677,7 +677,7 @@ exports.exportStrengthReportExcel = async (req, res) => {
       else if (shift === "C" || shift === "SUP_C" || (shift && (shift.endsWith("_C") || shift.endsWith(" C")))) shiftKey = "shiftIII";
       else if (shift === "A" || shift === "SUP_A" || (shift && (shift.endsWith("_A") || shift.endsWith(" A")))) shiftKey = "shiftI";
 
-      const strengthVal = att.status === "Half Day" ? 0.5 : 1.0;
+      const strengthVal = (att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave") ? 0.5 : 1.0;
       const deptName = dept.departmentname.toUpperCase();
 
       if (deptName === 'CONT. DOFFER' || deptName.includes('CONTRACT DOFFER')) {

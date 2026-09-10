@@ -873,6 +873,7 @@ exports.getComprehensiveReport = async (req, res) => {
     // Attendance summary
     const attendanceSummary = {
       present: attendance.filter(a => a.status === 'Present' || a.status === 'Present with Permission').length,
+      present_leave: attendance.filter(a => a.status === 'Present/Leave (P/L)' || a.status === 'Half Day').length,
       absent: attendance.filter(a => a.status === 'Absent').length,
       leave: attendance.filter(a => a.status === 'Leave').length,
       holiday: attendance.filter(a => a.status === 'Holiday' || a.isHoliday).length,

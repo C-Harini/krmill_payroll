@@ -76,6 +76,7 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.ENUM(
           "Present",
           "Present with Permission",
+          "Present/Leave (P/L)",
           "Absent",
           "Half Day",
           "Leave",

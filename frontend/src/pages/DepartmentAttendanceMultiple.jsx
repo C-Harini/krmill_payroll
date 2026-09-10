@@ -20,7 +20,7 @@ import {
 
 const STATUS_OPTIONS = [
   "PRESENT",
-  "PRESENT/LEAVE",
+  "PRESENT/LEAVE (P/L)",
 ];
 
 const DEFAULT_CATEGORIES = [
@@ -347,6 +347,8 @@ const DepartmentAttendanceMultiple = () => {
         return "bg-rose-100 text-rose-800 border-rose-300";
       case "HALF DAY":
       case "PRESENT/LEAVE":
+      case "PRESENT/LEAVE (P/L)":
+      case "P/L":
         return "bg-amber-100 text-amber-800 border-amber-300";
       case "LEAVE":
         return "bg-sky-100 text-sky-800 border-sky-300";
@@ -380,7 +382,7 @@ const DepartmentAttendanceMultiple = () => {
     try {
       const statusMap = {
         "PRESENT": "Present",
-        "PRESENT/LEAVE": "Half Day",
+        "PRESENT/LEAVE (P/L)": "Present/Leave (P/L)",
       };
 
       const statusVal = statusMap[selectedStatus] || "Present";
@@ -463,10 +465,14 @@ const DepartmentAttendanceMultiple = () => {
     let initStatus = "PRESENT";
     if (
       dbStatus === "Half Day" ||
+      dbStatus === "Present/Leave (P/L)" ||
+      dbStatus === "Present/Leave" ||
       dbStatus.toUpperCase() === "HALF DAY" ||
-      dbStatus.toUpperCase() === "PRESENT/LEAVE"
+      dbStatus.toUpperCase() === "PRESENT/LEAVE" ||
+      dbStatus.toUpperCase() === "PRESENT/LEAVE (P/L)" ||
+      dbStatus.toUpperCase() === "P/L"
     ) {
-      initStatus = "PRESENT/LEAVE";
+      initStatus = "PRESENT/LEAVE (P/L)";
     }
     setEditStatus(initStatus);
     setEditShiftId(record.shiftId || "");
@@ -504,7 +510,7 @@ const DepartmentAttendanceMultiple = () => {
     try {
       const statusMap = {
         "PRESENT": "Present",
-        "PRESENT/LEAVE": "Half Day",
+        "PRESENT/LEAVE (P/L)": "Present/Leave (P/L)",
       };
       const statusVal = statusMap[editStatus] || "Present";
 
@@ -896,7 +902,7 @@ const DepartmentAttendanceMultiple = () => {
                             </td>
                             <td className="py-2 px-2 border-r border-blue-100 text-center">
                               <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${getStatusBadgeClass(item.status)}`}>
-                                {item.status === "Half Day" ? "PRESENT/LEAVE" : (item.status || "PRESENT")}
+                                {item.status === "Half Day" || item.status === "Present/Leave" || item.status === "Present/Leave (P/L)" ? "PRESENT/LEAVE (P/L)" : (item.status || "PRESENT")}
                               </span>
                             </td>
                             <td className="py-2 px-1.5 border-r border-blue-100 text-center font-bold text-slate-700">

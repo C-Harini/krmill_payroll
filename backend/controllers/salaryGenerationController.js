@@ -220,6 +220,7 @@ const getAttendanceMetrics = async (
         isPresent = true;
         break;
       case "Half Day":
+      case "Present/Leave (P/L)":
         presentDays += 0.5;
         isPresent = true;
         break;
@@ -266,11 +267,11 @@ const getAttendanceMetrics = async (
         remainingPermHrs -= hrsLate;
         if (remainingPermHrs < 0 && isPresent) {
           absentDays++;
-          presentDays -= rec.status === "Half Day" ? 0.5 : 1;
+          presentDays -= (rec.status === "Half Day" || rec.status === "Present/Leave (P/L)" || rec.status === "Present/Leave") ? 0.5 : 1;
         }
       } else if (isPresent) {
         absentDays++;
-        presentDays -= rec.status === "Half Day" ? 0.5 : 1;
+        presentDays -= (rec.status === "Half Day" || rec.status === "Present/Leave (P/L)" || rec.status === "Present/Leave") ? 0.5 : 1;
       }
     }
     if (rec.isEarlyExit) earlyExitCount++;
@@ -339,7 +340,7 @@ const getAttendanceIncentive = async (employeeId, month, year, att = null) => {
     for (const attRec of attendances) {
       let daysWorked = 0;
       if (attRec.status === "Present" || attRec.status === "Present with Permission") daysWorked = 1;
-      else if (attRec.status === "Half Day") daysWorked = 0.5;
+      else if (attRec.status === "Half Day" || attRec.status === "Present/Leave (P/L)") daysWorked = 0.5;
 
       if (daysWorked > 0) {
         rawDays += daysWorked;

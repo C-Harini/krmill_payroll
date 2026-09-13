@@ -27,7 +27,7 @@ module.exports = (sequelize, DataTypes) => {
             comment: 'Whether this is a training department',
         },
         strengthRequired: {
-            type: DataTypes.INTEGER,
+            type: DataTypes.DECIMAL(10, 2),
             allowNull: false,
             defaultValue: 0,
             comment: 'Number of employees required in this department',

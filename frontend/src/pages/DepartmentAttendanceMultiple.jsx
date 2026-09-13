@@ -20,7 +20,7 @@ import {
 
 const STATUS_OPTIONS = [
   "PRESENT",
-  "PRESENT/LEAVE (P/L)",
+  "PRESENT/LEAVE",
 ];
 
 const DEFAULT_CATEGORIES = [

@@ -2033,11 +2033,14 @@ const upsertEmployeeShift = async (record, previousSnapshot = null) => {
     }
   }
 
+  const cleanStartTime = scheduledStartTime ? String(scheduledStartTime).slice(0, 5) : null;
+  const cleanEndTime = scheduledEndTime ? String(scheduledEndTime).slice(0, 5) : null;
+
   const [row] = await EmployeeShift.findOrCreate({
     where: { employeeId, companyId, shiftName, month, year },
     defaults: {
-      scheduledStartTime: scheduledStartTime || null,
-      scheduledEndTime: scheduledEndTime || null,
+      scheduledStartTime: cleanStartTime,
+      scheduledEndTime: cleanEndTime,
       totalDays: 0, presentDays: 0, presentWithPermissionDays: 0,
       absentDays: 0, leaveDays: 0, lateDays: 0, earlyExitDays: 0,
       totalWorkingHours: 0, totalOvertimeHours: 0, totalPermissionMinutes: 0,
@@ -2052,8 +2055,8 @@ const upsertEmployeeShift = async (record, previousSnapshot = null) => {
   const newLastSeen = !row.lastSeenDate || attendanceDate > row.lastSeenDate ? attendanceDate : row.lastSeenDate;
 
   await row.update({
-    scheduledStartTime: scheduledStartTime || row.scheduledStartTime,
-    scheduledEndTime: scheduledEndTime || row.scheduledEndTime,
+    scheduledStartTime: cleanStartTime || row.scheduledStartTime,
+    scheduledEndTime: cleanEndTime || row.scheduledEndTime,
     totalDays: row.totalDays + 1,
     presentDays: row.presentDays + (status === "Present" ? 1 : 0),
     presentWithPermissionDays: row.presentWithPermissionDays + (status === "Present with Permission" ? 1 : 0),

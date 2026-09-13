@@ -261,7 +261,7 @@ exports.getShiftSummary = async (req, res) => {
         byEmp[id] = {
           employeeId: id,
           employeeName: r.employee
-            ? `${r.employee.firstName} ${r.employee.lastName}`
+            ? r.employee.firstName
             : "N/A",
           employeeCode: r.employee?.employeeCode || "N/A",
           employeeType: r.employee?.employmentType?.name || "N/A",
@@ -794,7 +794,7 @@ exports.getPermissionSummary = async (req, res) => {
         byEmp[id] = {
           employeeId: id,
           employeeName: r.employee
-            ? `${r.employee.firstName} ${r.employee.lastName}`
+            ? r.employee.firstName
             : "N/A",
           employeeCode: r.employee?.employeeCode || "N/A",
           employeeType: r.employee?.employmentType?.name || "N/A",

@@ -493,9 +493,7 @@ const UserManagement = ({ companyId }) => {
                                 filteredUsers.map((user, index) => (
                                     <tr key={user.id} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50 hover:bg-slate-100'}>
                                         <td className="px-6 py-4 text-sm text-gray-700">
-                                            {user.firstName && user.lastName
-                                                ? `${user.firstName} ${user.lastName}`
-                                                : user.email}
+                                            {user.firstName || user.email}
                                         </td>
                                         <td className="px-6 py-4 text-sm text-gray-700">{user.email}</td>
                                         <td className="px-6 py-4 text-sm text-gray-700">{user.phoneNumber}</td>

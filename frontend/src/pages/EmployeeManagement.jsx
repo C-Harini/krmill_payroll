@@ -297,7 +297,7 @@ const EmployeeManagement = () => {
                                 filteredEmployees.map((emp, index) => (
                                     <tr key={emp.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-slate-50'} hover:bg-blue-50 transition-colors`}>
                                         <td className="px-6 py-4 text-sm font-medium text-slate-800">{emp.employeeCode}</td>
-                                        <td className="px-6 py-4 text-sm font-medium text-slate-800">{emp.firstName} {emp.lastName || ''}</td>
+                                        <td className="px-6 py-4 text-sm font-medium text-slate-800">{emp.firstName}</td>
                                         <td className="px-6 py-4 text-sm">
                                             <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
                                                 emp.employeeType === 'Staff'

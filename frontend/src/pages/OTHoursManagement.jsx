@@ -486,7 +486,7 @@ const OTHoursManagement = () => {
     if (employeeSearch.trim()) {
       const term = employeeSearch.trim().toLowerCase();
       const code = String(emp.employeeCode || emp.ticketNo || emp.id || "").toLowerCase();
-      const name = `${emp.firstName || ""} ${emp.lastName || ""}`.toLowerCase();
+      const name = (emp.firstName || "").toLowerCase();
       const designation = String(emp.designation?.name || emp.designationName || "").toLowerCase();
       return code.includes(term) || name.includes(term) || designation.includes(term);
     }
@@ -585,7 +585,7 @@ const OTHoursManagement = () => {
                 <option value="">All Employees ({employees.length})</option>
                 {employees.map((emp) => (
                   <option key={emp.id} value={emp.id}>
-                    {emp.employeeCode || emp.ticketNo || emp.id} - {emp.firstName} {emp.lastName || ""} {emp.designation?.name ? `(${emp.designation.name})` : ""}
+                    {emp.employeeCode || emp.ticketNo || emp.id} - {emp.firstName} {emp.designation?.name ? `(${emp.designation.name})` : ""}
                   </option>
                 ))}
               </select>
@@ -693,7 +693,7 @@ const OTHoursManagement = () => {
                           <td className="p-3 text-sm text-gray-500 font-mono">{index + 1}</td>
                           <td className="p-3 text-sm font-semibold text-gray-700 font-mono">{emp.employeeCode || emp.ticketNo || emp.id}</td>
                           <td className="p-3 text-sm font-semibold text-gray-900">
-                            {emp.firstName} {emp.lastName || ""}
+                            {emp.firstName}
                           </td>
                           <td className="p-3 text-sm text-gray-600">
                             {emp.designation?.name || emp.designationName || "-"}

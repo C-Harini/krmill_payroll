@@ -93,7 +93,7 @@ exports.getBiometricPunches = async (req, res) => {
                 todayPunches: todayPunches,
                 uniqueEmployees: uniqueEmployees,
                 lastPunch: lastPunch ? {
-                    employee: `${lastPunch.employee.firstName} ${lastPunch.employee.lastName}`,
+                    employee: lastPunch.employee.firstName,
                     time: lastPunch.punchTime,
                     type: lastPunch.punchType
                 } : null
@@ -589,7 +589,7 @@ exports.fetchAndImportPunches = async (req, res) => {
                 results.success.push({
                     id: newPunch.id,
                     biometricNumber,
-                    employeeName: `${employee.firstName} ${employee.lastName}`,
+                    employeeName: employee.firstName,
                     employeeCode: employee.employeeCode,
                     punchTime: recordTime,
                     punchType: punchType

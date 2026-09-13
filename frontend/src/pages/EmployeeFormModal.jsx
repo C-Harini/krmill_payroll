@@ -887,7 +887,7 @@ const EmployeeFormModal = ({
                     <select name="reportingManagerId" value={formData.reportingManagerId || ""} onChange={handleInputChange} className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white transition-all">
                       <option value="">-- Select Manager --</option>
                       {masterData?.managers?.filter((mgr) => !employee || mgr.id !== employee.id).map((mgr) => {
-                        const displayName = mgr.fullName || `${mgr.firstName || ""} ${mgr.lastName || ""}`.trim();
+                        const displayName = mgr.firstName || mgr.fullName || mgr.name || "";
                         return <option key={mgr.id} value={mgr.id}>{displayName} ({mgr.employeeCode || "N/A"})</option>;
                       })}
                     </select>

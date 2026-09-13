@@ -53,7 +53,7 @@ const EmployeeSelector = ({ employees, selectedIds, onChange }) => {
     const filtered = employees.filter(
         (e) =>
             !search ||
-            `${e.firstName || ''} ${e.lastName || ''}`.toLowerCase().includes(search.toLowerCase()) ||
+            (e.firstName || '').toLowerCase().includes(search.toLowerCase()) ||
             (e.employeeCode || '').toLowerCase().includes(search.toLowerCase())
     );
 
@@ -137,7 +137,7 @@ const EmployeeSelector = ({ employees, selectedIds, onChange }) => {
                                 />
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm font-medium text-slate-800 truncate">
-                                        {emp.firstName} {emp.lastName || ''}
+                                        {emp.firstName}
                                     </p>
                                     <p className="text-xs text-gray-400">{emp.employeeCode}</p>
                                 </div>
@@ -189,13 +189,13 @@ const EmployeeSingleSelector = ({ employees, selectedId, onChange, disabled }) =
     const filtered = employees.filter(
         (e) =>
             !search ||
-            `${e.firstName || ''} ${e.lastName || ''}`.toLowerCase().includes(search.toLowerCase()) ||
+            (e.firstName || '').toLowerCase().includes(search.toLowerCase()) ||
             (e.employeeCode || '').toLowerCase().includes(search.toLowerCase())
     );
 
     const selectedEmp = employees.find(e => e.id === parseInt(selectedId));
     const label = selectedEmp
-        ? `${selectedEmp.firstName} ${selectedEmp.lastName || ''} (${selectedEmp.employeeCode})`
+        ? `${selectedEmp.firstName} (${selectedEmp.employeeCode})`
         : "Select Employee";
 
     const handleSelect = (id) => {
@@ -246,7 +246,7 @@ const EmployeeSingleSelector = ({ employees, selectedId, onChange, disabled }) =
                             >
                                 <div className="flex-1 min-w-0">
                                     <p className="font-medium truncate">
-                                        {emp.firstName} {emp.lastName || ''}
+                                        {emp.firstName}
                                     </p>
                                     <p className="text-xs text-gray-400">{emp.employeeCode}</p>
                                 </div>

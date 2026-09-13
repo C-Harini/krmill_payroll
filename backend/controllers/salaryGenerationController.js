@@ -1052,7 +1052,7 @@ async function generateForMonth({
       (emp.employeeType || "").toLowerCase() === "staff" || isMgr;
 
     console.log(
-      `\n[emp ${emp.id}] ${emp.firstName} ${emp.lastName} | grade="${gradeName}" workingType="${emp.workingType}" pf=${isPf} mgr=${isMgr} daily=${isDailyWorker}`,
+      `\n[emp ${emp.id}] ${emp.firstName} | grade="${gradeName}" workingType="${emp.workingType}" pf=${isPf} mgr=${isMgr} daily=${isDailyWorker}`,
     );
 
     try {

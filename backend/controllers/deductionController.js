@@ -172,7 +172,7 @@ exports.getConsolidatedReport = async (req, res) => {
                 employeeMap[key] = {
                     employeeId: d.employeeId,
                     employeeCode: d.employee.employeeCode,
-                    employeeName: `${d.employee.firstName} ${d.employee.lastName}`,
+                    employeeName: d.employee.firstName,
                     departmentId: d.departmentId,
                     departmentName: d.department.name,
                     departmentAcronym: d.department.acronym,

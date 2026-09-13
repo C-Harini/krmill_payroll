@@ -171,7 +171,7 @@ const WorkloadManagement = () => {
     const term = searchTerm.trim().toLowerCase();
     if (!term) return true;
     const ticketNo = String(emp.employeeCode || emp.ticketNo || "").toLowerCase();
-    const fullName = `${emp.firstName || ""} ${emp.middleName || ""} ${emp.lastName || ""}`.toLowerCase();
+    const fullName = (emp.firstName || "").toLowerCase();
     const deptName = (emp.department?.departmentname || emp.departmentName || "").toLowerCase();
     const empId = String(emp.id);
 

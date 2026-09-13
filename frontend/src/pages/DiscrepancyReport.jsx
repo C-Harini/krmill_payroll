@@ -601,7 +601,7 @@ const DiscrepancyReport = () => {
                         {item.employee?.employeeCode}
                       </td>
                       <td className="px-4 py-3.5 text-slate-800 uppercase font-semibold">
-                        {item.employee ? `${item.employee.firstName} ${item.employee.lastName || ""}` : "Unknown"}
+                        {item.employee ? item.employee.firstName : "Unknown"}
                       </td>
                       <td className="px-4 py-3.5 text-center">
                         <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getStatusBadge(item.originalStatus)}`}>
@@ -632,7 +632,7 @@ const DiscrepancyReport = () => {
                         )}
                       </td>
                       <td className="px-4 py-3.5 text-slate-600 font-semibold">
-                        {item.approvedByUser ? `${item.approvedByUser.firstName} ${item.approvedByUser.lastName || ""}` : "Admin"}
+                        {item.approvedByUser ? item.approvedByUser.firstName : "Admin"}
                       </td>
                     </tr>
                   ))}

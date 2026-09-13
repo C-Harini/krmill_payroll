@@ -567,9 +567,9 @@ module.exports = (sequelize, DataTypes) => {
     return retirementDate.toISOString().split("T")[0];
   };
 
-  // Add virtual field for full name
+  // Add virtual field for full name (returns only first name)
   Employee.prototype.getFullName = function () {
-    return `${this.firstName} ${this.middleName ? this.middleName + " " : ""}${this.lastName}`;
+    return this.firstName || "";
   };
 
   // Safe check to ensure workload column exists in the database table

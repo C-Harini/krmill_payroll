@@ -1553,8 +1553,8 @@ exports.exportEmployeeDetailsExcel = async (req, res) => {
       const row = worksheet.addRow({
         employeeCode: emp.employeeCode || '',
         firstName: emp.firstName || '',
-        lastName: emp.lastName || '',
-        fullName: emp.getFullName ? emp.getFullName() : `${emp.firstName} ${emp.middleName ? emp.middleName + ' ' : ''}${emp.lastName}`,
+        lastName: '',
+        fullName: emp.getFullName ? emp.getFullName() : (emp.firstName || ''),
         email: emp.officialEmail || '',
         mobile: emp.mobileNumber || '',
         dob: emp.dateOfBirth ? new Date(emp.dateOfBirth) : '',
@@ -2685,7 +2685,7 @@ exports.exportComprehensiveExcel = async (req, res) => {
     infoSheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
     [
       ['Employee Code', employee.employeeCode],
-      ['Full Name', employee.getFullName ? employee.getFullName() : `${employee.firstName} ${employee.middleName ? employee.middleName + ' ' : ''}${employee.lastName}`],
+      ['Name', employee.getFullName ? employee.getFullName() : (employee.firstName || '')],
       ['Company', employee.company?.name || 'N/A'],
       ['Department', employee.department?.name || 'N/A'],
       ['Designation', employee.designation?.name || 'N/A'],

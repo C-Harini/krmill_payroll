@@ -267,7 +267,7 @@ const EmployeeLoanManagement = () => {
                 <option value="">Select Employee</option>
                 {employees.map((e) => (
                   <option key={e.id} value={e.id}>
-                    {e.employeeCode} - {e.firstName} {e.lastName || ""}
+                    {e.employeeCode} - {e.firstName}
                   </option>
                 ))}
               </select>
@@ -414,7 +414,7 @@ const EmployeeLoanManagement = () => {
               {records.map((r) => (
                 <tr key={r.id} className="hover:bg-gray-50 transition">
                   <td className="px-6 py-4 font-medium text-gray-800">
-                    {r.employee ? `${r.employee.employeeCode || ""} - ${r.employee.firstName || ""} ${r.employee.lastName || ""}` : "-"}
+                    {r.employee ? `${r.employee.employeeCode || ""} - ${r.employee.firstName || ""}` : "-"}
                   </td>
 
                   <td className="px-6 py-4 text-right">

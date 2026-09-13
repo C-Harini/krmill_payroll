@@ -1333,7 +1333,7 @@ module.exports = {
         let outTime = r.lastCheckOut ? moment(r.lastCheckOut).format("hh:mm A") : "—";
 
         const empName = emp
-          ? [emp.firstName, (emp.middleName && emp.middleName !== '-') ? emp.middleName : '', emp.lastName].filter(Boolean).join(' ') || emp.employeeCode
+          ? (emp.firstName || emp.employeeCode)
           : (manualRecord ? manualRecord.empName : "");
 
         recordMap.set(key, {
@@ -1363,7 +1363,7 @@ module.exports = {
             || "General";
           const shiftName = mr.shiftName || shiftMap[mr.shiftId] || "General";
           const empName = emp
-            ? [emp.firstName, (emp.middleName && emp.middleName !== '-') ? emp.middleName : '', emp.lastName].filter(Boolean).join(' ') || emp.employeeCode
+            ? (emp.firstName || emp.employeeCode)
             : (mr.empName || "");
 
           recordMap.set(key, {
@@ -1500,7 +1500,7 @@ module.exports = {
           || (r.department ? r.department.departmentname : "General");
 
         const empName = emp
-          ? [emp.firstName, (emp.middleName && emp.middleName !== '-') ? emp.middleName : '', emp.lastName].filter(Boolean).join(' ') || emp.employeeCode
+          ? (emp.firstName || emp.employeeCode)
           : (r.empName || "");
 
         return {
@@ -1657,7 +1657,7 @@ module.exports = {
           || (r.department ? r.department.departmentname : "General");
 
         const empName = emp
-          ? [emp.firstName, (emp.middleName && emp.middleName !== '-') ? emp.middleName : '', emp.lastName].filter(Boolean).join(' ') || emp.employeeCode
+          ? (emp.firstName || emp.employeeCode)
           : (r.empName || "");
 
         return {

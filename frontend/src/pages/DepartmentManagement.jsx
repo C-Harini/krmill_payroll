@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../utils/apiCaller';
 
 
@@ -56,31 +56,33 @@ const DepartmentManagement = () => {
         fetchCompanies();
     }, []);
 
-    // Step 2: Fetch departments + categories together when company changes
-    useEffect(() => {
+    const fetchDepartmentList = useCallback(async () => {
       if (!selectedCompanyId) return;
-      const fetchData = async () => {
-        setLoading(true);
-        try {
-          const [deptRes, catData] = await Promise.all([
-            apiRequest(
-              `/departments?companyId=${selectedCompanyId}&page=${page}&limit=10&search=${debouncedSearch}`,
-            ),
-            apiRequest(`/categories?companyId=${selectedCompanyId}`),
-          ]);
+      setLoading(true);
+      try {
+        const [deptRes, catData] = await Promise.all([
+          apiRequest(
+            `/departments?companyId=${selectedCompanyId}&page=${page}&limit=10&search=${debouncedSearch}`,
+          ),
+          apiRequest(`/categories?companyId=${selectedCompanyId}`),
+        ]);
 
-          setDepartments(deptRes.data);
-          setTotalPages(deptRes.totalPages);
-          setError(null);
-          setCategories(catData);
-        } catch (err) {
-          setError("Failed to fetch data.");
-        } finally {
-          setLoading(false);
-        }
-      };
-      fetchData();
+        const rows = deptRes.data || (Array.isArray(deptRes) ? deptRes : []);
+        setDepartments(rows);
+        setTotalPages(deptRes.totalPages || 1);
+        setCategories(Array.isArray(catData) ? catData : catData.data || []);
+        setError(null);
+      } catch (err) {
+        setError(err.message || "Failed to fetch data.");
+      } finally {
+        setLoading(false);
+      }
     }, [selectedCompanyId, page, debouncedSearch]);
+
+    // Step 2: Fetch departments + categories together when company, page or search changes
+    useEffect(() => {
+      fetchDepartmentList();
+    }, [fetchDepartmentList]);
 
     const handleCompanyChange = (e) => setSelectedCompanyId(e.target.value);
     const handleSearchChange = (e) => setSearchTerm(e.target.value);
@@ -111,7 +113,13 @@ const DepartmentManagement = () => {
 
     const handleFormSubmit = async (e) => {
         e.preventDefault();
-        const payload = { ...formData, companyId: selectedCompanyId };
+        const payload = {
+            ...formData,
+            slno: parseInt(formData.slno, 10),
+            strengthRequired: parseFloat(formData.strengthRequired) || 0,
+            categoryId: parseInt(formData.categoryId, 10),
+            companyId: parseInt(selectedCompanyId, 10),
+        };
 
         try {
             if (editingDepartment) {
@@ -125,11 +133,10 @@ const DepartmentManagement = () => {
                     body: JSON.stringify(payload),
                 });
             }
-            const data = await apiRequest(`/departments?companyId=${selectedCompanyId}`);
-            setDepartments(data);
+            await fetchDepartmentList();
             closeModal();
         } catch (err) {
-            setError(editingDepartment ? 'Failed to update department.' : 'Failed to create department.');
+            setError(err.message || (editingDepartment ? 'Failed to update department.' : 'Failed to create department.'));
             console.error(err);
         }
     };
@@ -138,9 +145,9 @@ const DepartmentManagement = () => {
         if (!window.confirm('Are you sure you want to delete this department?')) return;
         try {
             await apiRequest(`/departments/${id}`, { method: 'DELETE' });
-            setDepartments(departments.filter(dept => dept.id !== id));
+            await fetchDepartmentList();
         } catch (err) {
-            setError('Failed to delete department.');
+            setError(err.message || 'Failed to delete department.');
             console.error(err);
         }
     };

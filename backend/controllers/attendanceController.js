@@ -427,6 +427,9 @@ exports.getAttendance = async (req, res) => {
     startDate,
     endDate,
     employeeId,
+    departmentId,
+    categoryIds,
+    categoryId,
     status,
     shiftName,
     search,
@@ -453,6 +456,24 @@ exports.getAttendance = async (req, res) => {
     if (employeeId) where.employeeId = employeeId;
     if (status) where.status = status;
     if (shiftName) where.shiftName = shiftName;
+    if (departmentId) where.departmentId = departmentId;
+
+    const employeeWhere = {};
+    if (search) {
+      employeeWhere[Op.or] = [
+        { firstName: { [Op.like]: `%${search}%` } },
+        { lastName: { [Op.like]: `%${search}%` } },
+        { employeeCode: { [Op.like]: `%${search}%` } },
+      ];
+    }
+    const catList = categoryIds
+      ? String(categoryIds).split(",").map((v) => parseInt(v.trim())).filter(Boolean)
+      : (categoryId ? [parseInt(categoryId)].filter(Boolean) : null);
+    if (catList && catList.length > 0) {
+      employeeWhere.categoryId = { [Op.in]: catList };
+    }
+
+    const isEmployeeRequired = !!search || (catList && catList.length > 0);
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
@@ -462,17 +483,9 @@ exports.getAttendance = async (req, res) => {
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "firstName", "lastName", "employeeCode"],
-          ...(search && {
-            where: {
-              [Op.or]: [
-                { firstName: { [Op.like]: `%${search}%` } },
-                { lastName: { [Op.like]: `%${search}%` } },
-                { employeeCode: { [Op.like]: `%${search}%` } },
-              ],
-            },
-          }),
-          required: !!search, // INNER JOIN when searching, LEFT JOIN otherwise
+          attributes: ["id", "firstName", "lastName", "employeeCode", "categoryId", "departmentId"],
+          ...(Object.keys(employeeWhere).length > 0 && { where: employeeWhere }),
+          required: isEmployeeRequired,
           include: [
             {
               model: EmploymentType,
@@ -483,6 +496,11 @@ exports.getAttendance = async (req, res) => {
               model: Department,
               as: "department",
               attributes: ["id", "departmentname"],
+            },
+            {
+              model: db.Category,
+              as: "category",
+              attributes: ["id", "categoryName", "categoryCode"],
             },
           ],
         },

@@ -36,14 +36,14 @@ const fmtDisplay = (dateStr) => {
 };
 
 const fmtTime = (datetime) => {
-  if (!datetime) return "00:00";
+  if (!datetime) return "—";
   const date = new Date(datetime);
-  if (isNaN(date.getTime())) return "00:00";
+  if (isNaN(date.getTime())) return "—";
   return date.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
-  }).replace(/\s+/g, "");
+  });
 };
 
 const fmtHours = (wh) => {
@@ -128,27 +128,27 @@ function MultiSelect({ label, options, selected, onChange, labelKey = "name", va
       <label style={ms.label}>{label}</label>
       <div style={ms.trigger} onClick={() => setOpen(!open)}>
         <span style={ms.triggerText}>{displayText()}</span>
-        <span style={{ color: "#999", fontSize: 10 }}>{open ? "▲" : "▼"}</span>
+        <span style={{ color: "#94a3b8", fontSize: 10 }}>{open ? "▲" : "▼"}</span>
       </div>
       {open && (
         <div style={ms.dropdown}>
           <div style={ms.allRow} onClick={toggleAll}>
             <input type="checkbox" readOnly
               checked={selected.length === options.length && options.length > 0}
-              style={{ marginRight: 6 }} />
-            <span style={{ fontSize: 12 }}>Select all</span>
+              style={{ marginRight: 8 }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>Select all</span>
           </div>
           {options.map((o) => {
             const id = String(o[valueKey]);
             return (
               <div key={id} style={ms.optRow} onClick={() => toggle(id)}>
-                <input type="checkbox" readOnly checked={selected.includes(id)} style={{ marginRight: 6 }} />
-                <span style={{ fontSize: 12 }}>{o[labelKey]}</span>
+                <input type="checkbox" readOnly checked={selected.includes(id)} style={{ marginRight: 8 }} />
+                <span style={{ fontSize: 12.5, color: "#334155" }}>{o[labelKey]}</span>
               </div>
             );
           })}
           {!options.length && (
-            <div style={{ padding: "8px 10px", fontSize: 12, color: "#aaa" }}>No options</div>
+            <div style={{ padding: "10px 12px", fontSize: 12, color: "#94a3b8" }}>No options</div>
           )}
         </div>
       )}
@@ -158,12 +158,12 @@ function MultiSelect({ label, options, selected, onChange, labelKey = "name", va
 
 const ms = {
   wrap: { position: "relative", display: "flex", flexDirection: "column", gap: 3 },
-  label: { fontSize: 11, fontWeight: 500, color: "#666" },
-  trigger: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", border: "1px solid #ccc", borderRadius: 4, background: "#fff", cursor: "pointer", minWidth: 170, fontSize: 13, userSelect: "none" },
+  label: { fontSize: 12, fontWeight: 600, color: "#475569" },
+  trigger: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: 6, background: "#fff", cursor: "pointer", minWidth: 170, fontSize: 13, userSelect: "none", color: "#1e293b", height: 38, boxSizing: "border-box" },
   triggerText: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 },
-  dropdown: { position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #ccc", borderRadius: 4, zIndex: 200, maxHeight: 220, overflowY: "auto", boxShadow: "0 4px 12px rgba(0,0,0,0.12)", marginTop: 2 },
-  allRow: { display: "flex", alignItems: "center", padding: "7px 10px", cursor: "pointer", borderBottom: "1px solid #f0f0f0", background: "#f8f9fa" },
-  optRow: { display: "flex", alignItems: "center", padding: "6px 10px", cursor: "pointer" },
+  dropdown: { position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #cbd5e1", borderRadius: 6, zIndex: 200, maxHeight: 240, overflowY: "auto", boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)", marginTop: 4 },
+  allRow: { display: "flex", alignItems: "center", padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid #f1f5f9", background: "#f8fafc" },
+  optRow: { display: "flex", alignItems: "center", padding: "7px 12px", cursor: "pointer" },
 };
 
 // ── Excel export ──────────────────────────────────────────────
@@ -273,17 +273,17 @@ const exportPDF = (grouped, companyName, from, to) => {
         head: [["Sl.No", "Tkt No", "Emp Name", "Department", "Status", "IN", "OUT", "Hours"]],
         body: tableRows,
         theme: "grid",
-        styles: { fontSize: 7.5, cellPadding: 2, lineColor: [200, 200, 200], lineWidth: 0.2 },
-        headStyles: { fillColor: [51, 65, 85], textColor: 255, fontStyle: "bold", fontSize: 7.5 },
+        styles: { fontSize: 8, cellPadding: 2.5, lineColor: [200, 200, 200], lineWidth: 0.2 },
+        headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: "bold", fontSize: 8 },
         columnStyles: {
-          0: { cellWidth: 10, halign: "center" },
-          1: { cellWidth: 20 },
-          2: { cellWidth: 60 },
-          3: { cellWidth: 45 },
-          4: { cellWidth: 15, halign: "center" },
-          5: { cellWidth: 25, halign: "center" },
-          6: { cellWidth: 25, halign: "center" },
-          7: { cellWidth: 20, halign: "center" },
+          0: { cellWidth: 12, halign: "center" },
+          1: { cellWidth: 22, halign: "center" },
+          2: { cellWidth: 55 },
+          3: { cellWidth: 50 },
+          4: { cellWidth: 18, halign: "center" },
+          5: { cellWidth: 32, halign: "center" },
+          6: { cellWidth: 32, halign: "center" },
+          7: { cellWidth: 22, halign: "center" },
         },
         didParseCell: (data) => {
           if (data.section === "body") {
@@ -312,6 +312,7 @@ export default function AttendanceReport() {
   // ── Masters ──────────────────────────────────────────────────
   const [companies, setCompanies] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [employmentTypes, setEmploymentTypes] = useState([]);
   const [grades, setGrades] = useState([]);
@@ -324,6 +325,7 @@ export default function AttendanceReport() {
 
   // ── Multi-select (arrays of string ids) ───────────────────────
   const [selDepts, setSelDepts] = useState([]);
+  const [selCategories, setSelCategories] = useState([]);
   const [selEmps, setSelEmps] = useState([]);
   const [selEmpTypes, setSelEmpTypes] = useState([]);
   const [selGrades, setSelGrades] = useState([]);
@@ -351,16 +353,18 @@ export default function AttendanceReport() {
   // ── Load masters when company changes ─────────────────────────
   useEffect(() => {
     if (!companyId) return;
-    setSelDepts([]); setSelEmps([]); setSelEmpTypes([]); setSelGrades([]);
-    setDepartments([]); setEmployees([]); setEmploymentTypes([]); setGrades([]);
+    setSelDepts([]); setSelCategories([]); setSelEmps([]); setSelEmpTypes([]); setSelGrades([]);
+    setDepartments([]); setCategories([]); setEmployees([]); setEmploymentTypes([]); setGrades([]);
 
     Promise.all([
       apiRequest(`/departments?companyId=${companyId}`),
+      apiRequest(`/categories?companyId=${companyId}`),
       apiRequest(`/employees?companyId=${companyId}`),
       apiRequest(`/employment-types?companyId=${companyId}`),
       apiRequest(`/employer-grades?companyId=${companyId}`),
-    ]).then(([depts, emps, types, gr]) => {
+    ]).then(([depts, cats, emps, types, gr]) => {
       setDepartments(Array.isArray(depts) ? depts : depts.data || []);
+      setCategories(Array.isArray(cats) ? cats : cats.data || []);
       setEmployees(Array.isArray(emps) ? emps : emps.data || []);
       setEmploymentTypes(Array.isArray(types) ? types : types.data || []);
       setGrades(Array.isArray(gr) ? gr : gr.data || []);
@@ -379,6 +383,7 @@ export default function AttendanceReport() {
     try {
       const params = new URLSearchParams({ companyId, startDate: from, endDate: to });
       if (selDepts.length) params.set("departmentIds", selDepts.join(","));
+      if (selCategories.length) params.set("categoryIds", selCategories.join(","));
       if (selEmps.length) params.set("employeeIds", selEmps.join(","));
       if (selEmpTypes.length) params.set("employmentTypeIds", selEmpTypes.join(","));
       if (selGrades.length) params.set("gradeIds", selGrades.join(","));
@@ -392,16 +397,12 @@ export default function AttendanceReport() {
     } finally {
       setLoading(false);
     }
-  }, [companyId, from, to, selDepts, selEmps, selEmpTypes, selGrades]);
+  }, [companyId, from, to, selDepts, selCategories, selEmps, selEmpTypes, selGrades]);
 
   // ── Employee display options ──────────────────────────────────
-  // const empOptions = employees.map((e) => ({
-  //   id: e.id,
-  //   name:  e.firstName,
-  // }));
-
   const empOptions = employees
     .filter((e) => !selDepts.length || selDepts.includes(String(e.departmentId)))
+    .filter((e) => !selCategories.length || selCategories.includes(String(e.categoryId)))
     .map((e) => ({
       id: e.id,
       name: e.firstName,
@@ -437,6 +438,7 @@ export default function AttendanceReport() {
         </div>
 
         <MultiSelect label="Department" options={departments} selected={selDepts} onChange={setSelDepts} labelKey="departmentname" />
+        <MultiSelect label="Category" options={categories} selected={selCategories} onChange={setSelCategories} labelKey="categoryName" />
         <MultiSelect label="Employment type" options={employmentTypes} selected={selEmpTypes} onChange={setSelEmpTypes} />
         <MultiSelect label="Grade" options={grades} selected={selGrades} onChange={setSelGrades} />
         <MultiSelect label="Employee" options={empOptions} selected={selEmps} onChange={setSelEmps} />
@@ -460,11 +462,11 @@ export default function AttendanceReport() {
           <span style={s.li}><span style={s.dotG}></span> P = Present</span>
           <span style={s.li}><span style={s.dotA}></span> WP = With Permission</span>
           <span style={s.li}><span style={{ ...s.dotB, background: "#f59e0b" }}></span> P/L = Present/Leave</span>
-          <span style={{ ...s.li, borderLeft: "3px solid #dc2626", paddingLeft: 6 }}>
-            <span style={{ textDecoration: "underline", color: "#dc2626" }}>Underline</span> = Late arrival
+          <span style={{ ...s.li, borderLeft: "3px solid #dc2626", paddingLeft: 8 }}>
+            <span style={{ textDecoration: "underline", color: "#dc2626", fontWeight: 600 }}>Underline</span> = Late arrival
           </span>
-          <span style={{ marginLeft: "auto", fontWeight: 600, color: "#1d4ed8", fontSize: 13 }}>
-            {totalRows} records
+          <span style={{ marginLeft: "auto", fontWeight: 700, color: "#1d4ed8", fontSize: 13.5 }}>
+            {totalRows} Total Records
           </span>
         </div>
       )}
@@ -476,25 +478,25 @@ export default function AttendanceReport() {
         if (!hasAny) return null;
         return (
           <div key={date} style={s.dateBlock}>
-            <div style={s.dateHeader}>{fmtDisplay(date)}</div>
+            <div style={s.dateHeader}>📅 {fmtDisplay(date)}</div>
             {uniqueShifts.map((shift) => {
               const rows = shifts[shift] || [];
               if (!rows.length) return null;
               return (
                 <div key={shift} style={s.shiftBlock}>
-                  <div style={s.shiftHeader}>{shift === "Unknown" ? "Other" : `Shift ${shift}`}</div>
+                  <div style={s.shiftHeader}>{shift === "Unknown" ? "Other Shifts" : `Shift ${shift}`}</div>
                   <div style={s.tableWrap}>
                     <table style={s.table}>
                       <thead>
                         <tr style={s.thead}>
-                          <th style={{ ...s.th, width: 36, textAlign: "center" }}>Sl.No</th>
-                          <th style={{ ...s.th, width: 72 }}>Tkt No</th>
-                          <th style={{ ...s.th, minWidth: 150 }}>Emp Name</th>
-                          <th style={{ ...s.th, minWidth: 100 }}>Department</th>
-                          <th style={{ ...s.th, width: 52, textAlign: "center" }}>Status</th>
-                          <th style={{ ...s.th, width: 88, textAlign: "center" }}>IN</th>
-                          <th style={{ ...s.th, width: 88, textAlign: "center" }}>OUT</th>
-                          <th style={{ ...s.th, width: 66, textAlign: "center" }}>Hours</th>
+                          <th style={{ ...s.th, width: "60px", textAlign: "center" }}>Sl.No</th>
+                          <th style={{ ...s.th, width: "95px", textAlign: "center" }}>Tkt No</th>
+                          <th style={{ ...s.th, width: "24%" }}>Emp Name</th>
+                          <th style={{ ...s.th, width: "22%" }}>Department</th>
+                          <th style={{ ...s.th, width: "75px", textAlign: "center" }}>Status</th>
+                          <th style={{ ...s.th, width: "135px", textAlign: "center" }}>IN</th>
+                          <th style={{ ...s.th, width: "135px", textAlign: "center" }}>OUT</th>
+                          <th style={{ ...s.th, width: "95px", textAlign: "center" }}>Hours</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -502,29 +504,33 @@ export default function AttendanceReport() {
                           const late = r.isLate;
                           const name = r.employee?.firstName || "";
                           return (
-                            <tr key={r.id} style={late ? s.lateRow : {}}>
-                              <td style={{ ...s.td, textAlign: "center" }}>{i + 1}</td>
-                              <td style={s.td}>{r.employee?.employeeCode || ""}</td>
-                              <td style={{ ...s.td, textDecoration: late ? "underline" : "none", color: late ? "#dc2626" : "inherit", fontWeight: late ? 500 : 400 }}>
+                            <tr key={r.id} style={late ? s.lateRow : (i % 2 === 1 ? s.evenRow : s.oddRow)}>
+                              <td style={{ ...s.td, textAlign: "center", fontWeight: 600, color: "#64748b", fontSize: 13 }}>{i + 1}</td>
+                              <td style={{ ...s.td, textAlign: "center", fontWeight: 700, color: "#1e293b", fontSize: 13.5 }}>{r.employee?.employeeCode || "-"}</td>
+                              <td style={{ ...s.td, textDecoration: late ? "underline" : "none", color: late ? "#dc2626" : "#0f172a", fontWeight: 600, fontSize: 14.5 }}>
                                 {name}
                               </td>
-                              <td style={s.td}>{r.employee?.department?.departmentname || ""}</td>
+                              <td style={{ ...s.td, color: "#334155", fontSize: 13.5, fontWeight: 500 }}>{r.employee?.department?.departmentname || "-"}</td>
                               <td style={{ ...s.td, textAlign: "center" }}><StatusChip status={r.status} /></td>
-                              <td style={{ ...s.td, textAlign: "center", fontFamily: "monospace", fontSize: 11, textDecoration: late ? "underline" : "none", color: late ? "#dc2626" : "inherit", fontWeight: late ? 600 : 400 }}>
+                              <td style={{ ...s.td, textAlign: "center", fontSize: 15, textDecoration: late ? "underline" : "none", color: late ? "#dc2626" : "#0f172a", fontWeight: late ? 700 : 600, fontVariantNumeric: "tabular-nums" }}>
                                 {fmtTime(r.firstCheckIn)}
                               </td>
-                              <td style={{ ...s.td, textAlign: "center", fontFamily: "monospace", fontSize: 11 }}>{fmtTime(r.lastCheckOut)}</td>
-                              <td style={{ ...s.td, textAlign: "center", fontWeight: 500 }}>{fmtHours(r.workingHours)}</td>
+                              <td style={{ ...s.td, textAlign: "center", fontSize: 15, color: "#0f172a", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                                {fmtTime(r.lastCheckOut)}
+                              </td>
+                              <td style={{ ...s.td, textAlign: "center", fontWeight: 700, color: "#1e40af", fontSize: 14.5, fontVariantNumeric: "tabular-nums" }}>
+                                {fmtHours(r.workingHours)}
+                              </td>
                             </tr>
                           );
                         })}
                       </tbody>
                       <tfoot>
                         <tr style={s.tfootRow}>
-                          <td colSpan={7} style={{ ...s.td, textAlign: "right", fontSize: 11, color: "#666" }}>
-                            {shift === "Unknown" ? "Total" : `Shift ${shift} total`}
+                          <td colSpan={7} style={{ ...s.td, textAlign: "right", fontSize: 13, color: "#334155", fontWeight: 700 }}>
+                            {shift === "Unknown" ? "Total Employees" : `Shift ${shift} Total`}
                           </td>
-                          <td style={{ ...s.td, textAlign: "center", fontWeight: 600 }}>{rows.length} emp</td>
+                          <td style={{ ...s.td, textAlign: "center", fontWeight: 800, color: "#1e40af", fontSize: 14 }}>{rows.length} emp</td>
                         </tr>
                       </tfoot>
                     </table>
@@ -547,15 +553,19 @@ export default function AttendanceReport() {
 // ── Status chip ───────────────────────────────────────────────
 function StatusChip({ status }) {
   const m = {
-    "Present": { bg: "#dcfce7", color: "#166534", label: "P" },
+    "Present": { bg: "#dcfce7", color: "#15803d", label: "P" },
     "Present with Permission": { bg: "#fef9c3", color: "#854d0e", label: "WP" },
     "Present/Leave (P/L)": { bg: "#fef3c7", color: "#b45309", label: "P/L" },
     "Present/Leave": { bg: "#fef3c7", color: "#b45309", label: "P/L" },
     "Half Day": { bg: "#fef3c7", color: "#b45309", label: "P/L" },
+    "Absent": { bg: "#fee2e2", color: "#b91c1c", label: "A" },
+    "Leave": { bg: "#e0e7ff", color: "#3730a3", label: "L" },
+    "Holiday": { bg: "#f3e8ff", color: "#6b21a8", label: "H" },
+    "Week Off": { bg: "#f1f5f9", color: "#475569", label: "WO" },
   };
-  const cfg = m[status] || { bg: "#f1f5f9", color: "#475569", label: "?" };
+  const cfg = m[status] || { bg: "#f1f5f9", color: "#475569", label: status ? status.slice(0, 2).toUpperCase() : "?" };
   return (
-    <span style={{ display: "inline-block", fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 4, background: cfg.bg, color: cfg.color }}>
+    <span style={{ display: "inline-block", fontSize: 11.5, fontWeight: 700, padding: "3px 8px", borderRadius: 5, background: cfg.bg, color: cfg.color }}>
       {cfg.label}
     </span>
   );
@@ -563,32 +573,34 @@ function StatusChip({ status }) {
 
 // ── Styles ────────────────────────────────────────────────────
 const s = {
-  page: { padding: 20, maxWidth: "100%", fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
-  title: { fontSize: 22, fontWeight: 600, margin: 0 },
-  subtitle: { fontSize: 13, color: "#888", margin: "4px 0 0" },
-  filterBar: { display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", padding: "14px 16px", background: "#f8f9fa", borderRadius: 8, border: "1px solid #e9ecef", margin: "16px 0 12px" },
-  label: { fontSize: 11, fontWeight: 500, color: "#666" },
-  select: { padding: "6px 10px", fontSize: 13, border: "1px solid #ccc", borderRadius: 4, minWidth: 170, background: "#fff" },
-  input: { padding: "6px 10px", fontSize: 13, border: "1px solid #ccc", borderRadius: 4 },
-  btnPrimary: { padding: "7px 16px", fontSize: 13, fontWeight: 500, background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", alignSelf: "flex-end" },
-  btnGreen: { padding: "7px 14px", fontSize: 13, fontWeight: 500, background: "#16a34a", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", alignSelf: "flex-end" },
-  btnRed: { padding: "7px 14px", fontSize: 13, fontWeight: 500, background: "#dc2626", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", alignSelf: "flex-end" },
-  errorBox: { padding: "10px 14px", background: "#fee2e2", color: "#991b1b", borderRadius: 6, marginBottom: 12, fontSize: 13 },
-  legend: { display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", fontSize: 12, color: "#555", marginBottom: 12, padding: "8px 12px", background: "#f8f9fa", borderRadius: 6, border: "1px solid #e9ecef" },
-  li: { display: "flex", alignItems: "center", gap: 5 },
-  dotG: { width: 8, height: 8, borderRadius: "50%", background: "#16a34a", display: "inline-block" },
-  dotA: { width: 8, height: 8, borderRadius: "50%", background: "#d97706", display: "inline-block" },
-  dotB: { width: 8, height: 8, borderRadius: "50%", background: "#2563eb", display: "inline-block" },
-  dateBlock: { marginBottom: 24 },
-  dateHeader: { fontSize: 15, fontWeight: 700, color: "#1e3a5f", padding: "6px 12px", background: "#dbeafe", borderRadius: 6, marginBottom: 8, borderLeft: "4px solid #1d4ed8" },
-  shiftBlock: { marginBottom: 14 },
-  shiftHeader: { fontSize: 12, fontWeight: 600, color: "#1e40af", background: "#eff6ff", padding: "4px 10px", borderRadius: 4, marginBottom: 5, display: "inline-block", border: "1px solid #bfdbfe" },
-  tableWrap: { overflowX: "auto", border: "1px solid #e5e7eb", borderRadius: 6 },
-  table: { width: "100%", borderCollapse: "collapse", fontSize: 12 },
-  thead: { background: "#1e293b" },
-  th: { padding: "7px 10px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#f8fafc", borderBottom: "1px solid #334155", whiteSpace: "nowrap" },
-  td: { padding: "6px 10px", borderBottom: "1px solid #f1f5f9", fontSize: 12, verticalAlign: "middle" },
-  lateRow: { background: "#fff7f7" },
-  tfootRow: { background: "#f8f9fa", borderTop: "1px solid #e5e7eb" },
-  emptyBox: { padding: 40, textAlign: "center", color: "#9ca3af", fontSize: 13, background: "#f9fafb", borderRadius: 8, border: "1px dashed #e5e7eb", marginTop: 16 },
+  page: { padding: "20px 24px", width: "100%", maxWidth: "100%", boxSizing: "border-box", fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' },
+  title: { fontSize: 24, fontWeight: 700, color: "#0f172a", margin: 0 },
+  subtitle: { fontSize: 14, color: "#64748b", margin: "4px 0 0" },
+  filterBar: { display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", padding: "16px 20px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0", margin: "18px 0 16px", boxShadow: "0 1px 2px rgba(0,0,0,0.04)", width: "100%", boxSizing: "border-box" },
+  label: { fontSize: 12, fontWeight: 600, color: "#475569" },
+  select: { padding: "8px 12px", fontSize: 13, border: "1px solid #cbd5e1", borderRadius: 6, minWidth: 170, background: "#fff", color: "#1e293b", height: 38, boxSizing: "border-box" },
+  input: { padding: "7px 12px", fontSize: 13, border: "1px solid #cbd5e1", borderRadius: 6, color: "#1e293b", height: 38, boxSizing: "border-box" },
+  btnPrimary: { padding: "8px 20px", fontSize: 13, fontWeight: 600, background: "#2563eb", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", alignSelf: "flex-end", height: 38 },
+  btnGreen: { padding: "8px 16px", fontSize: 13, fontWeight: 600, background: "#16a34a", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", alignSelf: "flex-end", height: 38 },
+  btnRed: { padding: "8px 16px", fontSize: 13, fontWeight: 600, background: "#dc2626", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", alignSelf: "flex-end", height: 38 },
+  errorBox: { padding: "12px 16px", background: "#fee2e2", color: "#991b1b", borderRadius: 8, marginBottom: 14, fontSize: 13, border: "1px solid #fca5a5" },
+  legend: { display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap", fontSize: 13, color: "#475569", marginBottom: 16, padding: "10px 16px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0", width: "100%", boxSizing: "border-box" },
+  li: { display: "flex", alignItems: "center", gap: 6 },
+  dotG: { width: 10, height: 10, borderRadius: "50%", background: "#16a34a", display: "inline-block" },
+  dotA: { width: 10, height: 10, borderRadius: "50%", background: "#d97706", display: "inline-block" },
+  dotB: { width: 10, height: 10, borderRadius: "50%", background: "#2563eb", display: "inline-block" },
+  dateBlock: { marginBottom: 24, background: "#fff", borderRadius: 10, border: "1px solid #e2e8f0", padding: "16px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", width: "100%", boxSizing: "border-box" },
+  dateHeader: { fontSize: 15, fontWeight: 700, color: "#1e40af", padding: "8px 16px", background: "#eff6ff", borderRadius: 8, marginBottom: 14, borderLeft: "4px solid #2563eb", display: "inline-block" },
+  shiftBlock: { marginBottom: 16 },
+  shiftHeader: { fontSize: 13, fontWeight: 700, color: "#1d4ed8", background: "#dbeafe", padding: "5px 14px", borderRadius: 6, marginBottom: 10, display: "inline-block", border: "1px solid #bfdbfe" },
+  tableWrap: { overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 8, boxShadow: "0 1px 2px rgba(0,0,0,0.03)" },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: 14 },
+  thead: { background: "#0f172a" },
+  th: { padding: "11px 12px", textAlign: "left", fontSize: 12.5, fontWeight: 700, color: "#f8fafc", borderBottom: "1px solid #1e293b", letterSpacing: "0.02em" },
+  td: { padding: "10px 12px", borderBottom: "1px solid #f1f5f9", fontSize: 14, verticalAlign: "middle" },
+  oddRow: { background: "#ffffff" },
+  evenRow: { background: "#f8fafc" },
+  lateRow: { background: "#fff5f5" },
+  tfootRow: { background: "#f1f5f9", borderTop: "2px solid #cbd5e1" },
+  emptyBox: { padding: 48, textAlign: "center", color: "#64748b", fontSize: 14, background: "#f8fafc", borderRadius: 10, border: "1px dashed #cbd5e1", marginTop: 20 },
 };

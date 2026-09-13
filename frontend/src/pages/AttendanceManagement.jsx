@@ -418,6 +418,103 @@ const RegenerateModal = ({ companyId, onClose }) => {
 };
 
 // ─────────────────────────────────────────────────────────────
+// CATEGORY MULTI-SELECT COMPONENT
+// ─────────────────────────────────────────────────────────────
+const CategoryMultiSelect = ({ categories, selected, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const toggle = (id) => {
+    const sid = String(id);
+    onChange(
+      selected.includes(sid)
+        ? selected.filter((s) => s !== sid)
+        : [...selected, sid]
+    );
+  };
+
+  const toggleAll = () => {
+    if (selected.length === categories.length) {
+      onChange([]);
+    } else {
+      onChange(categories.map((c) => String(c.id)));
+    }
+  };
+
+  const displayText = () => {
+    if (!selected.length) return "All Categories";
+    if (selected.length === 1) {
+      const found = categories.find((c) => String(c.id) === selected[0]);
+      return found ? found.categoryName : "1 selected";
+    }
+    return `${selected.length} selected`;
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <label className="block text-xs font-medium text-gray-600 mb-1.5">
+        Category
+      </label>
+      <div
+        onClick={() => setOpen(!open)}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white cursor-pointer flex justify-between items-center select-none hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[38px]"
+      >
+        <span className="truncate text-gray-800">{displayText()}</span>
+        <span className="text-gray-400 text-xs ml-1">{open ? "▲" : "▼"}</span>
+      </div>
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-56 overflow-y-auto">
+          <div
+            onClick={toggleAll}
+            className="flex items-center px-3 py-2 cursor-pointer border-b border-gray-100 hover:bg-gray-50 bg-gray-50/50"
+          >
+            <input
+              type="checkbox"
+              readOnly
+              checked={selected.length === categories.length && categories.length > 0}
+              className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-xs font-semibold text-gray-700">Select All</span>
+          </div>
+          {categories.map((cat) => {
+            const id = String(cat.id);
+            const isChecked = selected.includes(id);
+            return (
+              <div
+                key={id}
+                onClick={() => toggle(id)}
+                className="flex items-center px-3 py-2 cursor-pointer hover:bg-gray-50"
+              >
+                <input
+                  type="checkbox"
+                  readOnly
+                  checked={isChecked}
+                  className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-xs text-gray-700">{cat.categoryName}</span>
+              </div>
+            );
+          })}
+          {!categories.length && (
+            <div className="p-3 text-xs text-gray-400 text-center">No categories</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────
 const AttendanceManagement = ({ companyId: propCompanyId }) => {
@@ -426,6 +523,7 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
   // Common
   const [companies, setCompanies] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState(
     propCompanyId || "",
@@ -440,6 +538,7 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
   const [endDate, setEndDate] = useState(new Date());
   const [selEmployee, setSelEmployee] = useState("");
   const [selDepartment, setSelDepartment] = useState("");
+  const [selCategories, setSelCategories] = useState([]);
   const [selStatus, setSelStatus] = useState("");
   const [empSearch, setEmpSearch] = useState("");
   const [shiftTypes, setShiftTypes] = useState([]);
@@ -476,8 +575,10 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
     if (selectedCompanyId) {
       fetchEmployees();
       fetchDepartments();
+      fetchCategories();
       fetchShiftTypes();
       setSelShift("");
+      setSelCategories([]);
     }
   }, [selectedCompanyId]);
 
@@ -488,6 +589,8 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
     startDate,
     endDate,
     selEmployee,
+    selDepartment,
+    selCategories,
     selShift,
     selStatus,
     empSearch,
@@ -534,6 +637,17 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
     }
   };
 
+  const fetchCategories = async () => {
+    try {
+      const { data } = await API.get("/categories", {
+        params: { companyId: selectedCompanyId },
+      });
+      setCategories(Array.isArray(data) ? data : data.data || []);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const fetchEmployees = async () => {
     try {
       const { data } = await API.get("/employees", {
@@ -570,6 +684,8 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
           page,
           limit: 50,
           ...(selEmployee && { employeeId: selEmployee }),
+          ...(selDepartment && { departmentId: selDepartment }),
+          ...(selCategories.length > 0 && { categoryIds: selCategories.join(",") }),
           ...(selShift && { shiftName: selShift }),
           ...(selStatus && { status: selStatus }),
           ...(empSearch && { search: empSearch }),
@@ -912,6 +1028,11 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
     )
     .filter(
       (e) =>
+        !selCategories.length ||
+        selCategories.includes(String(e.categoryId)),
+    )
+    .filter(
+      (e) =>
         !empSearch ||
         e.firstName
           .toLowerCase()
@@ -1065,7 +1186,7 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
 
             {/* Filters */}
             <div className="bg-white rounded-lg shadow p-5 mb-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1.5">
                     Department
@@ -1086,6 +1207,17 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
                       </option>
                     ))}
                   </select>
+                </div>
+                <div>
+                  <CategoryMultiSelect
+                    categories={categories}
+                    selected={selCategories}
+                    onChange={(v) => {
+                      setSelCategories(v);
+                      setSelEmployee("");
+                      setPage(1);
+                    }}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1.5">

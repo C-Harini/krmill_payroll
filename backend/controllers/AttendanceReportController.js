@@ -20,6 +20,8 @@ const parseIds = (val) => {
 //   startDate       (required)  YYYY-MM-DD
 //   endDate         (required)  YYYY-MM-DD
 //   departmentIds   (optional)  comma-separated ids
+//   categoryIds     (optional)  comma-separated ids
+//   categoryId      (optional)  single category id
 //   employeeIds     (optional)  comma-separated ids
 //   employmentTypeIds (optional) comma-separated ids
 //   gradeIds        (optional)  comma-separated ids
@@ -30,6 +32,8 @@ exports.getAttendanceReport = async (req, res) => {
     startDate,
     endDate,
     departmentIds,
+    categoryIds,
+    categoryId,
     employeeIds,
     employmentTypeIds,
     gradeIds,
@@ -47,11 +51,13 @@ exports.getAttendanceReport = async (req, res) => {
     const employeeWhere = { companyId };
 
     const deptIdList      = parseIds(departmentIds);
+    const catIdList       = parseIds(categoryIds || categoryId);
     const empIdList       = parseIds(employeeIds);
     const empTypeIdList   = parseIds(employmentTypeIds);
     const gradeIdList     = parseIds(gradeIds);
 
     if (deptIdList)    employeeWhere.departmentId      = { [Op.in]: deptIdList };
+    if (catIdList)     employeeWhere.categoryId        = { [Op.in]: catIdList };
     if (empTypeIdList) employeeWhere.employmentTypeId  = { [Op.in]: empTypeIdList };
     if (gradeIdList)   employeeWhere.gradeId           = { [Op.in]: gradeIdList };
 
@@ -77,13 +83,18 @@ exports.getAttendanceReport = async (req, res) => {
           where: employeeWhere,
           attributes: [
             "id", "firstName", "lastName", "employeeCode",
-            "departmentId", "employmentTypeId", "gradeId",
+            "departmentId", "employmentTypeId", "gradeId", "categoryId",
           ],
           include: [
             {
               model: db.Department,
               as: "department",
               attributes: ["id", "departmentname"],
+            },
+            {
+              model: db.Category,
+              as: "category",
+              attributes: ["id", "categoryName", "categoryCode"],
             },
             {
               model: db.EmploymentType,

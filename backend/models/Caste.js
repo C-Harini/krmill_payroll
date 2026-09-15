@@ -21,6 +21,7 @@ module.exports = (sequelize, DataTypes) => {
             communityCategory: {
                 type: DataTypes.ENUM('General', 'BC', 'OBC', 'MBC', 'SC', 'ST', 'OC'),
                 allowNull: true,
+                defaultValue: null,
             },
             casteName: {
                 type: DataTypes.STRING(100),
@@ -33,9 +34,7 @@ module.exports = (sequelize, DataTypes) => {
             casteCode: {
                 type: DataTypes.STRING(20),
                 allowNull: true,
-                validate: {
-                    notEmpty: { msg: 'Caste code cannot be empty' },
-                },
+                defaultValue: null,
             },
             description: {
                 type: DataTypes.TEXT,

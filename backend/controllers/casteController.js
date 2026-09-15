@@ -91,9 +91,9 @@ exports.createCaste = async (req, res) => {
         const { companyId, communityCategory, casteName, casteCode, description, status } = req.body;
 
         // ── Required field validation ─────────────────────────────────────
-        if (!companyId || !communityCategory || !casteName || !casteCode) {
+        if (!companyId || !communityCategory || !casteName ){
             return res.status(400).json({
-                message: 'Missing required fields: companyId, communityCategory, casteName, casteCode',
+                message: 'Missing required fields: companyId, communityCategory, casteName',
             });
         }
 

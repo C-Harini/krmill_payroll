@@ -154,12 +154,31 @@ const getAdditionalSalary = async (employeeId, companyId, month, year) => {
   }
 };
 
+// ── Week Off helpers ───────────────────────────────────────────────
+const getWeekOffDaysList = (weeklyOffString) => {
+  if (!weeklyOffString) return ["sunday"];
+  const s = String(weeklyOffString).trim().toLowerCase();
+  if (s === "-" || s === "no weekly" || s === "none" || s === "no_weekly") return [];
+  return s
+    .split(",")
+    .map((d) => d.trim().toLowerCase())
+    .filter(Boolean);
+};
+
+const isEmployeeWeekOffDate = (dateMoment, offDaysList, isWeekOffFlag = false) => {
+  if (isWeekOffFlag) return true;
+  if (!offDaysList || offDaysList.length === 0) return false;
+  const dayName = dateMoment.format("dddd").toLowerCase();
+  return offDaysList.includes(dayName);
+};
+
 // ── Attendance metrics ─────────────────────────────────────────────
 const getAttendanceMetrics = async (
   employeeId,
   startDate,
   endDate,
   holidayMap = new Map(),
+  empWeeklyOff = "Sunday",
 ) => {
   const [attendance, leaveRequests] = await Promise.all([
     Attendance.findAll({
@@ -195,6 +214,7 @@ const getAttendanceMetrics = async (
     absentDays = 0,
     holidayDays = 0;
   let weekOffDays = 0,
+    weekOffWorkedDays = 0,
     nhFhDays = 0,
     paidLeaveDays = 0,
     unpaidLeaveDays = 0;
@@ -203,30 +223,43 @@ const getAttendanceMetrics = async (
     earlyExitCount = 0;
   let remainingPermHrs = MONTHLY_PERMISSION_HRS;
 
+  const offDaysList = getWeekOffDaysList(empWeeklyOff);
+
   const cur = moment(startDate);
   while (cur.isSameOrBefore(endDate)) {
-    if (cur.day() === 0) weekOffDays++;
+    const dayName = cur.format("dddd").toLowerCase();
+    if (offDaysList.includes(dayName)) weekOffDays++;
     cur.add(1, "day");
   }
 
   attendance.forEach((rec) => {
     let isPresent = false;
+    let daysWorked = 0;
     const ds = moment(rec.attendanceDate).format("YYYY-MM-DD");
     const hType = holidayMap.get(ds);
+    const isWO = isEmployeeWeekOffDate(
+      moment(rec.attendanceDate),
+      offDaysList,
+      rec.isWeekOff === true || rec.status === "Week Off",
+    );
 
     switch (rec.status) {
       case "Present":
         presentDays += 1;
+        daysWorked = 1;
         isPresent = true;
         break;
       case "Half Day":
       case "Present/Leave (P/L)":
+      case "Present/Leave":
         presentDays += 0.5;
+        daysWorked = 0.5;
         isPresent = true;
         break;
       case "Present with Permission":
       case "Late Present":
         presentDays += 1;
+        daysWorked = 1;
         isPresent = true;
         break;
       case "Absent":
@@ -239,13 +272,16 @@ const getAttendanceMetrics = async (
         } else paidLeaveDays++;
         break;
       case "Week Off":
-        if (moment(rec.attendanceDate).day() !== 0) weekOffDays += 1;
+        if (!offDaysList.includes(moment(rec.attendanceDate).format("dddd").toLowerCase())) {
+          weekOffDays += 1;
+        }
         break;
       case "Holiday":
         holidayDays += 1;
         if (hType === "NH" || hType === "FH") {
           nhFhDays++;
           presentDays++;
+          daysWorked = 1;
           isPresent = true;
         }
         break;
@@ -254,10 +290,15 @@ const getAttendanceMetrics = async (
         nhFhDays++;
         holidayDays++;
         presentDays++;
+        daysWorked = 1;
         isPresent = true;
         break;
       default:
         break;
+    }
+
+    if (isWO && daysWorked > 0) {
+      weekOffWorkedDays += daysWorked;
     }
 
     if (rec.isLate && toNum(rec.lateByMinutes) > 0) {
@@ -266,12 +307,20 @@ const getAttendanceMetrics = async (
       if (remainingPermHrs > 0) {
         remainingPermHrs -= hrsLate;
         if (remainingPermHrs < 0 && isPresent) {
+          const ded = (rec.status === "Half Day" || rec.status === "Present/Leave (P/L)" || rec.status === "Present/Leave") ? 0.5 : 1;
           absentDays++;
-          presentDays -= (rec.status === "Half Day" || rec.status === "Present/Leave (P/L)" || rec.status === "Present/Leave") ? 0.5 : 1;
+          presentDays -= ded;
+          if (isWO && daysWorked > 0) {
+            weekOffWorkedDays = Math.max(0, weekOffWorkedDays - ded);
+          }
         }
       } else if (isPresent) {
+        const ded = (rec.status === "Half Day" || rec.status === "Present/Leave (P/L)" || rec.status === "Present/Leave") ? 0.5 : 1;
         absentDays++;
-        presentDays -= (rec.status === "Half Day" || rec.status === "Present/Leave (P/L)" || rec.status === "Present/Leave") ? 0.5 : 1;
+        presentDays -= ded;
+        if (isWO && daysWorked > 0) {
+          weekOffWorkedDays = Math.max(0, weekOffWorkedDays - ded);
+        }
       }
     }
     if (rec.isEarlyExit) earlyExitCount++;
@@ -285,6 +334,7 @@ const getAttendanceMetrics = async (
     unpaidLeaveDays: Math.max(0, unpaidLeaveDays),
     holidayDays,
     weekOffDays,
+    weekOffWorkedDays: Math.max(0, weekOffWorkedDays),
     nhFhDays,
     overtimeHours,
     lateCount,
@@ -561,7 +611,10 @@ const calcWorkerDailyPF = ({
       salaryMaster.monthlySalary ||
       salaryMaster.grossSalary,
   );
-  const workedDays = att.presentDays + att.paidLeaveDays;
+  const totalWorkedDays = att.presentDays + att.paidLeaveDays;
+  const weekOffWorkedDays = toNum(att.weekOffWorkedDays);
+  const regularWorkedDays = Math.max(0, totalWorkedDays - weekOffWorkedDays);
+
   const comps = salaryMaster.EmployeeSalaryComponents || [];
   let convFixed = 0,
     hraFixed = 0;
@@ -570,14 +623,17 @@ const calcWorkerDailyPF = ({
     if (isConv(c)) convFixed = toNum(comp.calculatedAmount);
     if (isHra(c)) hraFixed = toNum(comp.calculatedAmount);
   });
-  const basicEarned = Math.round(wagesPerDay * 0.6 * workedDays);
-  const splEarned = Math.round(wagesPerDay * 0.4 * workedDays);
+  const basicEarned = Math.round(wagesPerDay * 0.6 * regularWorkedDays);
+  const splEarned = Math.round(wagesPerDay * 0.4 * regularWorkedDays);
+  const weekOffWage = Math.round(wagesPerDay * weekOffWorkedDays);
+  const convEarned = convFixed + weekOffWage;
+
   const shiftNh = gradeName.toUpperCase().includes("MIX");
   const nhFhWages = shiftNh ? 0 : Math.round(wagesPerDay * 2 * att.nhFhDays);
   const grossEarned =
     basicEarned +
     splEarned +
-    convFixed +
+    convEarned +
     hraFixed +
     nhFhWages +
     attnIncentive +
@@ -594,7 +650,7 @@ const calcWorkerDailyPF = ({
       calculatedAmount: basicEarned,
       isProrated: true,
       proratedAmount: basicEarned,
-      formula: `${(wagesPerDay * 0.6).toFixed(2)} × ${workedDays}d`,
+      formula: `${(wagesPerDay * 0.6).toFixed(2)} × ${regularWorkedDays}d`,
     },
     {
       componentId: null,
@@ -605,7 +661,7 @@ const calcWorkerDailyPF = ({
       calculatedAmount: splEarned,
       isProrated: true,
       proratedAmount: splEarned,
-      formula: `${(wagesPerDay * 0.4).toFixed(2)} × ${workedDays}d`,
+      formula: `${(wagesPerDay * 0.4).toFixed(2)} × ${regularWorkedDays}d`,
     },
   ];
   if (hraFixed > 0)
@@ -620,18 +676,26 @@ const calcWorkerDailyPF = ({
       proratedAmount: hraFixed,
       formula: "Fixed monthly",
     });
-  if (convFixed > 0)
+  if (convEarned > 0) {
+    let convFormula = "Fixed monthly";
+    if (weekOffWorkedDays > 0) {
+      convFormula =
+        convFixed > 0
+          ? `Fixed ₹${convFixed} + (${wagesPerDay} × ${weekOffWorkedDays}d WO)`
+          : `${wagesPerDay} × ${weekOffWorkedDays}d WO`;
+    }
     components.push({
       componentId: null,
       componentName: "Conveyance",
       componentType: "Earning",
-      calculationType: "Fixed",
-      baseAmount: convFixed,
-      calculatedAmount: convFixed,
+      calculationType: weekOffWorkedDays > 0 ? "PerDay" : "Fixed",
+      baseAmount: convEarned,
+      calculatedAmount: convEarned,
       isProrated: false,
-      proratedAmount: convFixed,
-      formula: "Fixed monthly",
+      proratedAmount: convEarned,
+      formula: convFormula,
     });
+  }
   if (nhFhWages > 0)
     components.push({
       componentId: null,
@@ -658,7 +722,7 @@ const calcWorkerDailyPF = ({
     });
   components.push(...additionalSalary.components);
   console.log(
-    `[WorkerDailyPF] wpd=₹${wagesPerDay} wd=${workedDays} basic=₹${basicEarned} spl=₹${splEarned} gross=₹${grossEarned} pf=₹${pfAmount} esi=₹${esiAmount}`,
+    `[WorkerDailyPF] wpd=₹${wagesPerDay} regDays=${regularWorkedDays} woDays=${weekOffWorkedDays} basic=₹${basicEarned} spl=₹${splEarned} conv=₹${convEarned} gross=₹${grossEarned} pf=₹${pfAmount} esi=₹${esiAmount}`,
   );
   return {
     basicSalary: basicEarned,
@@ -670,7 +734,7 @@ const calcWorkerDailyPF = ({
     leaveDeduction: 0,
     attnIncentive,
     components,
-    workedDays,
+    workedDays: totalWorkedDays,
     perDay: null,
   };
 };
@@ -686,7 +750,10 @@ const calcWorkerDailyNPF = ({
       salaryMaster.monthlySalary ||
       salaryMaster.grossSalary,
   );
-  const workedDays = att.presentDays + att.paidLeaveDays;
+  const totalWorkedDays = att.presentDays + att.paidLeaveDays;
+  const weekOffWorkedDays = toNum(att.weekOffWorkedDays);
+  const regularWorkedDays = Math.max(0, totalWorkedDays - weekOffWorkedDays);
+
   const comps = salaryMaster.EmployeeSalaryComponents || [];
   let convFixed = 0,
     hraFixed = 0;
@@ -695,9 +762,12 @@ const calcWorkerDailyNPF = ({
     if (isConv(c)) convFixed = toNum(comp.calculatedAmount);
     if (isHra(c)) hraFixed = toNum(comp.calculatedAmount);
   });
-  const basicEarned = Math.round(wagesPerDay * workedDays);
+  const basicEarned = Math.round(wagesPerDay * regularWorkedDays);
+  const weekOffWage = Math.round(wagesPerDay * weekOffWorkedDays);
+  const convEarned = convFixed + weekOffWage;
+
   const grossEarned =
-    basicEarned + convFixed + hraFixed + attnIncentive + additionalSalary.total;
+    basicEarned + convEarned + hraFixed + attnIncentive + additionalSalary.total;
   const components = [
     {
       componentId: null,
@@ -708,7 +778,7 @@ const calcWorkerDailyNPF = ({
       calculatedAmount: basicEarned,
       isProrated: true,
       proratedAmount: basicEarned,
-      formula: `${wagesPerDay} × ${workedDays}d`,
+      formula: `${wagesPerDay} × ${regularWorkedDays}d`,
     },
   ];
   if (hraFixed > 0)
@@ -723,18 +793,26 @@ const calcWorkerDailyNPF = ({
       proratedAmount: hraFixed,
       formula: "Fixed monthly",
     });
-  if (convFixed > 0)
+  if (convEarned > 0) {
+    let convFormula = "Fixed monthly";
+    if (weekOffWorkedDays > 0) {
+      convFormula =
+        convFixed > 0
+          ? `Fixed ₹${convFixed} + (${wagesPerDay} × ${weekOffWorkedDays}d WO)`
+          : `${wagesPerDay} × ${weekOffWorkedDays}d WO`;
+    }
     components.push({
       componentId: null,
       componentName: "Conveyance",
       componentType: "Earning",
-      calculationType: "Fixed",
-      baseAmount: convFixed,
-      calculatedAmount: convFixed,
+      calculationType: weekOffWorkedDays > 0 ? "PerDay" : "Fixed",
+      baseAmount: convEarned,
+      calculatedAmount: convEarned,
       isProrated: false,
-      proratedAmount: convFixed,
-      formula: "Fixed monthly",
+      proratedAmount: convEarned,
+      formula: convFormula,
     });
+  }
   if (attnIncentive > 0)
     components.push({
       componentId: null,
@@ -749,7 +827,7 @@ const calcWorkerDailyNPF = ({
     });
   components.push(...additionalSalary.components);
   console.log(
-    `[WorkerDailyNPF] wpd=₹${wagesPerDay} wd=${workedDays} basic=₹${basicEarned} gross=₹${grossEarned}`,
+    `[WorkerDailyNPF] wpd=₹${wagesPerDay} regDays=${regularWorkedDays} woDays=${weekOffWorkedDays} basic=₹${basicEarned} conv=₹${convEarned} gross=₹${grossEarned}`,
   );
   return {
     basicSalary: basicEarned,
@@ -761,7 +839,7 @@ const calcWorkerDailyNPF = ({
     leaveDeduction: 0,
     attnIncentive,
     components,
-    workedDays,
+    workedDays: totalWorkedDays,
     perDay: null,
   };
 };
@@ -775,99 +853,32 @@ const calcWorkerMonthlyPF = ({
   month,
 }) => {
   const totalDays = daysInMonth(year, month);
-  const paidDays = att.presentDays + att.weekOffDays;
+  const weekOffWorkedDays = toNum(att.weekOffWorkedDays);
+  const regularPresentDays = Math.max(0, att.presentDays - weekOffWorkedDays);
+  const paidDays = regularPresentDays + att.weekOffDays;
   const factor = totalDays > 0 ? paidDays / totalDays : 0;
   const wagesPerDay = toNum(
     salaryMaster.wagesPerDay ||
       salaryMaster.monthlySalary ||
       salaryMaster.grossSalary,
   );
+  const dailyRate = totalDays > 0 ? wagesPerDay / totalDays : 0;
   const wagesEarned = Math.round((wagesPerDay * paidDays) / totalDays);
+  const weekOffWage = Math.round(dailyRate * weekOffWorkedDays);
+
   const comps = salaryMaster.EmployeeSalaryComponents || [];
   const results = [];
   let basicFull = 0,
-    splFull = 0;
+    splFull = 0,
+    convFixed = 0;
   comps.forEach((comp) => {
     const code = getCode(comp);
     const fullAmt = toNum(comp.calculatedAmount);
     if (isBasic(code)) basicFull = fullAmt;
     if (isSpl(code)) splFull = fullAmt;
-    const earned = Math.round(fullAmt * factor);
-    results.push({
-      componentId: comp.componentId ?? comp.SalaryComponent?.id ?? null,
-      componentName:
-        comp.SalaryComponent?.name ||
-        comp.componentName ||
-        comp.componentCode ||
-        "",
-      componentType: comp.componentType || "Earning",
-      calculationType: "Monthly",
-      baseAmount: fullAmt,
-      calculatedAmount: earned,
-      isProrated: true,
-      proratedAmount: earned,
-      formula: `${fullAmt} × ${paidDays}/${totalDays}`,
-    });
-  });
-  const basicEarned = Math.round(basicFull * factor);
-  const splEarned = Math.round(splFull * factor);
-  const grossEarned = wagesEarned + attnIncentive + additionalSalary.total;
-  const pfAmount = calcPf(basicEarned, true);
-  const esiAmount = calcEsi(basicEarned, splEarned, true);
-  if (attnIncentive > 0)
-    results.push({
-      componentId: null,
-      componentName: "Attn Incentive",
-      componentType: "Earning",
-      calculationType: "Incentive",
-      baseAmount: attnIncentive,
-      calculatedAmount: attnIncentive,
-      isProrated: false,
-      proratedAmount: attnIncentive,
-      formula: null,
-    });
-  results.push(...additionalSalary.components);
-  console.log(
-    `[WorkerMonthlyPF] wpd=₹${wagesPerDay} paid=${paidDays}/${totalDays} earn=₹${wagesEarned} basic=₹${basicEarned} pf=₹${pfAmount} esi=₹${esiAmount}`,
-  );
-  return {
-    basicSalary: basicEarned,
-    splAllowance: splEarned,
-    grossEarned,
-    pfAmount,
-    esiAmount,
-    absentDeduction: 0,
-    leaveDeduction: 0,
-    attnIncentive,
-    components: results,
-    paidDays,
-    perDay: wagesPerDay / totalDays,
-  };
-};
-
-const calcWorkerMonthlyNPF = ({
-  salaryMaster,
-  att,
-  attnIncentive,
-  additionalSalary,
-  year,
-  month,
-}) => {
-  const totalDays = daysInMonth(year, month);
-  const paidDays = att.presentDays + att.weekOffDays;
-  const wagesPerDay = toNum(
-    salaryMaster.wagesPerDay ||
-      salaryMaster.monthlySalary ||
-      salaryMaster.grossSalary,
-  );
-  const wagesEarned = Math.round((wagesPerDay * paidDays) / totalDays);
-  const grossEarned = wagesEarned + attnIncentive + additionalSalary.total;
-  const comps = salaryMaster.EmployeeSalaryComponents || [];
-  const results = [];
-  if (comps.length > 0) {
-    const factor = totalDays > 0 ? paidDays / totalDays : 0;
-    comps.forEach((comp) => {
-      const fullAmt = toNum(comp.calculatedAmount);
+    if (isConv(code)) {
+      convFixed = fullAmt;
+    } else {
       const earned = Math.round(fullAmt * factor);
       results.push({
         componentId: comp.componentId ?? comp.SalaryComponent?.id ?? null,
@@ -884,6 +895,116 @@ const calcWorkerMonthlyNPF = ({
         proratedAmount: earned,
         formula: `${fullAmt} × ${paidDays}/${totalDays}`,
       });
+    }
+  });
+
+  const convEarned = Math.round(convFixed * factor) + weekOffWage;
+  if (convEarned > 0) {
+    let convFormula = `${convFixed} × ${paidDays}/${totalDays}`;
+    if (weekOffWorkedDays > 0) {
+      convFormula =
+        convFixed > 0
+          ? `${convFixed} × ${paidDays}/${totalDays} + ${dailyRate.toFixed(2)} × ${weekOffWorkedDays}d WO`
+          : `${dailyRate.toFixed(2)} × ${weekOffWorkedDays}d WO`;
+    }
+    results.push({
+      componentId: null,
+      componentName: "Conveyance",
+      componentType: "Earning",
+      calculationType: weekOffWorkedDays > 0 ? "PerDay" : "Monthly",
+      baseAmount: convEarned,
+      calculatedAmount: convEarned,
+      isProrated: false,
+      proratedAmount: convEarned,
+      formula: convFormula,
+    });
+  }
+
+  const basicEarned = Math.round(basicFull * factor);
+  const splEarned = Math.round(splFull * factor);
+  const grossEarned = wagesEarned + convEarned + attnIncentive + additionalSalary.total;
+  const pfAmount = calcPf(basicEarned, true);
+  const esiAmount = calcEsi(basicEarned, splEarned, true);
+  if (attnIncentive > 0)
+    results.push({
+      componentId: null,
+      componentName: "Attn Incentive",
+      componentType: "Earning",
+      calculationType: "Incentive",
+      baseAmount: attnIncentive,
+      calculatedAmount: attnIncentive,
+      isProrated: false,
+      proratedAmount: attnIncentive,
+      formula: null,
+    });
+  results.push(...additionalSalary.components);
+  console.log(
+    `[WorkerMonthlyPF] wpd=₹${wagesPerDay} paid=${paidDays}/${totalDays} woDays=${weekOffWorkedDays} earn=₹${wagesEarned} basic=₹${basicEarned} conv=₹${convEarned} pf=₹${pfAmount} esi=₹${esiAmount}`,
+  );
+  return {
+    basicSalary: basicEarned,
+    splAllowance: splEarned,
+    grossEarned,
+    pfAmount,
+    esiAmount,
+    absentDeduction: 0,
+    leaveDeduction: 0,
+    attnIncentive,
+    components: results,
+    paidDays: paidDays + weekOffWorkedDays,
+    perDay: wagesPerDay / totalDays,
+  };
+};
+
+const calcWorkerMonthlyNPF = ({
+  salaryMaster,
+  att,
+  attnIncentive,
+  additionalSalary,
+  year,
+  month,
+}) => {
+  const totalDays = daysInMonth(year, month);
+  const weekOffWorkedDays = toNum(att.weekOffWorkedDays);
+  const regularPresentDays = Math.max(0, att.presentDays - weekOffWorkedDays);
+  const paidDays = regularPresentDays + att.weekOffDays;
+  const wagesPerDay = toNum(
+    salaryMaster.wagesPerDay ||
+      salaryMaster.monthlySalary ||
+      salaryMaster.grossSalary,
+  );
+  const dailyRate = totalDays > 0 ? wagesPerDay / totalDays : 0;
+  const wagesEarned = Math.round((wagesPerDay * paidDays) / totalDays);
+  const weekOffWage = Math.round(dailyRate * weekOffWorkedDays);
+  const grossEarned = wagesEarned + attnIncentive + additionalSalary.total;
+  const comps = salaryMaster.EmployeeSalaryComponents || [];
+  const results = [];
+  let convFixed = 0;
+  if (comps.length > 0) {
+    const factor = totalDays > 0 ? paidDays / totalDays : 0;
+    comps.forEach((comp) => {
+      const code = getCode(comp);
+      const fullAmt = toNum(comp.calculatedAmount);
+      if (isConv(code)) {
+        convFixed = fullAmt;
+      } else {
+        const earned = Math.round(fullAmt * factor);
+        results.push({
+          componentId: comp.componentId ?? comp.SalaryComponent?.id ?? null,
+          componentName:
+            comp.SalaryComponent?.name ||
+            comp.componentName ||
+            comp.componentCode ||
+            "",
+          componentType: comp.componentType || "Earning",
+          calculationType: "Monthly",
+          baseAmount: fullAmt,
+          calculatedAmount: earned,
+          isProrated: true,
+          proratedAmount: earned,
+          formula: `${fullAmt} × ${paidDays}/${totalDays}`,
+        });
+      }
     });
   } else {
     results.push({
@@ -1119,9 +1240,10 @@ async function generateForMonth({
         payPeriodStart,
         payPeriodEnd,
         holidayMap,
+        emp.weeklyOff,
       );
       console.log(
-        `  att: present=${att.presentDays} paid_leave=${att.paidLeaveDays} absent=${att.absentDays} weekoff=${att.weekOffDays} nhfh=${att.nhFhDays}`,
+        `  att: present=${att.presentDays} paid_leave=${att.paidLeaveDays} absent=${att.absentDays} weekoff=${att.weekOffDays} weekoff_worked=${att.weekOffWorkedDays} nhfh=${att.nhFhDays}`,
       );
 
       const [attnIncentive, loanEmi, misc, additionalSalary] =

@@ -498,7 +498,7 @@ exports.getAttendance = async (req, res) => {
               attributes: ["id", "departmentname"],
             },
             {
-              model: db.Category,
+              model: Category,
               as: "category",
               attributes: ["id", "categoryName", "categoryCode"],
             },
@@ -1201,6 +1201,8 @@ exports.saveMultipleEntryAttendance = async (req, res) => {
 
 exports.deleteMultipleEntryAttendance = async (req, res) => {
   const { ids, companyId, attendanceDate, employeeIds } = req.body;
+  const { sequelize } = require("../models");
+  let transaction;
 
   try {
     const dateStr = attendanceDate ? moment(attendanceDate).format("YYYY-MM-DD") : null;
@@ -1224,6 +1226,8 @@ exports.deleteMultipleEntryAttendance = async (req, res) => {
       }
     }
 
+    transaction = await sequelize.transaction();
+
     if (Array.isArray(ids) && ids.length > 0) {
       const recordsToDelete = await DepartmentAttendance.findAll({
         where: { id: { [Op.in]: ids } },
@@ -1237,19 +1241,6 @@ exports.deleteMultipleEntryAttendance = async (req, res) => {
         where: { id: { [Op.in]: ids } },
         transaction,
       });
-
-      // COMMENTED OUT: HR bulk uploads should NOT delete/modify the master Attendance table.
-      /*
-      if (empIdsToDelete.length > 0) {
-        await Attendance.destroy({
-          where: {
-            employeeId: { [Op.in]: empIdsToDelete },
-            attendanceDate: { [Op.in]: recordDates },
-          },
-          transaction,
-        });
-      }
-      */
     } else if (companyId && dateStr && Array.isArray(employeeIds) && employeeIds.length > 0) {
       await DepartmentAttendance.destroy({
         where: {
@@ -1259,20 +1250,8 @@ exports.deleteMultipleEntryAttendance = async (req, res) => {
         },
         transaction,
       });
-
-      // COMMENTED OUT: HR bulk uploads should NOT delete/modify the master Attendance table.
-      /*
-      await Attendance.destroy({
-        where: {
-          companyId,
-          attendanceDate: dateStr,
-          employeeId: { [Op.in]: employeeIds },
-        },
-        transaction,
-      });
-      */
     } else {
-      await transaction.rollback();
+      if (transaction) await transaction.rollback();
       return res.status(400).json({
         success: false,
         message: "Provide either array of saved entry 'ids' or companyId, attendanceDate, and employeeIds",
@@ -1285,7 +1264,7 @@ exports.deleteMultipleEntryAttendance = async (req, res) => {
       message: "Selected attendance records deleted successfully",
     });
   } catch (err) {
-    await transaction.rollback();
+    if (transaction) await transaction.rollback();
     console.error("[deleteMultipleEntryAttendance]", err);
     return res.status(500).json({ success: false, message: err.message });
   }

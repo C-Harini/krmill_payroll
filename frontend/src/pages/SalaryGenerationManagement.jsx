@@ -825,7 +825,9 @@ const SalaryGenerationManagement = () => {
               onChange={setFilterCategory}
             >
               <option value="">All</option>
-              <option value="staff">Staff</option>
+              <option value="management">Management Staff</option>
+              <option value="staff">Regular Staff</option>
+              <option value="all_staff">All Staff</option>
               <option value="worker">Worker</option>
             </FilterSelect>
             <FilterSelect

@@ -282,6 +282,7 @@ const EmployeeSalaryManagement = () => {
     const [salaryHistory, setSalaryHistory] = useState([]);
     const [bulkUploadFile, setBulkUploadFile] = useState(null);
     const [bulkUploadResults, setBulkUploadResults] = useState(null);
+    const [bulkEffectiveFrom, setBulkEffectiveFrom] = useState('2026-08-01');
 
     const [formData, setFormData] = useState({
         employeeId: '',
@@ -466,11 +467,14 @@ const EmployeeSalaryManagement = () => {
                     salaryComponents.forEach(comp => {
                         if (comp.calculationType === 'Fixed') {
                             const amountKey = `${comp.code}_Amount`;
-                            if (rowData[amountKey] && !isNaN(parseFloat(rowData[amountKey]))) {
+                            const rawVal = rowData[amountKey] !== undefined && rowData[amountKey] !== '' 
+                                ? rowData[amountKey] 
+                                : (rowData[comp.code] !== undefined && rowData[comp.code] !== '' ? rowData[comp.code] : undefined);
+                            if (rawVal !== undefined && !isNaN(parseFloat(rawVal))) {
                                 components.push({
                                     componentId: comp.id,
                                     valueType: 'Fixed',
-                                    fixedAmount: parseFloat(rowData[amountKey])
+                                    fixedAmount: parseFloat(rawVal)
                                 });
                             }
                         } else if (comp.calculationType === 'Percentage') {
@@ -538,7 +542,7 @@ const EmployeeSalaryManagement = () => {
 
                 const payload = {
                     companyId: parseInt(selectedCompanyId),
-                    effectiveFrom: new Date().toISOString().split('T')[0],
+                    effectiveFrom: bulkEffectiveFrom || '2026-08-01',
                     salaryData,
                     createdBy: 1
                 };
@@ -995,6 +999,21 @@ const EmployeeSalaryManagement = () => {
                                 <Download size={16} />
                                 Download CSV Template
                             </button>
+
+                            <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                                    Effective From Date
+                                </label>
+                                <input
+                                    type="date"
+                                    value={bulkEffectiveFrom}
+                                    onChange={(e) => setBulkEffectiveFrom(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium bg-white"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Defaulted to <strong>2026-08-01</strong> so August 2026 payroll can be generated without date errors.
+                                </p>
+                            </div>
 
                             <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center bg-gray-50">
                                 <FileText size={48} className="text-gray-400 mx-auto mb-4" />

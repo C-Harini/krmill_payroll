@@ -62,6 +62,22 @@ const roundTo10 = (n) => Math.round(n / 10) * 10;
 const daysInMonth = (year, month) =>
   moment(`${year}-${String(month).padStart(2, "0")}-01`).daysInMonth();
 
+let cachedMgmtGradeIds = null;
+let lastCacheTime = 0;
+
+const getManagementGradeIds = async () => {
+  const now = Date.now();
+  if (cachedMgmtGradeIds && now - lastCacheTime < 60000) {
+    return cachedMgmtGradeIds;
+  }
+  const allGrades = await EmployerGrade.findAll({ attributes: ["id", "name"] });
+  cachedMgmtGradeIds = allGrades
+    .filter((g) => isManagementGrade(g.name))
+    .map((g) => g.id);
+  lastCacheTime = now;
+  return cachedMgmtGradeIds;
+};
+
 // ── Component code helpers ─────────────────────────────────────────
 const getCode = (comp) =>
   (comp.componentCode || comp.SalaryComponent?.code || "").toUpperCase().trim();
@@ -1604,11 +1620,32 @@ exports.getSalaryGenerations = async (req, res) => {
     }
     if (employeeId) where.employeeId = employeeId;
     if (status) where.status = status;
-    if (category) where.empCategory = category;
-    if (salaryType) where.empSalaryType = salaryType;
-    if (pfType) where.empPfType = pfType;
     const empWhere = {};
     if (departmentId) empWhere.departmentId = departmentId;
+
+    if (category) {
+      const catLower = category.toLowerCase().trim();
+      if (catLower === "management" || catLower === "manager") {
+        const mgmtIds = await getManagementGradeIds();
+        where.empCategory = "staff";
+        empWhere.gradeId = { [Op.in]: mgmtIds };
+      } else if (catLower === "staff" || catLower === "regular_staff") {
+        const mgmtIds = await getManagementGradeIds();
+        where.empCategory = "staff";
+        empWhere.gradeId = {
+          [Op.or]: [{ [Op.notIn]: mgmtIds }, { [Op.is]: null }],
+        };
+      } else if (catLower === "all_staff") {
+        where.empCategory = "staff";
+      } else if (catLower === "worker") {
+        where.empCategory = "worker";
+      } else {
+        where.empCategory = category;
+      }
+    }
+    if (salaryType) where.empSalaryType = salaryType;
+    if (pfType) where.empPfType = pfType;
+
     const salaries = await SalaryGeneration.findAll({
       where,
       include: [
@@ -1621,6 +1658,7 @@ exports.getSalaryGenerations = async (req, res) => {
             "lastName",
             "employeeCode",
             "departmentId",
+            "gradeId",
           ],
           where: Object.keys(empWhere).length ? empWhere : undefined,
           required: !!Object.keys(empWhere).length,

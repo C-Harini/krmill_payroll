@@ -83,9 +83,149 @@ const SALARY_REPORT_TYPES = [
   },
 ];
 
+// ── Quick Report Presets ───────────────────────────────────────
+const REPORT_PRESETS = [
+  { label: "All Employees", category: "", salaryType: "", pfType: "" },
+  {
+    label: "👔 Management Staff",
+    category: "management",
+    salaryType: "monthly",
+    pfType: "",
+  },
+  {
+    label: "📋 Staff Monthly PF",
+    category: "staff",
+    salaryType: "monthly",
+    pfType: "pf",
+  },
+  {
+    label: "📋 Staff Monthly Non-PF",
+    category: "staff",
+    salaryType: "monthly",
+    pfType: "npf",
+  },
+  {
+    label: "⚙️ Worker Daily PF",
+    category: "worker",
+    salaryType: "daily",
+    pfType: "pf",
+  },
+  {
+    label: "⚙️ Worker Daily Non-PF",
+    category: "worker",
+    salaryType: "daily",
+    pfType: "npf",
+  },
+  {
+    label: "🏭 Worker Monthly PF",
+    category: "worker",
+    salaryType: "monthly",
+    pfType: "pf",
+  },
+  {
+    label: "🏭 Worker Monthly Non-PF",
+    category: "worker",
+    salaryType: "monthly",
+    pfType: "npf",
+  },
+];
+
+// ── File naming helper ─────────────────────────────────────────
+const generateReportFileName = (
+  prefix,
+  filters = {},
+  reportType = null,
+  ext = "pdf",
+  departments = [],
+) => {
+  const parts = [prefix];
+  const cat = (filters.category || "").toLowerCase().trim();
+  const sal = (filters.salaryType || "").toLowerCase().trim();
+  const pf = (filters.pfType || "").toLowerCase().trim();
+
+  if (cat === "management" || cat === "manager") {
+    if (pf === "pf") parts.push("Management_Staff_PF");
+    else if (pf === "npf") parts.push("Management_Staff_Non_PF");
+    else parts.push("Management_Staff");
+  } else if (cat === "staff" || cat === "regular_staff") {
+    if (sal === "monthly" && pf === "pf") parts.push("Staff_Monthly_PF");
+    else if (sal === "monthly" && pf === "npf")
+      parts.push("Staff_Monthly_Non_PF");
+    else if (sal === "daily" && pf === "pf") parts.push("Staff_Daily_PF");
+    else if (sal === "daily" && pf === "npf") parts.push("Staff_Daily_Non_PF");
+    else if (sal === "monthly") parts.push("Staff_Monthly");
+    else if (sal === "daily") parts.push("Staff_Daily");
+    else if (pf === "pf") parts.push("Staff_PF");
+    else if (pf === "npf") parts.push("Staff_Non_PF");
+    else parts.push("Regular_Staff");
+  } else if (cat === "all_staff") {
+    if (sal === "monthly" && pf === "pf") parts.push("All_Staff_Monthly_PF");
+    else if (sal === "monthly" && pf === "npf")
+      parts.push("All_Staff_Monthly_Non_PF");
+    else if (sal === "monthly") parts.push("All_Staff_Monthly");
+    else if (pf === "pf") parts.push("All_Staff_PF");
+    else if (pf === "npf") parts.push("All_Staff_Non_PF");
+    else parts.push("All_Staff");
+  } else if (cat === "worker") {
+    if (sal === "monthly" && pf === "pf") parts.push("Worker_Monthly_PF");
+    else if (sal === "monthly" && pf === "npf")
+      parts.push("Worker_Monthly_Non_PF");
+    else if (sal === "daily" && pf === "pf") parts.push("Worker_Daily_PF");
+    else if (sal === "daily" && pf === "npf") parts.push("Worker_Daily_Non_PF");
+    else if (sal === "monthly") parts.push("Worker_Monthly");
+    else if (sal === "daily") parts.push("Worker_Daily");
+    else if (pf === "pf") parts.push("Worker_PF");
+    else if (pf === "npf") parts.push("Worker_Non_PF");
+    else parts.push("Worker");
+  } else {
+    if (sal === "monthly" && pf === "pf") parts.push("All_Monthly_PF");
+    else if (sal === "monthly" && pf === "npf")
+      parts.push("All_Monthly_Non_PF");
+    else if (sal === "daily" && pf === "pf") parts.push("All_Daily_PF");
+    else if (sal === "daily" && pf === "npf") parts.push("All_Daily_Non_PF");
+    else if (sal === "monthly") parts.push("All_Monthly");
+    else if (sal === "daily") parts.push("All_Daily");
+    else if (pf === "pf") parts.push("All_PF");
+    else if (pf === "npf") parts.push("All_Non_PF");
+    else parts.push("All_Employees");
+  }
+
+  if (filters.departmentId && departments && departments.length) {
+    const dept = departments.find(
+      (d) => String(d.id) === String(filters.departmentId),
+    );
+    if (dept?.departmentname) {
+      parts.push(dept.departmentname.replace(/[^a-zA-Z0-9]/g, "_"));
+    }
+  }
+
+  if (reportType && reportType !== "salary_report") {
+    if (reportType === "with_el") parts.push("With_EL");
+    else if (reportType === "without_el") parts.push("Without_EL");
+    else if (reportType === "with_weekoff") parts.push("With_WeekOff");
+    else if (reportType === "without_weekoff") parts.push("Without_WeekOff");
+    else parts.push(reportType);
+  }
+
+  const monthObj = MONTHS.find((m) => m.v === Number(filters.month));
+  const monthStr = monthObj ? monthObj.l : filters.month;
+  if (monthStr && filters.year) parts.push(`${monthStr}_${filters.year}`);
+  else if (filters.year) parts.push(`${filters.year}`);
+
+  return `${parts.join("_")}.${ext}`;
+};
+
 /* ── Download helper ─────────────────────────────────────────── */
-const download = async (url, params, filename) => {
+const download = async (url, params, fallbackFilename) => {
   const res = await axios.get(url, { params, responseType: "blob" });
+  let filename = fallbackFilename;
+  const disposition = res.headers ? res.headers["content-disposition"] : null;
+  if (disposition && disposition.includes("filename=")) {
+    const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+    if (match && match[1]) {
+      filename = match[1].replace(/['"]/g, "").trim();
+    }
+  }
   const href = window.URL.createObjectURL(new Blob([res.data]));
   const a = document.createElement("a");
   a.href = href;
@@ -257,10 +397,17 @@ export default function SalaryReports() {
   const dlSalaryExcel = async () => {
     setDlLoading(true);
     try {
+      const filename = generateReportFileName(
+        "Salary_Report",
+        filters,
+        salaryReportType,
+        "xlsx",
+        departments,
+      );
       await download(
         `/salary-reports/salary-report/download/excel`,
         cleanParams({ reportType: salaryReportType }),
-        `salary-report-${salaryReportType}-${filters.month}-${filters.year}.xlsx`,
+        filename,
       );
     } catch {
       alert("Excel download failed");
@@ -271,10 +418,17 @@ export default function SalaryReports() {
   const dlSalaryPdf = async () => {
     setDlLoading(true);
     try {
+      const filename = generateReportFileName(
+        "Salary_Report",
+        filters,
+        salaryReportType,
+        "pdf",
+        departments,
+      );
       await download(
         `/salary-reports/salary-report/download/pdf`,
         cleanParams({ reportType: salaryReportType }),
-        `salary-report-${salaryReportType}-${filters.month}-${filters.year}.pdf`,
+        filename,
       );
     } catch {
       alert("PDF download failed");
@@ -285,10 +439,17 @@ export default function SalaryReports() {
   const dlBankExcel = async () => {
     setDlLoading(true);
     try {
+      const filename = generateReportFileName(
+        "Bank_Statement",
+        filters,
+        null,
+        "xlsx",
+        departments,
+      );
       await download(
         `/salary-reports/bank-statement/download/excel`,
         cleanParams(),
-        `bank-statement-${filters.month}-${filters.year}.xlsx`,
+        filename,
       );
     } catch {
       alert("Excel download failed");
@@ -299,10 +460,17 @@ export default function SalaryReports() {
   const dlBankPdf = async () => {
     setDlLoading(true);
     try {
+      const filename = generateReportFileName(
+        "Bank_Statement",
+        filters,
+        null,
+        "pdf",
+        departments,
+      );
       await download(
         `/salary-reports/bank-statement/download/pdf`,
         cleanParams(),
-        `bank-statement-${filters.month}-${filters.year}.pdf`,
+        filename,
       );
     } catch {
       alert("PDF download failed");
@@ -313,10 +481,12 @@ export default function SalaryReports() {
   const dlPayslip = async (id, empCode) => {
     setDlLoading(true);
     try {
+      const monthObj = MONTHS.find((m) => m.v === Number(filters.month));
+      const monthStr = monthObj ? monthObj.l : filters.month;
       await download(
         `/salary-reports/payslip/${id}/download`,
         {},
-        `payslip-${empCode}-${filters.month}-${filters.year}.pdf`,
+        `Payslip_${empCode || "Emp"}_${monthStr}_${filters.year}.pdf`,
       );
     } catch {
       alert("Payslip download failed");
@@ -439,6 +609,40 @@ export default function SalaryReports() {
 
             {/* Filters inside the salary card */}
             <div className="px-5 py-4 border-b border-slate-100">
+              {/* Quick Report Presets */}
+              <div className="flex flex-wrap items-center gap-1.5 mb-3.5 pb-3 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mr-1">
+                  Report Type:
+                </span>
+                {REPORT_PRESETS.map((p) => {
+                  const isActive =
+                    filters.category === p.category &&
+                    filters.salaryType === p.salaryType &&
+                    filters.pfType === p.pfType;
+                  return (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() =>
+                        setFilters((f) => ({
+                          ...f,
+                          category: p.category,
+                          salaryType: p.salaryType,
+                          pfType: p.pfType,
+                        }))
+                      }
+                      className={`text-xs px-3 py-1 rounded-full font-medium transition-all ${
+                        isActive
+                          ? "bg-blue-600 text-white shadow-sm ring-2 ring-blue-300 font-semibold"
+                          : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  );
+                })}
+              </div>
+
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-3 items-end">
                 <FilterField
                   label="Company"
@@ -473,8 +677,10 @@ export default function SalaryReports() {
                   value={filters.category}
                   onChange={onChange}
                 >
-                  <option value="">All</option>
-                  <option value="staff">Staff</option>
+                  <option value="">All Categories</option>
+                  <option value="management">Management Staff</option>
+                  <option value="staff">Regular Staff</option>
+                  <option value="all_staff">All Staff</option>
                   <option value="worker">Worker</option>
                 </FilterField>
                 <FilterField
@@ -569,6 +775,40 @@ export default function SalaryReports() {
           <>
             {/* Filters */}
             <div className="bg-white rounded-xl shadow p-5">
+              {/* Quick Report Presets */}
+              <div className="flex flex-wrap items-center gap-1.5 mb-3.5 pb-3 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mr-1">
+                  Report Type:
+                </span>
+                {REPORT_PRESETS.map((p) => {
+                  const isActive =
+                    filters.category === p.category &&
+                    filters.salaryType === p.salaryType &&
+                    filters.pfType === p.pfType;
+                  return (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() =>
+                        setFilters((f) => ({
+                          ...f,
+                          category: p.category,
+                          salaryType: p.salaryType,
+                          pfType: p.pfType,
+                        }))
+                      }
+                      className={`text-xs px-3 py-1 rounded-full font-medium transition-all ${
+                        isActive
+                          ? "bg-blue-600 text-white shadow-sm ring-2 ring-blue-300 font-semibold"
+                          : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  );
+                })}
+              </div>
+
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-3 items-end">
                 <FilterField
                   label="Company"
@@ -603,8 +843,10 @@ export default function SalaryReports() {
                   value={filters.category}
                   onChange={onChange}
                 >
-                  <option value="">All</option>
-                  <option value="staff">Staff</option>
+                  <option value="">All Categories</option>
+                  <option value="management">Management Staff</option>
+                  <option value="staff">Regular Staff</option>
+                  <option value="all_staff">All Staff</option>
                   <option value="worker">Worker</option>
                 </FilterField>
                 <FilterField

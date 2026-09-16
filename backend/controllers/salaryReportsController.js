@@ -20,6 +20,10 @@ const { Op } = require("sequelize");
 const db = require("../models");
 const PDFDocument = require("pdfkit");
 const ExcelJS = require("exceljs");
+const {
+  STAFF_MANAGEMENT_GRADES,
+  isManagementGrade,
+} = require("../config/salaryConfig");
 
 const SalaryGeneration = db.SalaryGeneration;
 const SalaryGenerationDetail = db.SalaryGenerationDetail;
@@ -27,6 +31,7 @@ const Employee = db.Employee;
 const Department = db.Department;
 const Company = db.Company;
 const Designation = db.Designation;
+const EmployerGrade = db.EmployerGrade;
 const EmployeeSalaryMaster = db.EmployeeSalaryMaster;
 
 /* ================================================================
@@ -85,6 +90,88 @@ const computeGrandTotal = (r, reportType) => {
     default:
       return present; // salary_report
   }
+};
+
+/**
+ * Generate a descriptive, professional filename for report downloads.
+ */
+const generateReportFileName = async (
+  prefix,
+  query = {},
+  reportType = null,
+  ext = "pdf",
+  departmentId = null,
+) => {
+  const parts = [prefix];
+  const cat = (query.category || "").toLowerCase().trim();
+  const sal = (query.salaryType || "").toLowerCase().trim();
+  const pf = (query.pfType || "").toLowerCase().trim();
+
+  if (cat === "management" || cat === "manager") {
+    if (pf === "pf") parts.push("Management_Staff_PF");
+    else if (pf === "npf") parts.push("Management_Staff_Non_PF");
+    else parts.push("Management_Staff");
+  } else if (cat === "staff" || cat === "regular_staff") {
+    if (sal === "monthly" && pf === "pf") parts.push("Staff_Monthly_PF");
+    else if (sal === "monthly" && pf === "npf") parts.push("Staff_Monthly_Non_PF");
+    else if (sal === "daily" && pf === "pf") parts.push("Staff_Daily_PF");
+    else if (sal === "daily" && pf === "npf") parts.push("Staff_Daily_Non_PF");
+    else if (sal === "monthly") parts.push("Staff_Monthly");
+    else if (sal === "daily") parts.push("Staff_Daily");
+    else if (pf === "pf") parts.push("Staff_PF");
+    else if (pf === "npf") parts.push("Staff_Non_PF");
+    else parts.push("Regular_Staff");
+  } else if (cat === "all_staff") {
+    if (sal === "monthly" && pf === "pf") parts.push("All_Staff_Monthly_PF");
+    else if (sal === "monthly" && pf === "npf") parts.push("All_Staff_Monthly_Non_PF");
+    else if (sal === "monthly") parts.push("All_Staff_Monthly");
+    else if (pf === "pf") parts.push("All_Staff_PF");
+    else if (pf === "npf") parts.push("All_Staff_Non_PF");
+    else parts.push("All_Staff");
+  } else if (cat === "worker") {
+    if (sal === "monthly" && pf === "pf") parts.push("Worker_Monthly_PF");
+    else if (sal === "monthly" && pf === "npf") parts.push("Worker_Monthly_Non_PF");
+    else if (sal === "daily" && pf === "pf") parts.push("Worker_Daily_PF");
+    else if (sal === "daily" && pf === "npf") parts.push("Worker_Daily_Non_PF");
+    else if (sal === "monthly") parts.push("Worker_Monthly");
+    else if (sal === "daily") parts.push("Worker_Daily");
+    else if (pf === "pf") parts.push("Worker_PF");
+    else if (pf === "npf") parts.push("Worker_Non_PF");
+    else parts.push("Worker");
+  } else {
+    if (sal === "monthly" && pf === "pf") parts.push("All_Monthly_PF");
+    else if (sal === "monthly" && pf === "npf") parts.push("All_Monthly_Non_PF");
+    else if (sal === "daily" && pf === "pf") parts.push("All_Daily_PF");
+    else if (sal === "daily" && pf === "npf") parts.push("All_Daily_Non_PF");
+    else if (sal === "monthly") parts.push("All_Monthly");
+    else if (sal === "daily") parts.push("All_Daily");
+    else if (pf === "pf") parts.push("All_PF");
+    else if (pf === "npf") parts.push("All_Non_PF");
+    else parts.push("All_Employees");
+  }
+
+  if (departmentId) {
+    try {
+      const dept = await Department.findByPk(departmentId);
+      if (dept?.departmentname) {
+        parts.push(dept.departmentname.replace(/[^a-zA-Z0-9]/g, "_"));
+      }
+    } catch (_) {}
+  }
+
+  if (reportType && reportType !== "salary_report") {
+    if (reportType === "with_el") parts.push("With_EL");
+    else if (reportType === "without_el") parts.push("Without_EL");
+    else if (reportType === "with_weekoff") parts.push("With_WeekOff");
+    else if (reportType === "without_weekoff") parts.push("Without_WeekOff");
+    else parts.push(reportType);
+  }
+
+  const monthStr = getMonthName(query.month) || query.month;
+  if (monthStr && query.year) parts.push(`${monthStr}_${query.year}`);
+  else if (query.year) parts.push(`${query.year}`);
+
+  return `${parts.join("_")}.${ext}`;
 };
 
 /* Pull component amounts from SalaryGenerationDetail rows */
@@ -153,6 +240,7 @@ const salaryIncludes = (empWhere = {}) => [
       "workingType",
       "providentFundNumber",
       "basicSalary",
+      "gradeId",
     ],
   },
   {
@@ -192,6 +280,12 @@ const enrichWithDeptDesig = async (records) => {
         attributes: ["id", "name"],
         required: false,
       },
+      {
+        model: EmployerGrade,
+        as: "grade",
+        attributes: ["id", "name"],
+        required: false,
+      },
     ],
   });
 
@@ -200,6 +294,7 @@ const enrichWithDeptDesig = async (records) => {
     empMap[e.id] = {
       department: e.department || null,
       designation: e.designation || null,
+      grade: e.grade || null,
     };
   });
 
@@ -208,9 +303,72 @@ const enrichWithDeptDesig = async (records) => {
     if (r.employee) {
       r.employee.department = extra.department || null;
       r.employee.designation = extra.designation || null;
+      r.employee.grade = extra.grade || null;
     }
     return r;
   });
+};
+
+let cachedMgmtGradeIds = null;
+let lastCacheTime = 0;
+
+const getManagementGradeIds = async () => {
+  const now = Date.now();
+  if (cachedMgmtGradeIds && now - lastCacheTime < 60000) {
+    return cachedMgmtGradeIds;
+  }
+  const allGrades = await EmployerGrade.findAll({ attributes: ["id", "name"] });
+  cachedMgmtGradeIds = allGrades
+    .filter((g) => isManagementGrade(g.name))
+    .map((g) => g.id);
+  lastCacheTime = now;
+  return cachedMgmtGradeIds;
+};
+
+const buildFilterConditions = async (query) => {
+  const {
+    companyId,
+    month,
+    year,
+    category,
+    pfType,
+    salaryType,
+    status,
+    departmentId,
+  } = query;
+  const where = {};
+  if (companyId) where.companyId = companyId;
+  if (month) where.salaryMonth = month;
+  if (year) where.salaryYear = year;
+  if (pfType) where.empPfType = pfType;
+  if (salaryType) where.empSalaryType = salaryType;
+  where.status = status ? status : { [Op.in]: ["Generated", "Approved", "Paid"] };
+
+  const empWhere = {};
+  if (departmentId) empWhere.departmentId = departmentId;
+
+  if (category) {
+    const catLower = category.toLowerCase().trim();
+    if (catLower === "management" || catLower === "manager") {
+      const mgmtIds = await getManagementGradeIds();
+      where.empCategory = "staff";
+      empWhere.gradeId = { [Op.in]: mgmtIds };
+    } else if (catLower === "staff" || catLower === "regular_staff") {
+      const mgmtIds = await getManagementGradeIds();
+      where.empCategory = "staff";
+      empWhere.gradeId = {
+        [Op.or]: [{ [Op.notIn]: mgmtIds }, { [Op.is]: null }],
+      };
+    } else if (catLower === "all_staff") {
+      where.empCategory = "staff";
+    } else if (catLower === "worker") {
+      where.empCategory = "worker";
+    } else {
+      where.empCategory = category;
+    }
+  }
+
+  return { where, empWhere };
 };
 
 const buildWhere = (query) => {
@@ -220,7 +378,11 @@ const buildWhere = (query) => {
   if (companyId) w.companyId = companyId;
   if (month) w.salaryMonth = month;
   if (year) w.salaryYear = year;
-  if (category) w.empCategory = category;
+  if (category && category !== "management" && category !== "all_staff") {
+    w.empCategory = category;
+  } else if (category === "management" || category === "all_staff") {
+    w.empCategory = "staff";
+  }
   if (pfType) w.empPfType = pfType;
   if (salaryType) w.empSalaryType = salaryType;
   w.status = status ? status : { [Op.in]: ["Generated", "Approved", "Paid"] };
@@ -260,13 +422,15 @@ exports.getSalaryReport = async (req, res) => {
     }
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
-    const where = buildWhere(req.query);
-    const empWhere = {};
+    const { where, empWhere: resolvedEmpWhere } = await buildFilterConditions(
+      req.query,
+    );
+    const empWhere = { ...resolvedEmpWhere };
     if (departmentId) empWhere.departmentId = departmentId;
 
     const count = await SalaryGeneration.count({
       where,
-      include: salaryIncludes(empWhere).filter(inc => inc.as !== "details"),
+      include: salaryIncludes(empWhere).filter((inc) => inc.as !== "details"),
       distinct: true,
       col: "id",
     });
@@ -278,7 +442,6 @@ exports.getSalaryReport = async (req, res) => {
       limit: parseInt(limit),
       offset,
     });
-
 
     const enrichedRows = await enrichWithDeptDesig(rows);
 
@@ -344,24 +507,57 @@ exports.getSalaryReport = async (req, res) => {
         netRounded: toNum(r.netRounded),
         earnings,
         deductions,
-        employee: r.employee,
+        employee: {
+          ...(r.employee?.toJSON ? r.employee.toJSON() : r.employee),
+          department: r.employee?.department || null,
+          designation: r.employee?.designation || null,
+          grade: r.employee?.grade || null,
+        },
         company: r.company,
       };
     });
 
     const grouped = groupByDept(enriched);
 
-    const grandTotal = await SalaryGeneration.sum("netSalary", { where });
+    const grandTotal =
+      (await SalaryGeneration.sum("SalaryGeneration.netSalary", {
+        where,
+        include: Object.keys(empWhere).length
+          ? [
+              {
+                model: Employee,
+                as: "employee",
+                where: empWhere,
+                required: true,
+                attributes: [],
+              },
+            ]
+          : undefined,
+      })) || 0;
     const prevMonth = parseInt(month) - 1 === 0 ? 12 : parseInt(month) - 1;
     const prevYear =
       parseInt(month) - 1 === 0 ? parseInt(year) - 1 : parseInt(year);
-    const prevWhere = buildWhere({
-      ...req.query,
-      month: prevMonth,
-      year: prevYear,
-    });
+    const { where: prevWhere, empWhere: prevEmpWhere } =
+      await buildFilterConditions({
+        ...req.query,
+        month: prevMonth,
+        year: prevYear,
+      });
     const prevTotal =
-      (await SalaryGeneration.sum("netSalary", { where: prevWhere })) || 0;
+      (await SalaryGeneration.sum("SalaryGeneration.netSalary", {
+        where: prevWhere,
+        include: Object.keys(prevEmpWhere).length
+          ? [
+              {
+                model: Employee,
+                as: "employee",
+                where: prevEmpWhere,
+                required: true,
+                attributes: [],
+              },
+            ]
+          : undefined,
+      })) || 0;
 
     return res.json({
       success: true,
@@ -429,8 +625,10 @@ exports.downloadSalaryReportExcel = async (req, res) => {
       departmentId,
       reportType = "salary_report",
     } = req.query;
-    const where = buildWhere(req.query);
-    const empWhere = {};
+    const { where, empWhere: resolvedEmpWhere } = await buildFilterConditions(
+      req.query,
+    );
+    const empWhere = { ...resolvedEmpWhere };
     if (departmentId) empWhere.departmentId = departmentId;
 
     const rows = await SalaryGeneration.findAll({
@@ -464,6 +662,7 @@ exports.downloadSalaryReportExcel = async (req, res) => {
           ...r.toJSON().employee,
           department: r.employee?.department || null,
           designation: r.employee?.designation || null,
+          grade: r.employee?.grade || null,
         },
       };
     });
@@ -475,22 +674,30 @@ exports.downloadSalaryReportExcel = async (req, res) => {
     const showWO =
       reportType === "with_weekoff" || reportType === "without_weekoff";
 
+    const mgmtIds = await getManagementGradeIds();
+    const isMgmtRecord = (r) => {
+      if (r.employee?.gradeId && mgmtIds.includes(r.employee.gradeId)) return true;
+      if (isManagementGrade(r.employee?.grade?.name)) return true;
+      if (isManagementGrade(r.employee?.designation?.name)) return true;
+      return false;
+    };
+
     // Group by employee type
     const groups = {
       staffManagement: records.filter(
-        (r) =>
-          r.empCategory === "staff" &&
-          r.empPfType === "pf" &&
-          isManagement(r.employee?.designation?.name),
+        (r) => r.empCategory === "staff" && isMgmtRecord(r),
       ),
       staffPf: records.filter(
         (r) =>
           r.empCategory === "staff" &&
           r.empPfType === "pf" &&
-          !isManagement(r.employee?.designation?.name),
+          !isMgmtRecord(r),
       ),
       staffNpf: records.filter(
-        (r) => r.empCategory === "staff" && r.empPfType === "npf",
+        (r) =>
+          r.empCategory === "staff" &&
+          r.empPfType === "npf" &&
+          !isMgmtRecord(r),
       ),
       workerPfDaily: records.filter(
         (r) =>
@@ -602,9 +809,16 @@ exports.downloadSalaryReportExcel = async (req, res) => {
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
+    const dlFilename = await generateReportFileName(
+      "Salary_Report",
+      req.query,
+      reportType,
+      "xlsx",
+      departmentId,
+    );
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename=salary-report-${reportType}-${month}-${year}.xlsx`,
+      `attachment; filename=${dlFilename}`,
     );
     await workbook.xlsx.write(res);
     res.end();
@@ -1029,8 +1243,10 @@ exports.downloadSalaryReportPDF = async (req, res) => {
       departmentId,
       reportType = "salary_report",
     } = req.query;
-    const where = buildWhere(req.query);
-    const empWhere = {};
+    const { where, empWhere: resolvedEmpWhere } = await buildFilterConditions(
+      req.query,
+    );
+    const empWhere = { ...resolvedEmpWhere };
     if (departmentId) empWhere.departmentId = departmentId;
 
     const rows = await SalaryGeneration.findAll({
@@ -1076,10 +1292,17 @@ exports.downloadSalaryReportPDF = async (req, res) => {
       margin: 25,
     });
 
+    const dlFilename = await generateReportFileName(
+      "Salary_Report",
+      req.query,
+      reportType,
+      "pdf",
+      departmentId,
+    );
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename=salary-report-${reportType}-${month}-${year}.pdf`,
+      `attachment; filename=${dlFilename}`,
     );
     doc.pipe(res);
 
@@ -1141,11 +1364,25 @@ exports.downloadSalaryReportPDF = async (req, res) => {
         .fillColor("#000")
         .text(name, 25, y, { align: "center" });
       y += 15;
+      let catLabel = "";
+      if (req.query.category === "management") catLabel = "Management Staff";
+      else if (req.query.category === "staff") catLabel = "Regular Staff";
+      else if (req.query.category === "all_staff") catLabel = "All Staff";
+      else if (req.query.category === "worker") catLabel = "Worker";
+
+      const subParts = [
+        `Salary Report – ${getMonthName(month)} ${year}`,
+        `[${reportTypeLabel(reportType)}]`,
+      ];
+      if (catLabel) subParts.push(`Category: ${catLabel}`);
+      if (req.query.salaryType) subParts.push(req.query.salaryType.toUpperCase());
+      if (req.query.pfType) subParts.push(req.query.pfType.toUpperCase());
+
       doc
         .fontSize(8)
         .font("Helvetica")
         .text(
-          `Salary Report – ${getMonthName(month)} ${year}  [${reportTypeLabel(reportType)}]`,
+          subParts.join("  •  "),
           25,
           y,
           { align: "center" },
@@ -1356,8 +1593,10 @@ exports.downloadSalaryReportPDF = async (req, res) => {
 exports.getBankStatement = async (req, res) => {
   try {
     const { departmentId } = req.query;
-    const where = buildWhere(req.query);
-    const empWhere = {};
+    const { where, empWhere: resolvedEmpWhere } = await buildFilterConditions(
+      req.query,
+    );
+    const empWhere = { ...resolvedEmpWhere };
     if (departmentId) empWhere.departmentId = departmentId;
 
     const rows = await SalaryGeneration.findAll({
@@ -1402,8 +1641,10 @@ exports.getBankStatement = async (req, res) => {
 exports.downloadBankStatementPDF = async (req, res) => {
   try {
     const { month, year, departmentId } = req.query;
-    const where = buildWhere(req.query);
-    const empWhere = {};
+    const { where, empWhere: resolvedEmpWhere } = await buildFilterConditions(
+      req.query,
+    );
+    const empWhere = { ...resolvedEmpWhere };
     if (departmentId) empWhere.departmentId = departmentId;
 
     const rows = await SalaryGeneration.findAll({
@@ -1418,10 +1659,17 @@ exports.downloadBankStatementPDF = async (req, res) => {
     const name = rows[0]?.company?.name || "Company";
     const doc = new PDFDocument({ margin: 40, size: "A4" });
 
+    const dlFilename = await generateReportFileName(
+      "Bank_Statement",
+      req.query,
+      null,
+      "pdf",
+      departmentId,
+    );
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename=bank-statement-${month}-${year}.pdf`,
+      `attachment; filename=${dlFilename}`,
     );
     doc.pipe(res);
 
@@ -1561,8 +1809,10 @@ exports.downloadBankStatementPDF = async (req, res) => {
 exports.downloadBankStatementExcel = async (req, res) => {
   try {
     const { month, year, departmentId } = req.query;
-    const where = buildWhere(req.query);
-    const empWhere = {};
+    const { where, empWhere: resolvedEmpWhere } = await buildFilterConditions(
+      req.query,
+    );
+    const empWhere = { ...resolvedEmpWhere };
     if (departmentId) empWhere.departmentId = departmentId;
 
     const rows = await SalaryGeneration.findAll({
@@ -1689,13 +1939,20 @@ exports.downloadBankStatementExcel = async (req, res) => {
       fgColor: { argb: "FFD6E4F7" },
     };
 
+    const dlFilename = await generateReportFileName(
+      "Bank_Statement",
+      req.query,
+      null,
+      "xlsx",
+      departmentId,
+    );
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename=bank-statement-${month}-${year}.xlsx`,
+      `attachment; filename=${dlFilename}`,
     );
     await wb.xlsx.write(res);
     res.end();
@@ -1731,10 +1988,11 @@ exports.downloadPayslip = async (req, res) => {
     );
     const doc = new PDFDocument({ margin: 45, size: "A4" });
 
+    const payslipFilename = `Payslip_${emp?.employeeCode || "Emp"}_${getMonthName(record.salaryMonth)}_${record.salaryYear}.pdf`;
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename=payslip-${emp.employeeCode}-${record.salaryMonth}-${record.salaryYear}.pdf`,
+      `attachment; filename=${payslipFilename}`,
     );
     doc.pipe(res);
 
@@ -1946,8 +2204,10 @@ exports.downloadPayslip = async (req, res) => {
 exports.getPayslipList = async (req, res) => {
   try {
     const { departmentId } = req.query;
-    const where = buildWhere(req.query);
-    const empWhere = {};
+    const { where, empWhere: resolvedEmpWhere } = await buildFilterConditions(
+      req.query,
+    );
+    const empWhere = { ...resolvedEmpWhere };
     if (departmentId) empWhere.departmentId = departmentId;
 
     const rows = await SalaryGeneration.findAll({
@@ -1957,7 +2217,13 @@ exports.getPayslipList = async (req, res) => {
           model: Employee,
           as: "employee",
           where: Object.keys(empWhere).length ? empWhere : undefined,
-          attributes: ["id", "employeeCode", "firstName", "lastName"],
+          attributes: [
+            "id",
+            "employeeCode",
+            "firstName",
+            "lastName",
+            "gradeId",
+          ],
         },
       ],
       order: baseOrder,
@@ -2045,7 +2311,8 @@ const MGMT = [
   "ELE (M)",
   "E E",
 ];
-const isManagement = (name = "") => MGMT.includes((name || "").trim());
+const isManagement = (name = "") =>
+  isManagementGrade(name) || MGMT.includes((name || "").trim());
 
 /* ================================================================
    NUMBER TO WORDS

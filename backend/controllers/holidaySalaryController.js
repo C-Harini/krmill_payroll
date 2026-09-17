@@ -88,10 +88,17 @@ exports.fetchHolidayAttendance = async (req, res) => {
     }
     const isWorker = empType.name.toLowerCase().includes("worker");
 
-    // 3. Build employee WHERE clause
+    // 3. Build employee WHERE clause (matches by employmentTypeId OR employeeType text)
+    const typeConditions = [{ employmentTypeId }];
+    if (empType.name) {
+      typeConditions.push({
+        employeeType: { [Op.like]: `%${empType.name.trim()}%` },
+      });
+    }
+
     const employeeWhere = {
       companyId,
-      employmentTypeId,
+      [Op.or]: typeConditions,
       status: "Active",
     };
     if (departmentId) employeeWhere.departmentId = departmentId;
@@ -193,7 +200,7 @@ exports.fetchHolidayAttendance = async (req, res) => {
             companyId,
             employeeId: emp.id,
             departmentId: emp.departmentId,
-            employmentTypeId: emp.employmentTypeId,
+            employmentTypeId: emp.employmentTypeId || employmentTypeId,
             holidayId: holiday.id,
             holidayDate: date,
             holidayName: holiday.description,
@@ -214,7 +221,7 @@ exports.fetchHolidayAttendance = async (req, res) => {
           employeeName: emp.firstName,
           departmentId: emp.departmentId,
           departmentName: emp.department?.departmentname || "",
-          employmentTypeName: emp.employmentType?.name || "",
+          employmentTypeName: emp.employmentType?.name || empType.name || "",
           shiftName: att.shiftName,
           attendanceStatus: att.status,
           firstCheckIn: att.firstCheckIn,

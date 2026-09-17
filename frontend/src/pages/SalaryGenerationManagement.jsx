@@ -594,7 +594,8 @@ const SalaryGenerationManagement = () => {
     new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
-      maximumFractionDigits: 0,
+      minimumFractionDigits: Number(n) % 1 === 0 ? 0 : 2,
+      maximumFractionDigits: 2,
     }).format(n || 0);
   const fmtDec = (n) =>
     new Intl.NumberFormat("en-IN", {
@@ -1166,13 +1167,8 @@ const SalaryGenerationManagement = () => {
                             fontSize: 14,
                           }}
                         >
-                          {fmt(sal.netRounded || sal.netSalary)}
+                          {fmt(sal.netSalary)}
                         </div>
-                        {sal.netRounded && sal.netRounded !== sal.netSalary && (
-                          <div style={{ fontSize: 10, color: "#94A3B8" }}>
-                            exact:{fmt(sal.netSalary)}
-                          </div>
-                        )}
                       </td>
                       <td style={{ padding: "12px 14px" }}>
                         <StatusBadge status={sal.status} />
@@ -1825,15 +1821,17 @@ const SalaryGenerationManagement = () => {
               <div>
                 <div
                   style={{
+                    fontSize: 11,
                     color: "rgba(255,255,255,0.7)",
-                    fontSize: 12,
+                    letterSpacing: 1,
+                    marginBottom: 4,
                     fontWeight: 600,
                   }}
                 >
-                  NET PAYABLE (ROUNDED TO ₹10)
+                  NET PAYABLE
                 </div>
                 <div style={{ color: "#fff", fontSize: 28, fontWeight: 900 }}>
-                  {fmt(salaryDetails.netRounded || salaryDetails.netSalary)}
+                  {fmt(salaryDetails.netSalary)}
                 </div>
               </div>
               <StatusBadge status={salaryDetails.status} />
@@ -1861,7 +1859,7 @@ const SalaryGenerationManagement = () => {
       {payOpen && selectedSalary && (
         <Modal
           title="Mark as Paid"
-          subtitle={`${selectedSalary.employee?.firstName} — ${fmt(selectedSalary.netRounded || selectedSalary.netSalary)}`}
+          subtitle={`${selectedSalary.employee?.firstName} — ${fmt(selectedSalary.netSalary)}`}
           onClose={() => setPayOpen(false)}
         >
           <div className="space-y-4">

@@ -1350,12 +1350,12 @@ async function generateForMonth({
         misc.store +
         misc.other +
         misc.eb;
-      const netSalary = calc.grossEarned - totalDeductions;
-      const netRounded = roundTo10(netSalary);
+      const netSalary = parseFloat((calc.grossEarned - totalDeductions).toFixed(2));
+      const netRounded = netSalary;
       const empPfType = isPf ? "pf" : "npf";
 
       console.log(
-        `  gross=₹${calc.grossEarned} ded=₹${totalDeductions} net=₹${netSalary} rounded=₹${netRounded}`,
+        `  gross=₹${calc.grossEarned} ded=₹${totalDeductions} net=₹${netSalary}`,
       );
 
       const genData = {

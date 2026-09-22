@@ -583,11 +583,15 @@ const TAB_STYLES = {
   },
 };
 
+const getEmpName = (emp) => (emp?.firstName || emp?.employeeName || "").trim();
+
 // ─── Employee multi-select dropdown ──────────────────────────────────────────
-const EmployeeSelector = ({ employees, selectedIds, onChange }) => {
+const EmployeeSelector = ({ employees = [], selectedIds = [], onChange }) => {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const containerRef = useRef(null);
+
+  const safeEmployees = Array.isArray(employees) ? employees : [];
 
   // Close on outside click
   useEffect(() => {
@@ -615,19 +619,30 @@ const EmployeeSelector = ({ employees, selectedIds, onChange }) => {
     return () => document.removeEventListener("keydown", handleKey);
   }, [open]);
 
-  const getEmpName = (emp) => (emp.firstName || emp.employeeName || "").trim();
+  const filtered = safeEmployees.filter((e) => {
+    if (!search || !search.trim()) return true;
+    const raw = search.trim().toLowerCase();
+    const name = getEmpName(e).toLowerCase();
+    const code = (e?.employeeCode || "").toLowerCase();
 
-  const filtered = employees.filter(
-    (e) =>
-      !search ||
-      getEmpName(e).toLowerCase().includes(search.toLowerCase()) ||
-      (e.employeeCode || "").toLowerCase().includes(search.toLowerCase()),
-  );
+    if (name.includes(raw) || code.includes(raw)) return true;
+
+    const parts = raw
+      .split(/[,]+/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    if (parts.length > 1) {
+      return parts.some((p) => name.includes(p) || code.includes(p));
+    }
+
+    return false;
+  });
 
   const isAllSelected =
-    selectedIds.length === employees.length && employees.length > 0;
+    selectedIds.length === safeEmployees.length && safeEmployees.length > 0;
   const toggleAll = () =>
-    onChange(isAllSelected ? [] : employees.map((e) => e.id));
+    onChange(isAllSelected ? [] : safeEmployees.map((e) => e.id));
   const toggle = (id) =>
     onChange(
       selectedIds.includes(id)
@@ -685,7 +700,7 @@ const EmployeeSelector = ({ employees, selectedIds, onChange }) => {
             />
             <span className="font-semibold text-slate-700">All employees</span>
             <span className="ml-auto text-xs text-slate-400">
-              {employees.length} total
+              {safeEmployees.length} total
             </span>
           </div>
           <div className="overflow-y-auto flex-1">
@@ -761,7 +776,7 @@ const ReportPanel = ({ tab, companyId, employees }) => {
         reportType: tab.key,
       };
 
-      if (!isAll) {
+      if (!isAll && selectedEmployeeIds.length > 0) {
         queryParams.employeeIds = selectedEmployeeIds.join(",");
         if (selectedEmployeeIds.length === 1) {
           queryParams.employeeId = selectedEmployeeIds[0];
@@ -772,7 +787,22 @@ const ReportPanel = ({ tab, companyId, employees }) => {
       const res = await apiRequest(
         `/employee-shifts/shift-report?${query}`,
       );
-      setReportData(res.data);
+
+      let data = res.data;
+      if (data && !isAll && selectedEmployeeIds.length > 0 && Array.isArray(data.summary)) {
+        const selectedSet = new Set(selectedEmployeeIds.map(Number));
+        const filteredSummary = data.summary.filter((emp) => {
+          const empId = Number(emp.employeeId || emp.id);
+          return selectedSet.has(empId);
+        });
+        data = {
+          ...data,
+          totalEmployees: filteredSummary.length,
+          summary: filteredSummary,
+        };
+      }
+
+      setReportData(data);
     } catch (err) {
       setError(err.message);
     } finally {

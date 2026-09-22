@@ -147,7 +147,7 @@ function countWeekOffDaysInRange(weeklyOffString, startDate, endDate) {
 // ─── UPDATED getShiftReport ───────────────────────────────────────────────────
 
 exports.getShiftReport = async (req, res) => {
-  const { companyId, startDate, endDate, reportType, employeeId } = req.query;
+  const { companyId, startDate, endDate, reportType, employeeId, employeeIds } = req.query;
 
   if (!companyId || !startDate || !endDate || !reportType) {
     return res.status(400).json({
@@ -184,8 +184,20 @@ exports.getShiftReport = async (req, res) => {
       .json({ success: false, message: "Invalid date range." });
   }
 
+  const rawEmpIds = employeeIds || employeeId;
+  let parsedEmpIds = null;
+  if (rawEmpIds) {
+    const list = String(rawEmpIds)
+      .split(",")
+      .map((id) => parseInt(id.trim(), 10))
+      .filter((id) => !isNaN(id) && id > 0);
+    if (list.length > 0) {
+      parsedEmpIds = list;
+    }
+  }
+
   console.log(
-    `[getShiftReport] type=${reportType} companyId=${companyId} ${start} to ${end} emp=${employeeId || "all"}`,
+    `[getShiftReport] type=${reportType} companyId=${companyId} ${start} to ${end} emp=${parsedEmpIds ? parsedEmpIds.join(",") : "all"}`,
   );
 
   try {
@@ -204,7 +216,9 @@ exports.getShiftReport = async (req, res) => {
 
       // 2. Fetch active employees
       const empWhere = { companyId, status: "Active" };
-      if (employeeId) empWhere.id = employeeId;
+      if (parsedEmpIds && parsedEmpIds.length > 0) {
+        empWhere.id = { [Op.in]: parsedEmpIds };
+      }
       const employees = await Employee.findAll({
         where: empWhere,
         include: [
@@ -224,7 +238,9 @@ exports.getShiftReport = async (req, res) => {
           [Op.between]: [start, end]
         }
       };
-      if (employeeId) attWhere.employeeId = employeeId;
+      if (parsedEmpIds && parsedEmpIds.length > 0) {
+        attWhere.employeeId = { [Op.in]: parsedEmpIds };
+      }
       const attRecords = await require("../models").Attendance.findAll({
         where: attWhere,
         attributes: ["employeeId", "attendanceDate", "status", "shiftName"],
@@ -347,7 +363,9 @@ exports.getShiftReport = async (req, res) => {
       companyId,
       [Op.or]: monthYears.map(({ month, year }) => ({ month, year })),
     };
-    if (employeeId) shiftWhere.employeeId = employeeId;
+    if (parsedEmpIds && parsedEmpIds.length > 0) {
+      shiftWhere.employeeId = { [Op.in]: parsedEmpIds };
+    }
 
     const rows = await EmployeeShift.findAll({
       where: shiftWhere,
@@ -459,13 +477,18 @@ exports.getShiftReport = async (req, res) => {
       reportType === "with_weekoff" || reportType === "without_weekoff";
 
     if (isWeekOffReport) {
+      const attWhereWO = {
+        companyId,
+        attendanceDate: { [Op.between]: [start, end] },
+        status: { [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"] },
+      };
+      if (parsedEmpIds && parsedEmpIds.length > 0) {
+        attWhereWO.employeeId = { [Op.in]: parsedEmpIds };
+      }
+
       // Fetch daily attendance records in the range for this company where employee was Present / Half Day
       const attRecords = await Attendance.findAll({
-        where: {
-          companyId,
-          attendanceDate: { [Op.between]: [start, end] },
-          status: { [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"] },
-        },
+        where: attWhereWO,
         attributes: ["employeeId", "attendanceDate", "shiftName", "workingHours", "overtimeHours"],
         raw: true,
       });

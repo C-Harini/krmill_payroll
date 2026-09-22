@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -583,11 +583,150 @@ const TAB_STYLES = {
   },
 };
 
+// ─── Employee multi-select dropdown ──────────────────────────────────────────
+const EmployeeSelector = ({ employees, selectedIds, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const containerRef = useRef(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handleOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false);
+        setSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [open]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (e) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        setSearch("");
+      }
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open]);
+
+  const getEmpName = (emp) => (emp.firstName || emp.employeeName || "").trim();
+
+  const filtered = employees.filter(
+    (e) =>
+      !search ||
+      getEmpName(e).toLowerCase().includes(search.toLowerCase()) ||
+      (e.employeeCode || "").toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const isAllSelected =
+    selectedIds.length === employees.length && employees.length > 0;
+  const toggleAll = () =>
+    onChange(isAllSelected ? [] : employees.map((e) => e.id));
+  const toggle = (id) =>
+    onChange(
+      selectedIds.includes(id)
+        ? selectedIds.filter((x) => x !== id)
+        : [...selectedIds, id],
+    );
+
+  const label =
+    selectedIds.length === 0 || isAllSelected
+      ? "All employees"
+      : `${selectedIds.length} employee${selectedIds.length > 1 ? "s" : ""} selected`;
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+      >
+        <span
+          className={
+            selectedIds.length === 0 || isAllSelected
+              ? "text-gray-400"
+              : "text-gray-800 font-medium"
+          }
+        >
+          {label}
+        </span>
+        <span className="text-gray-400 text-xs ml-2 shrink-0">
+          {open ? "▲" : "▼"}
+        </span>
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-72 flex flex-col">
+          <div className="p-2 border-b border-slate-100">
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name or code…"
+              className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400"
+            />
+          </div>
+          <div
+            className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm border-b border-slate-100 select-none"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={toggleAll}
+          >
+            <input
+              type="checkbox"
+              readOnly
+              checked={isAllSelected}
+              className="rounded pointer-events-none"
+            />
+            <span className="font-semibold text-slate-700">All employees</span>
+            <span className="ml-auto text-xs text-slate-400">
+              {employees.length} total
+            </span>
+          </div>
+          <div className="overflow-y-auto flex-1">
+            {filtered.map((emp) => (
+              <div
+                key={emp.id}
+                className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer select-none"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => toggle(emp.id)}
+              >
+                <input
+                  type="checkbox"
+                  readOnly
+                  checked={selectedIds.includes(emp.id)}
+                  className="rounded pointer-events-none"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-800 truncate">
+                    {getEmpName(emp)}
+                  </p>
+                  <p className="text-xs text-slate-400">{emp.employeeCode}</p>
+                </div>
+              </div>
+            ))}
+            {filtered.length === 0 && (
+              <p className="text-center text-slate-400 text-sm py-4">
+                No employees found
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Single Report Panel ──────────────────────────────────────────────────────
 const ReportPanel = ({ tab, companyId, employees }) => {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [employeeId, setEmployeeId] = useState("");
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([]);
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -610,13 +749,26 @@ const ReportPanel = ({ tab, companyId, employees }) => {
       setLoading(true);
       setError(null);
       setReportData(null);
-      const query = new URLSearchParams({
+
+      const isAll =
+        selectedEmployeeIds.length === 0 ||
+        selectedEmployeeIds.length === employees.length;
+
+      const queryParams = {
         companyId,
         startDate,
         endDate,
         reportType: tab.key,
-        ...(employeeId && { employeeId }),
-      });
+      };
+
+      if (!isAll) {
+        queryParams.employeeIds = selectedEmployeeIds.join(",");
+        if (selectedEmployeeIds.length === 1) {
+          queryParams.employeeId = selectedEmployeeIds[0];
+        }
+      }
+
+      const query = new URLSearchParams(queryParams);
       const res = await apiRequest(
         `/employee-shifts/shift-report?${query}`,
       );
@@ -767,20 +919,13 @@ const ReportPanel = ({ tab, companyId, employees }) => {
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-              Employee
+              Employees
             </label>
-            <select
-              value={employeeId}
-              onChange={(e) => setEmployeeId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-            >
-              <option value="">All Employees</option>
-              {employees.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.employeeCode} - {emp.firstName}
-                </option>
-              ))}
-            </select>
+            <EmployeeSelector
+              employees={employees}
+              selectedIds={selectedEmployeeIds}
+              onChange={setSelectedEmployeeIds}
+            />
           </div>
           <div className="flex gap-2">
             <button

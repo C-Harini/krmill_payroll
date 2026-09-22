@@ -132,15 +132,15 @@ module.exports = (sequelize, DataTypes) => {
         ],
         validate: {
             validateCalculationType() {
-                if (this.valueType === 'Fixed' && (this.fixedAmount === null || this.fixedAmount === undefined || isNaN(this.fixedAmount))) {
+                if (this.valueType === 'Fixed' && !this.fixedAmount) {
                     throw new Error('fixedAmount is required when valueType is Fixed');
                 }
                 if (this.valueType === 'Percentage' && (!this.percentageValue || !this.percentageBase)) {
                     throw new Error('percentageValue and percentageBase are required when valueType is Percentage');
                 }
                 if (this.valueType === 'Formula' && !this.formulaExpression) {
-        throw new Error('formulaExpression is required when valueType is Formula');
-    }
+                    throw new Error('formulaExpression is required when valueType is Formula');
+                }
             }
         }
     });

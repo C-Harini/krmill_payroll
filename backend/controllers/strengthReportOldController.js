@@ -3,13 +3,14 @@
 // ============================================================
 // Strength Report Old Controller
 // PDF Format:
-//   Columns per shift (A/B/C): Strength | S OT (count on OT) | H OT (OT hours)
+//   Columns per shift (A/B/C): Strength | S OT (count on Full OT) | H OT (Hours OT sum)
 //   Right summary columns    : Req | STR | H.OT
 //
 // Strength = COUNT of present employees in that shift (regular + trainee combined)
 //            Half Day counts as 0.5
-// S OT     = COUNT of employees who have overtimeHours > 0
-// H OT     = SUM of overtimeHours for employees with OT
+//            If an employee has Full OT entry in that shift, their count is excluded from Strength.
+// S OT     = COUNT of employees with manual Full OT entry (OTHours with otTypeId = 2 or FULL OT)
+// H OT     = SUM of manual Hours OT (OTHours with otTypeId = 1 or HOURS OT)
 // Req      = Department.strengthRequired (Day Standard)
 // STR      = Sum of Strength across all 3 shifts (A+B+C)
 // H.OT     = Sum of H OT across all 3 shifts (total OT hours)
@@ -18,13 +19,277 @@
 // Trainee departments (T prefix rows like TSPG SIDER, TCARDING, etc.)
 //   are listed as separate department rows.
 // Category rows (PREPARATORY, SPINNING, AUTOCONER, Others) are section dividers.
-// Special sub-sections (8 to 8 Spinning, Mixing Male, etc.) appear as
-//   their own grouping after main categories.
 // ============================================================
 
 const { Op } = require("sequelize");
 const db = require("../models");
 const ExcelJS = require("exceljs");
+const moment = require("moment");
+
+/**
+ * Helper: Resolve shift key (A, B, C) from shiftName / shiftId
+ */
+function resolveShiftKey(shiftName, shiftId) {
+  const sn = (shiftName || "").trim().toUpperCase();
+  if (
+    sn === "B" ||
+    sn === "II" ||
+    sn === "2" ||
+    sn.endsWith("_B") ||
+    sn.endsWith(" B") ||
+    sn === "SHIFT B" ||
+    sn === "SHIFT II" ||
+    sn === "SHIFT 2" ||
+    shiftId === 2
+  ) {
+    return "B";
+  }
+  if (
+    sn === "C" ||
+    sn === "III" ||
+    sn === "3" ||
+    sn.endsWith("_C") ||
+    sn.endsWith(" C") ||
+    sn === "SHIFT C" ||
+    sn === "SHIFT III" ||
+    sn === "SHIFT 3" ||
+    shiftId === 3
+  ) {
+    return "C";
+  }
+  if (sn.includes("B") && !sn.includes("A") && !sn.includes("C")) {
+    return "B";
+  }
+  if (sn.includes("C") && !sn.includes("A") && !sn.includes("B")) {
+    return "C";
+  }
+  return "A";
+}
+
+/**
+ * Shared data generator for JSON report & Excel export
+ */
+async function generateStrengthReportData(companyId, date) {
+  const { Attendance, Employee, Department, Company, Category, OTHours, ShiftType } = db;
+  const targetDate = moment(date).format("YYYY-MM-DD");
+
+  // ── 0. Company ────────────────────────────────────────────
+  const company = await Company.findByPk(companyId, {
+    attributes: ["id", "name"],
+    raw: true,
+  });
+  if (!company) return null;
+
+  // ── 1. All departments ordered by slno ────────────────────
+  const allDepartments = await Department.findAll({
+    where: { companyId },
+    attributes: ["id", "departmentname", "strengthRequired", "slno"],
+    include: [
+      {
+        model: Category,
+        as: "category",
+        attributes: ["id", "categoryName", "categoryCode"],
+      },
+    ],
+    order: [["slno", "ASC"]],
+  });
+
+  // Build dept map: deptId -> aggregation bucket
+  const deptMap = {};
+  allDepartments.forEach((dept) => {
+    deptMap[dept.id] = {
+      departmentId: dept.id,
+      departmentName: dept.departmentname,
+      strengthRequired: dept.strengthRequired || 0,
+      slno: dept.slno,
+      categoryName: dept.category?.categoryName || "Others",
+      categoryCode: dept.category?.categoryCode || "OTH",
+      // Per-shift buckets: strength (headcount), sotCount (Full OT count), hotHours (Hours OT sum)
+      shifts: {
+        A: { strength: 0, sotCount: 0, hotHours: 0 },
+        B: { strength: 0, sotCount: 0, hotHours: 0 },
+        C: { strength: 0, sotCount: 0, hotHours: 0 },
+      },
+    };
+  });
+
+  // ── 2a. Manual OT entries (OTHours) ───────────────────────
+  const otRecords = await OTHours.findAll({
+    where: {
+      companyId,
+      date: {
+        [Op.gte]: moment(targetDate).startOf("day").toDate(),
+        [Op.lte]: moment(targetDate).endOf("day").toDate(),
+      },
+      status: "Active",
+    },
+    include: [
+      {
+        model: Employee,
+        as: "employee",
+        attributes: ["id", "departmentId", "isTrainee"],
+        where: { status: "Active" },
+        required: false,
+      },
+      {
+        model: ShiftType,
+        as: "shift",
+        attributes: ["id", "name"],
+        required: false,
+      },
+    ],
+    raw: true,
+    nest: true,
+  });
+
+  const fullOtEmpShiftSet = new Set(); // Stores `${employeeId}_${shiftKey}`
+
+  otRecords.forEach((ot) => {
+    const deptId = ot.workedDeptId || ot.departmentId || ot.employee?.departmentId;
+    if (!deptId || !deptMap[deptId]) return;
+
+    const shiftKey = resolveShiftKey(ot.shift?.name, ot.shiftId);
+    const isFullOt = ot.otTypeId === 2 || (ot.otType && String(ot.otType).toUpperCase().includes("FULL"));
+
+    if (isFullOt) {
+      deptMap[deptId].shifts[shiftKey].sotCount += 1;
+      if (ot.employeeId) {
+        fullOtEmpShiftSet.add(`${ot.employeeId}_${shiftKey}`);
+      }
+    } else {
+      const hours = parseFloat(ot.otHours) || 0;
+      deptMap[deptId].shifts[shiftKey].hotHours += hours;
+    }
+  });
+
+  // ── 2b. Present attendances ───────────────────────────────
+  const attendances = await Attendance.findAll({
+    where: {
+      companyId,
+      attendanceDate: targetDate,
+      status: { [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"] },
+    },
+    attributes: ["id", "employeeId", "shiftName", "status"],
+    include: [
+      {
+        model: Employee,
+        as: "employee",
+        attributes: ["id", "departmentId", "isTrainee"],
+        where: { status: "Active" },
+        include: [
+          {
+            model: Department,
+            as: "department",
+            attributes: ["id", "departmentname", "strengthRequired", "slno"],
+          },
+        ],
+      },
+    ],
+    raw: true,
+    nest: true,
+  });
+
+  // ── 3. Aggregate strength per department per shift ─────────
+  attendances.forEach((att) => {
+    const emp = att.employee;
+    if (!emp || !emp.department) return;
+
+    const deptId = emp.department.id;
+    if (!deptMap[deptId]) return;
+
+    const shiftKey = resolveShiftKey(att.shiftName);
+
+    // If an employee has Full OT entry in this shift, remove/exclude their count from Strength
+    if (fullOtEmpShiftSet.has(`${att.employeeId}_${shiftKey}`)) {
+      return;
+    }
+
+    // Strength: 0.5 for Half Day / Present/Leave, 1.0 otherwise
+    const strengthVal = (att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave") ? 0.5 : 1.0;
+    deptMap[deptId].shifts[shiftKey].strength += strengthVal;
+  });
+
+  // ── 4. Format department rows ─────────────────────────────
+  const formatShift = (s) => ({
+    strength: round(s.strength),
+    sotCount: s.sotCount,          // S OT column (Full OT count)
+    hotHours: round(s.hotHours),   // H OT column (Hours OT sum)
+  });
+
+  const departmentRows = Object.values(deptMap)
+    .map((dept) => {
+      const shiftA = formatShift(dept.shifts.A);
+      const shiftB = formatShift(dept.shifts.B);
+      const shiftC = formatShift(dept.shifts.C);
+
+      // STR = total strength across all shifts
+      const totalStrength = round(shiftA.strength + shiftB.strength + shiftC.strength);
+      // H.OT = total OT hours across all shifts
+      const totalHot = round(shiftA.hotHours + shiftB.hotHours + shiftC.hotHours);
+
+      return {
+        departmentId: dept.departmentId,
+        departmentName: dept.departmentName,
+        categoryName: dept.categoryName,
+        categoryCode: dept.categoryCode,
+        req: dept.strengthRequired,    // Req column
+        slno: dept.slno,
+        shiftA,
+        shiftB,
+        shiftC,
+        totalStrength, // STR column
+        totalHot,      // H.OT column
+      };
+    })
+    .sort((a, b) => a.slno - b.slno);
+
+  // ── 5. Group by category ──────────────────────────────────
+  const categoryGroups = {};
+  departmentRows.forEach((dept) => {
+    const cat = dept.categoryName || "Others";
+    if (!categoryGroups[cat]) {
+      categoryGroups[cat] = { categoryName: cat, departments: [] };
+    }
+    categoryGroups[cat].departments.push(dept);
+  });
+
+  // ── 6. Grand Total ────────────────────────────────────────
+  const grandTotal = {
+    req: 0,
+    shiftA: { strength: 0, sotCount: 0, hotHours: 0 },
+    shiftB: { strength: 0, sotCount: 0, hotHours: 0 },
+    shiftC: { strength: 0, sotCount: 0, hotHours: 0 },
+    totalStrength: 0,
+    totalHot: 0,
+  };
+
+  departmentRows.forEach((dept) => {
+    grandTotal.req += parseFloat(dept.req) || 0;
+    ["shiftA", "shiftB", "shiftC"].forEach((s) => {
+      grandTotal[s].strength += dept[s].strength;
+      grandTotal[s].sotCount += dept[s].sotCount;
+      grandTotal[s].hotHours += dept[s].hotHours;
+    });
+    grandTotal.totalStrength += dept.totalStrength;
+    grandTotal.totalHot += dept.totalHot;
+  });
+
+  grandTotal.req = round(grandTotal.req);
+  ["shiftA", "shiftB", "shiftC"].forEach((s) => {
+    grandTotal[s].strength = round(grandTotal[s].strength);
+    grandTotal[s].hotHours = round(grandTotal[s].hotHours);
+  });
+  grandTotal.totalStrength = round(grandTotal.totalStrength);
+  grandTotal.totalHot = round(grandTotal.totalHot);
+
+  return {
+    company,
+    targetDate,
+    departmentRows,
+    categoryGroups: Object.values(categoryGroups),
+    grandTotal,
+  };
+}
 
 /**
  * GET /api/strength-report-old
@@ -38,181 +303,19 @@ exports.getStrengthReport = async (req, res) => {
       return res.status(400).json({ error: "companyId and date are required" });
     }
 
-    const { Attendance, Employee, Department, Company, Category } = db;
-
-    // ── 0. Company ────────────────────────────────────────────
-    const company = await Company.findByPk(companyId, {
-      attributes: ["id", "name"],
-      raw: true,
-    });
-    if (!company) return res.status(404).json({ error: "Company not found" });
-
-    // ── 1. All departments ordered by slno ────────────────────
-    const allDepartments = await Department.findAll({
-      where: { companyId },
-      attributes: ["id", "departmentname", "strengthRequired", "slno"],
-      include: [
-        {
-          model: Category,
-          as: "category",
-          attributes: ["id", "categoryName", "categoryCode"],
-        },
-      ],
-      order: [["slno", "ASC"]],
-    });
-
-    // Build dept map: deptId -> aggregation bucket
-    const deptMap = {};
-    allDepartments.forEach((dept) => {
-      deptMap[dept.id] = {
-        departmentId: dept.id,
-        departmentName: dept.departmentname,
-        strengthRequired: dept.strengthRequired || 0,
-        slno: dept.slno,
-        categoryName: dept.category?.categoryName || "Others",
-        categoryCode: dept.category?.categoryCode || "OTH",
-        // Per-shift buckets: strength (headcount), sotCount (on OT), hotHours (OT hours)
-        shifts: {
-          A: { strength: 0, sotCount: 0, hotHours: 0 },
-          B: { strength: 0, sotCount: 0, hotHours: 0 },
-          C: { strength: 0, sotCount: 0, hotHours: 0 },
-        },
-      };
-    });
-
-    // ── 2. Present attendances ────────────────────────────────
-    const attendances = await Attendance.findAll({
-      where: {
-        companyId,
-        attendanceDate: date,
-        status: { [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"] },
-      },
-      attributes: ["id", "employeeId", "shiftName", "status", "overtimeHours"],
-      include: [
-        {
-          model: Employee,
-          as: "employee",
-          attributes: ["id", "departmentId", "isTrainee"],
-          where: { status: "Active" },
-          include: [
-            {
-              model: Department,
-              as: "department",
-              attributes: ["id", "departmentname", "strengthRequired", "slno"],
-            },
-          ],
-        },
-      ],
-      raw: true,
-      nest: true,
-    });
-
-    // ── 3. Aggregate per department per shift ─────────────────
-    attendances.forEach((att) => {
-      const emp = att.employee;
-      if (!emp || !emp.department) return;
-
-      const deptId = emp.department.id;
-      if (!deptMap[deptId]) return;
-
-      // Shift mapping: A = Shift I, B = Shift II, C = Shift III
-      let shiftKey = "A";
-      const sn = (att.shiftName || "").toUpperCase();
-      if (sn === "B" || sn === "II" || sn === "2") shiftKey = "B";
-      else if (sn === "C" || sn === "III" || sn === "3") shiftKey = "C";
-
-      // Strength: 0.5 for Half Day / Present/Leave, 1.0 otherwise
-      const strengthVal = (att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave") ? 0.5 : 1.0;
-      const otHours = parseFloat(att.overtimeHours) || 0;
-
-      deptMap[deptId].shifts[shiftKey].strength += strengthVal;
-      if (otHours > 0) {
-        deptMap[deptId].shifts[shiftKey].sotCount += 1;      // S OT: count on OT
-        deptMap[deptId].shifts[shiftKey].hotHours += otHours; // H OT: sum of OT hours
-      }
-    });
-
-    // ── 4. Format department rows ─────────────────────────────
-    const formatShift = (s) => ({
-      strength: round(s.strength),
-      sotCount: s.sotCount,          // S OT column (count)
-      hotHours: round(s.hotHours),   // H OT column (hours)
-    });
-
-    const departmentRows = Object.values(deptMap)
-      .map((dept) => {
-        const shiftA = formatShift(dept.shifts.A);
-        const shiftB = formatShift(dept.shifts.B);
-        const shiftC = formatShift(dept.shifts.C);
-
-        // STR = total strength across all shifts
-        const totalStrength = round(shiftA.strength + shiftB.strength + shiftC.strength);
-        // H.OT = total OT hours across all shifts
-        const totalHot = round(shiftA.hotHours + shiftB.hotHours + shiftC.hotHours);
-
-        return {
-          departmentId: dept.departmentId,
-          departmentName: dept.departmentName,
-          categoryName: dept.categoryName,
-          categoryCode: dept.categoryCode,
-          req: dept.strengthRequired,    // Req column
-          slno: dept.slno,
-          shiftA,
-          shiftB,
-          shiftC,
-          totalStrength, // STR column
-          totalHot,      // H.OT column
-        };
-      })
-      .sort((a, b) => a.slno - b.slno);
-
-    // ── 5. Group by category ──────────────────────────────────
-    const categoryGroups = {};
-    departmentRows.forEach((dept) => {
-      const cat = dept.categoryName || "Others";
-      if (!categoryGroups[cat]) {
-        categoryGroups[cat] = { categoryName: cat, departments: [] };
-      }
-      categoryGroups[cat].departments.push(dept);
-    });
-
-    // ── 6. Grand Total ────────────────────────────────────────
-    const grandTotal = {
-      req: 0,
-      shiftA: { strength: 0, sotCount: 0, hotHours: 0 },
-      shiftB: { strength: 0, sotCount: 0, hotHours: 0 },
-      shiftC: { strength: 0, sotCount: 0, hotHours: 0 },
-      totalStrength: 0,
-      totalHot: 0,
-    };
-
-    departmentRows.forEach((dept) => {
-      grandTotal.req += dept.req;
-      ["shiftA", "shiftB", "shiftC"].forEach((s) => {
-        grandTotal[s].strength += dept[s].strength;
-        grandTotal[s].sotCount += dept[s].sotCount;
-        grandTotal[s].hotHours += dept[s].hotHours;
-      });
-      grandTotal.totalStrength += dept.totalStrength;
-      grandTotal.totalHot += dept.totalHot;
-    });
-
-    grandTotal.req = round(grandTotal.req);
-    ["shiftA", "shiftB", "shiftC"].forEach((s) => {
-      grandTotal[s].strength = round(grandTotal[s].strength);
-      grandTotal[s].hotHours = round(grandTotal[s].hotHours);
-    });
-    grandTotal.totalStrength = round(grandTotal.totalStrength);
-    grandTotal.totalHot = round(grandTotal.totalHot);
+    const reportData = await generateStrengthReportData(companyId, date);
+    if (!reportData) {
+      return res.status(404).json({ error: "Company not found" });
+    }
 
     return res.json({
       success: true,
       data: {
         date,
         companyId: parseInt(companyId),
-        companyName: company.name,
-        categoryGroups: Object.values(categoryGroups),
-        grandTotal,
+        companyName: reportData.company.name,
+        categoryGroups: reportData.categoryGroups,
+        grandTotal: reportData.grandTotal,
       },
     });
   } catch (error) {
@@ -235,127 +338,12 @@ exports.exportStrengthReportExcel = async (req, res) => {
       return res.status(400).json({ error: "companyId and date are required" });
     }
 
-    // Re-use the same aggregation logic
-    const { Attendance, Employee, Department, Company, Category } = db;
+    const reportData = await generateStrengthReportData(companyId, date);
+    if (!reportData) {
+      return res.status(404).json({ error: "Company not found" });
+    }
 
-    const company = await Company.findByPk(companyId, { attributes: ["id", "name"], raw: true });
-    if (!company) return res.status(404).json({ error: "Company not found" });
-
-    const allDepartments = await Department.findAll({
-      where: { companyId },
-      attributes: ["id", "departmentname", "strengthRequired", "slno"],
-      include: [{ model: Category, as: "category", attributes: ["id", "categoryName", "categoryCode"] }],
-      order: [["slno", "ASC"]],
-    });
-
-    const deptMap = {};
-    allDepartments.forEach((dept) => {
-      deptMap[dept.id] = {
-        departmentId: dept.id,
-        departmentName: dept.departmentname,
-        strengthRequired: dept.strengthRequired || 0,
-        slno: dept.slno,
-        categoryName: dept.category?.categoryName || "Others",
-        categoryCode: dept.category?.categoryCode || "OTH",
-        shifts: {
-          A: { strength: 0, sotCount: 0, hotHours: 0 },
-          B: { strength: 0, sotCount: 0, hotHours: 0 },
-          C: { strength: 0, sotCount: 0, hotHours: 0 },
-        },
-      };
-    });
-
-    const attendances = await Attendance.findAll({
-      where: {
-        companyId,
-        attendanceDate: date,
-        status: { [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"] },
-      },
-      attributes: ["id", "employeeId", "shiftName", "status", "overtimeHours"],
-      include: [
-        {
-          model: Employee,
-          as: "employee",
-          attributes: ["id", "departmentId", "isTrainee"],
-          where: { status: "Active" },
-          include: [{ model: Department, as: "department", attributes: ["id", "departmentname", "strengthRequired", "slno"] }],
-        },
-      ],
-      raw: true,
-      nest: true,
-    });
-
-    attendances.forEach((att) => {
-      const emp = att.employee;
-      if (!emp || !emp.department) return;
-      const deptId = emp.department.id;
-      if (!deptMap[deptId]) return;
-
-      let shiftKey = "A";
-      const sn = (att.shiftName || "").toUpperCase();
-      if (sn === "B" || sn === "II" || sn === "2") shiftKey = "B";
-      else if (sn === "C" || sn === "III" || sn === "3") shiftKey = "C";
-
-      const strengthVal = (att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave") ? 0.5 : 1.0;
-      const otHours = parseFloat(att.overtimeHours) || 0;
-
-      deptMap[deptId].shifts[shiftKey].strength += strengthVal;
-      if (otHours > 0) {
-        deptMap[deptId].shifts[shiftKey].sotCount += 1;
-        deptMap[deptId].shifts[shiftKey].hotHours += otHours;
-      }
-    });
-
-    const formatShift = (s) => ({
-      strength: round(s.strength),
-      sotCount: s.sotCount,
-      hotHours: round(s.hotHours),
-    });
-
-    const departmentRows = Object.values(deptMap)
-      .map((dept) => {
-        const shiftA = formatShift(dept.shifts.A);
-        const shiftB = formatShift(dept.shifts.B);
-        const shiftC = formatShift(dept.shifts.C);
-        const totalStrength = round(shiftA.strength + shiftB.strength + shiftC.strength);
-        const totalHot = round(shiftA.hotHours + shiftB.hotHours + shiftC.hotHours);
-        return {
-          departmentId: dept.departmentId,
-          departmentName: dept.departmentName,
-          categoryName: dept.categoryName,
-          req: dept.strengthRequired,
-          slno: dept.slno,
-          shiftA, shiftB, shiftC,
-          totalStrength, totalHot,
-        };
-      })
-      .sort((a, b) => a.slno - b.slno);
-
-    const grandTotal = {
-      req: 0,
-      shiftA: { strength: 0, sotCount: 0, hotHours: 0 },
-      shiftB: { strength: 0, sotCount: 0, hotHours: 0 },
-      shiftC: { strength: 0, sotCount: 0, hotHours: 0 },
-      totalStrength: 0,
-      totalHot: 0,
-    };
-    departmentRows.forEach((dept) => {
-      grandTotal.req += dept.req;
-      ["shiftA", "shiftB", "shiftC"].forEach((s) => {
-        grandTotal[s].strength += dept[s].strength;
-        grandTotal[s].sotCount += dept[s].sotCount;
-        grandTotal[s].hotHours += dept[s].hotHours;
-      });
-      grandTotal.totalStrength += dept.totalStrength;
-      grandTotal.totalHot += dept.totalHot;
-    });
-    grandTotal.req = round(grandTotal.req);
-    ["shiftA", "shiftB", "shiftC"].forEach((s) => {
-      grandTotal[s].strength = round(grandTotal[s].strength);
-      grandTotal[s].hotHours = round(grandTotal[s].hotHours);
-    });
-    grandTotal.totalStrength = round(grandTotal.totalStrength);
-    grandTotal.totalHot = round(grandTotal.totalHot);
+    const { company, departmentRows, grandTotal } = reportData;
 
     // ── Build Excel ───────────────────────────────────────────
     const wb = new ExcelJS.Workbook();
@@ -456,7 +444,6 @@ exports.exportStrengthReportExcel = async (req, res) => {
       ri++;
 
       depts.forEach((dept) => {
-        // Render all departments regardless of employee count/headcount data presence
         const row = ws.getRow(ri++);
         row.height = 15;
 
@@ -532,7 +519,9 @@ exports.exportStrengthReportExcel = async (req, res) => {
 
 // ── Helpers ──────────────────────────────────────────────────
 function round(val, decimals = 1) {
-  return Math.round(val * Math.pow(10, decimals)) / Math.pow(10, decimals);
+  const num = parseFloat(val);
+  if (isNaN(num)) return 0;
+  return Math.round(num * Math.pow(10, decimals)) / Math.pow(10, decimals);
 }
 
 function cellVal(val) {

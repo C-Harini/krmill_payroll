@@ -108,8 +108,14 @@ exports.getStrengthReport = async (req, res) => {
           [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"],
         },
       },
-      attributes: ["id", "employeeId", "shiftName", "status", "overtimeHours"],
+      attributes: ["id", "employeeId", "departmentId", "workedDeptId", "shiftName", "status", "overtimeHours"],
       include: [
+        {
+          model: Department,
+          as: "workedDepartment",
+          attributes: ["id", "departmentname", "strengthRequired", "slno"],
+          required: false,
+        },
         {
           model: Employee,
           as: "employee",
@@ -167,9 +173,9 @@ exports.getStrengthReport = async (req, res) => {
       const emp = att.employee;
       if (!emp) return;
       const dept = emp.department;
-      if (!dept) return;
+      const deptId = att.workedDeptId || att.departmentId || (dept ? dept.id : null);
+      if (!deptId) return;
 
-      const deptId = dept.id;
       const shift = att.shiftName;
 
       // Ensure department exists in map
@@ -535,8 +541,14 @@ exports.exportStrengthReportExcel = async (req, res) => {
           [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"],
         },
       },
-      attributes: ["id", "employeeId", "shiftName", "status", "overtimeHours"],
+      attributes: ["id", "employeeId", "departmentId", "workedDeptId", "shiftName", "status", "overtimeHours"],
       include: [
+        {
+          model: Department,
+          as: "workedDepartment",
+          attributes: ["id", "departmentname", "strengthRequired", "slno"],
+          required: false,
+        },
         {
           model: Employee,
           as: "employee",
@@ -594,9 +606,9 @@ exports.exportStrengthReportExcel = async (req, res) => {
       const emp = att.employee;
       if (!emp) return;
       const dept = emp.department;
-      if (!dept) return;
+      const deptId = att.workedDeptId || att.departmentId || (dept ? dept.id : null);
+      if (!deptId) return;
 
-      const deptId = dept.id;
       const shift = att.shiftName;
 
       if (!deptMap[deptId]) return;

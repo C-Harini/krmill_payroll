@@ -188,7 +188,7 @@ const exportExcel = (grouped, companyName, from, to) => {
           i + 1,
           `"${r.employee?.employeeCode || ""}"`,
           `"${name}"`,
-          `"${r.employee?.department?.departmentname || ""}"`,
+          `"${r.workedDepartment?.departmentname || r.department?.departmentname || r.employee?.department?.departmentname || ""}"`,
           statusLabel(r.status),
           fmtTime(r.firstCheckIn),
           fmtTime(r.lastCheckOut),
@@ -260,7 +260,7 @@ const exportPDF = (grouped, companyName, from, to) => {
           i + 1,
           r.employee?.employeeCode || "",
           name,
-          r.employee?.department?.departmentname || "",
+          r.workedDepartment?.departmentname || r.department?.departmentname || r.employee?.department?.departmentname || "",
           statusLabel(r.status),
           fmtTime(r.firstCheckIn),
           fmtTime(r.lastCheckOut),
@@ -510,7 +510,27 @@ export default function AttendanceReport() {
                               <td style={{ ...s.td, textDecoration: late ? "underline" : "none", color: late ? "#dc2626" : "#0f172a", fontWeight: 600, fontSize: 14.5 }}>
                                 {name}
                               </td>
-                              <td style={{ ...s.td, color: "#334155", fontSize: 13.5, fontWeight: 500 }}>{r.employee?.department?.departmentname || "-"}</td>
+                              <td style={{ ...s.td, color: "#334155", fontSize: 13.5, fontWeight: 500 }}>
+                                {r.workedDepartment?.departmentname || r.department?.departmentname || r.employee?.department?.departmentname || "-"}
+                                {r.workedDeptId && r.departmentId && String(r.workedDeptId) !== String(r.departmentId) && (
+                                  <span
+                                    style={{
+                                      marginLeft: 6,
+                                      padding: "2px 6px",
+                                      fontSize: 10.5,
+                                      fontWeight: 600,
+                                      backgroundColor: "#fef3c7",
+                                      color: "#92400e",
+                                      borderRadius: 4,
+                                      border: "1px solid #fde68a",
+                                      display: "inline-block",
+                                    }}
+                                    title={`Home Dept: ${r.department?.departmentname || r.employee?.department?.departmentname || ""}`}
+                                  >
+                                    Worked Dept
+                                  </span>
+                                )}
+                              </td>
                               <td style={{ ...s.td, textAlign: "center" }}><StatusChip status={r.status} /></td>
                               <td style={{ ...s.td, textAlign: "center", fontSize: 15, textDecoration: late ? "underline" : "none", color: late ? "#dc2626" : "#0f172a", fontWeight: late ? 700 : 600, fontVariantNumeric: "tabular-nums" }}>
                                 {fmtTime(r.firstCheckIn)}

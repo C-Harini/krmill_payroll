@@ -56,7 +56,6 @@ exports.getAttendanceReport = async (req, res) => {
     const empTypeIdList   = parseIds(employmentTypeIds);
     const gradeIdList     = parseIds(gradeIds);
 
-    if (deptIdList)    employeeWhere.departmentId      = { [Op.in]: deptIdList };
     if (catIdList)     employeeWhere.categoryId        = { [Op.in]: catIdList };
     if (empTypeIdList) employeeWhere.employmentTypeId  = { [Op.in]: empTypeIdList };
     if (gradeIdList)   employeeWhere.gradeId           = { [Op.in]: gradeIdList };
@@ -73,10 +72,26 @@ exports.getAttendanceReport = async (req, res) => {
       status: { [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"] },
     };
     if (empIdList) where.employeeId = { [Op.in]: empIdList };
+    if (deptIdList) {
+      where[Op.or] = [
+        { workedDeptId: { [Op.in]: deptIdList } },
+        { workedDeptId: null, departmentId: { [Op.in]: deptIdList } },
+      ];
+    }
 
     const rows = await Attendance.findAll({
       where,
       include: [
+        {
+          model: db.Department,
+          as: "workedDepartment",
+          attributes: ["id", "departmentname", "acronym"],
+        },
+        {
+          model: db.Department,
+          as: "department",
+          attributes: ["id", "departmentname", "acronym"],
+        },
         {
           model: Employee,
           as: "employee",
@@ -89,7 +104,7 @@ exports.getAttendanceReport = async (req, res) => {
             {
               model: db.Department,
               as: "department",
-              attributes: ["id", "departmentname"],
+              attributes: ["id", "departmentname", "acronym"],
             },
             {
               model: db.Category,

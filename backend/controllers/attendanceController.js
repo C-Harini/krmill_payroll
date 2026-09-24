@@ -458,7 +458,12 @@ exports.getAttendance = async (req, res) => {
     if (employeeId) where.employeeId = employeeId;
     if (status) where.status = status;
     if (shiftName) where.shiftName = shiftName;
-    if (departmentId) where.departmentId = departmentId;
+    if (departmentId) {
+      where[Op.or] = [
+        { workedDeptId: departmentId },
+        { workedDeptId: null, departmentId: departmentId },
+      ];
+    }
 
     const employeeWhere = {};
     if (search) {
@@ -487,6 +492,16 @@ exports.getAttendance = async (req, res) => {
       subQuery: false,
       include: [
         {
+          model: Department,
+          as: "workedDepartment",
+          attributes: ["id", "departmentname", "acronym"],
+        },
+        {
+          model: Department,
+          as: "department",
+          attributes: ["id", "departmentname", "acronym"],
+        },
+        {
           model: Employee,
           as: "employee",
           attributes: ["id", "firstName", "lastName", "curEmployeeCode", "newEmployeeCode", "categoryId", "departmentId"],
@@ -501,7 +516,7 @@ exports.getAttendance = async (req, res) => {
             {
               model: Department,
               as: "department",
-              attributes: ["id", "departmentname"],
+              attributes: ["id", "departmentname", "acronym"],
             },
             {
               model: Category,
@@ -543,6 +558,16 @@ exports.getAttendanceById = async (req, res) => {
     const record = await Attendance.findByPk(req.params.id, {
       include: [
         {
+          model: Department,
+          as: "workedDepartment",
+          attributes: ["id", "departmentname", "acronym"],
+        },
+        {
+          model: Department,
+          as: "department",
+          attributes: ["id", "departmentname", "acronym"],
+        },
+        {
           model: Employee,
           as: "employee",
           include: [
@@ -554,7 +579,7 @@ exports.getAttendanceById = async (req, res) => {
             {
               model: Department,
               as: "department",
-              attributes: ["id", "departmentname"],
+              attributes: ["id", "departmentname", "acronym"],
             },
           ],
         },

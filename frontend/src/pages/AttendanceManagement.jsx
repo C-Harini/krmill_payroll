@@ -861,7 +861,7 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
                 formatDate(r.attendanceDate),
                 r.employee?.employeeCode || "",
                 r.employee?.firstName || "",
-                r.employee?.department?.departmentname || "",
+                r.workedDepartment?.departmentname || r.department?.departmentname || r.employee?.department?.departmentname || "",
                 r.firstCheckIn ? formatTime(r.firstCheckIn) : "",
                 r.lastCheckOut ? formatTime(r.lastCheckOut) : "",
                 r.workingHours || 0,
@@ -968,7 +968,7 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
               formatDate(r.attendanceDate),
               r.employee?.employeeCode || "",
               r.employee?.firstName || "",
-              r.employee?.department?.departmentname || "",
+              r.workedDepartment?.departmentname || r.department?.departmentname || r.employee?.department?.departmentname || "",
               r.firstCheckIn ? formatTime(r.firstCheckIn) : "-",
               r.lastCheckOut ? formatTime(r.lastCheckOut) : "-",
               r.workingHours > 0 ? `${r.workingHours}h` : "0h",
@@ -1471,7 +1471,24 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
                                   )}
                                 </td>
                                 <td className="px-4 py-3 text-gray-600 capitalize text-xs">
-                                  {r.employee?.department?.departmentname || "-"}
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span>
+                                      {r.workedDepartment?.departmentname ||
+                                        r.department?.departmentname ||
+                                        r.employee?.department?.departmentname ||
+                                        "-"}
+                                    </span>
+                                    {r.workedDeptId &&
+                                      r.departmentId &&
+                                      String(r.workedDeptId) !== String(r.departmentId) && (
+                                        <span
+                                          className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200"
+                                          title={`Home Dept: ${r.department?.departmentname || r.employee?.department?.departmentname || ""}`}
+                                        >
+                                          Worked Dept
+                                        </span>
+                                      )}
+                                  </div>
                                 </td>
                                 <td className="px-4 py-3 font-mono text-xs text-gray-900">
                                   {formatTime(r.firstCheckIn)}

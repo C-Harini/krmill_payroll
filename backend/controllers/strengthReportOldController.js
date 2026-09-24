@@ -7,9 +7,9 @@
 //   Right summary columns    : Req | STR | H.OT
 //
 // Strength = COUNT of present employees in that shift (regular + trainee combined)
-//            Half Day counts as 0.5
-//            If an employee has Full OT entry or attendance on their leave date, their count is excluded from Strength.
-// S OT     = COUNT of employees with manual Full OT entry (OTHours) OR attendance on their leave date (LeaveRequest or Present/Leave)
+//            Half Day / Present/Leave counts as 0.5
+//            If an employee has Full OT entry or worked on their week off / leave date, their count is excluded from Strength.
+// S OT     = COUNT of employees with manual Full OT entry (OTHours) OR who worked on their week off / approved leave date
 // H OT     = SUM of manual Hours OT (OTHours with otTypeId = 1 or HOURS OT)
 // Req      = Department.strengthRequired (Day Standard)
 // STR      = Sum of Strength across all 3 shifts (A+B+C)
@@ -64,6 +64,27 @@ function resolveShiftKey(shiftName, shiftId) {
     return "C";
   }
   return "A";
+}
+
+/**
+ * Helper: Check if date is employee's week off day
+ */
+function isEmployeeWeekOffDay(emp, targetDate, att) {
+  if (att && (att.isWeekOff === true || att.isWeekOff === 1 || att.isWeekOff === "true")) {
+    return true;
+  }
+  if (!emp) return false;
+  const rawWeeklyOff = (emp.weeklyOff || "").trim();
+  const dayOfWeek = moment(targetDate).format("dddd").toUpperCase();
+
+  if (!rawWeeklyOff) {
+    return dayOfWeek === "SUNDAY";
+  }
+  if (rawWeeklyOff === "-" || rawWeeklyOff.toUpperCase() === "NO WEEKLY") {
+    return false;
+  }
+  const offDays = rawWeeklyOff.split(",").map((d) => d.trim().toUpperCase());
+  return offDays.includes(dayOfWeek);
 }
 
 /**
@@ -182,7 +203,7 @@ async function generateStrengthReportData(companyId, date) {
       attendanceDate: targetDate,
       status: { [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"] },
     },
-    attributes: ["id", "employeeId", "departmentId", "workedDeptId", "shiftName", "status"],
+    attributes: ["id", "employeeId", "departmentId", "workedDeptId", "shiftName", "status", "isWeekOff"],
     include: [
       {
         model: Department,
@@ -193,7 +214,7 @@ async function generateStrengthReportData(companyId, date) {
       {
         model: Employee,
         as: "employee",
-        attributes: ["id", "departmentId", "isTrainee"],
+        attributes: ["id", "departmentId", "isTrainee", "weeklyOff"],
         where: { status: "Active" },
         include: [
           {
@@ -224,20 +245,18 @@ async function generateStrengthReportData(companyId, date) {
       return;
     }
 
-    // 2. If employee had attendance on their leave date (approved LeaveRequest OR status is Present/Leave (P/L)):
-    //    Count should be in SOT and removed from Strength
-    const isOnLeaveDate =
-      leaveEmpSet.has(att.employeeId) ||
-      att.status === "Present/Leave (P/L)" ||
-      att.status === "Present/Leave";
+    // 2. If employee came to work on their week off day OR approved leave date:
+    //    Count is added to SOT of worked department and removed from Strength
+    const isWeekOff = isEmployeeWeekOffDay(emp, targetDate, att);
+    const isOnLeaveDate = leaveEmpSet.has(att.employeeId);
 
-    if (isOnLeaveDate) {
+    if (isWeekOff || isOnLeaveDate) {
       deptMap[deptId].shifts[shiftKey].sotCount += 1;
       return; // Excluded/removed from Strength
     }
 
-    // 3. Normal Strength: 0.5 for Half Day, 1.0 otherwise
-    const strengthVal = (att.status === "Half Day") ? 0.5 : 1.0;
+    // 3. Normal Strength: 0.5 for Half Day / Present/Leave, 1.0 otherwise
+    const strengthVal = (att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave") ? 0.5 : 1.0;
     deptMap[deptId].shifts[shiftKey].strength += strengthVal;
   });
 

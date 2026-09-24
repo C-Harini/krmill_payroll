@@ -163,24 +163,13 @@ async function generateStrengthReportData(companyId, date) {
     nest: true,
   });
 
-  const fullOtEmpShiftSet = new Set(); // Stores `${employeeId}_${shiftKey}`
-
   otRecords.forEach((ot) => {
     const deptId = ot.workedDeptId || ot.departmentId || ot.employee?.departmentId;
     if (!deptId || !deptMap[deptId]) return;
 
     const shiftKey = resolveShiftKey(ot.shift?.name, ot.shiftId);
-    const isFullOt = ot.otTypeId === 2 || (ot.otType && String(ot.otType).toUpperCase().includes("FULL"));
-
-    if (isFullOt) {
-      deptMap[deptId].shifts[shiftKey].sotCount += 1;
-      if (ot.employeeId) {
-        fullOtEmpShiftSet.add(`${ot.employeeId}_${shiftKey}`);
-      }
-    } else {
-      const hours = parseFloat(ot.otHours) || 0;
-      deptMap[deptId].shifts[shiftKey].hotHours += hours;
-    }
+    const hours = parseFloat(ot.otHours) || 0;
+    deptMap[deptId].shifts[shiftKey].hotHours += hours;
   });
 
   // ── 2b. Approved Leave Requests on date ────────────────────
@@ -240,12 +229,7 @@ async function generateStrengthReportData(companyId, date) {
 
     const shiftKey = resolveShiftKey(att.shiftName);
 
-    // 1. If an employee has manual Full OT entry in this shift, they were already added to sotCount in 2a, so exclude from Strength
-    if (fullOtEmpShiftSet.has(`${att.employeeId}_${shiftKey}`)) {
-      return;
-    }
-
-    // 2. If employee came to work on their week off day OR approved leave date:
+    // 1. If employee came to work on their week off day OR approved leave date:
     //    Count is added to SOT of worked department and removed from Strength
     const isWeekOff = isEmployeeWeekOffDay(emp, targetDate, att);
     const isOnLeaveDate = leaveEmpSet.has(att.employeeId);
@@ -255,7 +239,7 @@ async function generateStrengthReportData(companyId, date) {
       return; // Excluded/removed from Strength
     }
 
-    // 3. Normal Strength: 0.5 for Half Day / Present/Leave, 1.0 otherwise
+    // 2. Normal Strength: 0.5 for Half Day / Present/Leave, 1.0 otherwise
     const strengthVal = (att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave") ? 0.5 : 1.0;
     deptMap[deptId].shifts[shiftKey].strength += strengthVal;
   });

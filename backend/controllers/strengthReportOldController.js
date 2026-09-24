@@ -8,8 +8,8 @@
 //
 // Strength = COUNT of present employees in that shift (regular + trainee combined)
 //            Half Day counts as 0.5
-//            If an employee has Full OT entry in that shift, their count is excluded from Strength.
-// S OT     = COUNT of employees with manual Full OT entry (OTHours with otTypeId = 2 or FULL OT)
+//            If an employee has Full OT entry or attendance on their leave date, their count is excluded from Strength.
+// S OT     = COUNT of employees with manual Full OT entry (OTHours) OR attendance on their leave date (LeaveRequest or Present/Leave)
 // H OT     = SUM of manual Hours OT (OTHours with otTypeId = 1 or HOURS OT)
 // Req      = Department.strengthRequired (Day Standard)
 // STR      = Sum of Strength across all 3 shifts (A+B+C)
@@ -70,7 +70,7 @@ function resolveShiftKey(shiftName, shiftId) {
  * Shared data generator for JSON report & Excel export
  */
 async function generateStrengthReportData(companyId, date) {
-  const { Attendance, Employee, Department, Company, Category, OTHours, ShiftType } = db;
+  const { Attendance, Employee, Department, Company, Category, OTHours, ShiftType, LeaveRequest } = db;
   const targetDate = moment(date).format("YYYY-MM-DD");
 
   // ── 0. Company ────────────────────────────────────────────
@@ -162,15 +162,34 @@ async function generateStrengthReportData(companyId, date) {
     }
   });
 
-  // ── 2b. Present attendances ───────────────────────────────
+  // ── 2b. Approved Leave Requests on date ────────────────────
+  const leaveRecords = await LeaveRequest.findAll({
+    where: {
+      companyId,
+      status: "Approved",
+      startDate: { [Op.lte]: targetDate },
+      endDate: { [Op.gte]: targetDate },
+    },
+    attributes: ["employeeId"],
+    raw: true,
+  });
+  const leaveEmpSet = new Set(leaveRecords.map((l) => l.employeeId));
+
+  // ── 2c. Present attendances ───────────────────────────────
   const attendances = await Attendance.findAll({
     where: {
       companyId,
       attendanceDate: targetDate,
       status: { [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"] },
     },
-    attributes: ["id", "employeeId", "shiftName", "status"],
+    attributes: ["id", "employeeId", "departmentId", "workedDeptId", "shiftName", "status"],
     include: [
+      {
+        model: Department,
+        as: "workedDepartment",
+        attributes: ["id", "departmentname", "strengthRequired", "slno"],
+        required: false,
+      },
       {
         model: Employee,
         as: "employee",
@@ -192,20 +211,33 @@ async function generateStrengthReportData(companyId, date) {
   // ── 3. Aggregate strength per department per shift ─────────
   attendances.forEach((att) => {
     const emp = att.employee;
-    if (!emp || !emp.department) return;
+    if (!emp) return;
 
-    const deptId = emp.department.id;
-    if (!deptMap[deptId]) return;
+    const dept = att.workedDepartment || emp.department;
+    const deptId = att.workedDeptId || att.departmentId || (dept ? dept.id : null) || emp.departmentId;
+    if (!deptId || !deptMap[deptId]) return;
 
     const shiftKey = resolveShiftKey(att.shiftName);
 
-    // If an employee has Full OT entry in this shift, remove/exclude their count from Strength
+    // 1. If an employee has manual Full OT entry in this shift, they were already added to sotCount in 2a, so exclude from Strength
     if (fullOtEmpShiftSet.has(`${att.employeeId}_${shiftKey}`)) {
       return;
     }
 
-    // Strength: 0.5 for Half Day / Present/Leave, 1.0 otherwise
-    const strengthVal = (att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave") ? 0.5 : 1.0;
+    // 2. If employee had attendance on their leave date (approved LeaveRequest OR status is Present/Leave (P/L)):
+    //    Count should be in SOT and removed from Strength
+    const isOnLeaveDate =
+      leaveEmpSet.has(att.employeeId) ||
+      att.status === "Present/Leave (P/L)" ||
+      att.status === "Present/Leave";
+
+    if (isOnLeaveDate) {
+      deptMap[deptId].shifts[shiftKey].sotCount += 1;
+      return; // Excluded/removed from Strength
+    }
+
+    // 3. Normal Strength: 0.5 for Half Day, 1.0 otherwise
+    const strengthVal = (att.status === "Half Day") ? 0.5 : 1.0;
     deptMap[deptId].shifts[shiftKey].strength += strengthVal;
   });
 

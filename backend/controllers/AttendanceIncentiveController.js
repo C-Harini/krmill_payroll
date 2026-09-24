@@ -1110,8 +1110,8 @@ exports.getDailyEntries = async (req, res) => {
         categoryId,
         status: "Active",
       },
-      attributes: ["id", "employeeCode", "firstName", "departmentId"],
-      order: [["employeeCode", "ASC"]],
+      attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "departmentId"],
+      order: [["curEmployeeCode", "ASC"]],
     });
 
     // 2. Fetch existing daily entries on this date
@@ -1141,7 +1141,9 @@ exports.getDailyEntries = async (req, res) => {
       const saved = savedByEmp[emp.id];
       return {
         employeeId: emp.id,
-        employeeCode: emp.employeeCode,
+        employeeCode: emp.curEmployeeCode || emp.employeeCode,
+        curEmployeeCode: emp.curEmployeeCode,
+        newEmployeeCode: emp.newEmployeeCode,
         employeeName: emp.firstName, // Only show first name
         departmentId: emp.departmentId,
         days: saved ? saved.days : 0, // default to 0
@@ -1466,7 +1468,7 @@ exports.getPackagingEntries = async (req, res) => {
         { model: Department, as: "department", attributes: ["id", "departmentname"] },
         { model: Designation, as: "designation", attributes: ["id", "name"] },
       ],
-      order: [["employeeCode", "ASC"]],
+      order: [["curEmployeeCode", "ASC"]],
     });
 
     // Filter to only Packing workers if no specific departmentId was selected
@@ -1526,7 +1528,9 @@ exports.getPackagingEntries = async (req, res) => {
 
       return {
         employeeId: emp.id,
-        employeeCode: emp.employeeCode,
+        employeeCode: emp.curEmployeeCode || emp.employeeCode,
+        curEmployeeCode: emp.curEmployeeCode,
+        newEmployeeCode: emp.newEmployeeCode,
         employeeName: emp.firstName,
         departmentId: emp.departmentId,
         departmentName: emp.department?.departmentname || "",
@@ -1646,7 +1650,7 @@ exports.getPackagingSummary = async (req, res) => {
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "employeeCode", "firstName"],
+          attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName"],
           include: [{ model: Department, as: "department", attributes: ["id", "departmentname"] }],
         },
       ],
@@ -1659,7 +1663,9 @@ exports.getPackagingSummary = async (req, res) => {
       if (!summaryMap[empId]) {
         summaryMap[empId] = {
           employeeId: empId,
-          employeeCode: r.employee?.employeeCode,
+          employeeCode: r.employee?.curEmployeeCode || r.employee?.employeeCode,
+          curEmployeeCode: r.employee?.curEmployeeCode,
+          newEmployeeCode: r.employee?.newEmployeeCode,
           employeeName: r.employee?.firstName,
           departmentName: r.employee?.department?.departmentname || "",
           totalDaysWorked: 0,

@@ -38,7 +38,7 @@ exports.getEmployeesByCompany = async (req, res) => {
         { model: Caste, as: "caste", attributes: ["id", "casteName"] },
         { model: Religion, as: "religion", attributes: ["id", "religionName"] },
       ],
-      order: [["employeeCode", "ASC"]],
+      order: [["curEmployeeCode", "ASC"]],
     });
 
     // Add computed fields
@@ -85,7 +85,7 @@ exports.getEmployeeById = async (req, res) => {
         {
           model: Employee,
           as: "reportingManager",
-          attributes: ["id", "firstName", "lastName", "employeeCode"],
+          attributes: ["id", "firstName", "lastName", "curEmployeeCode"],
         },
         { model: Category, as: "category", attributes: ["id", "categoryName"] },
         { model: Caste, as: "caste", attributes: ["id", "casteName"] },
@@ -152,6 +152,13 @@ exports.createEmployee = async (req, res) => {
       if (!cleanedData[field]) cleanedData[field] = null;
     });
 
+    if (!cleanedData.curEmployeeCode && cleanedData.employeeCode) {
+      cleanedData.curEmployeeCode = cleanedData.employeeCode;
+    }
+    if (!cleanedData.curBiometricEnrollmentId && cleanedData.biometricEnrollmentId) {
+      cleanedData.curBiometricEnrollmentId = cleanedData.biometricEnrollmentId;
+    }
+
     // Optional fields → convert empty string to null
     const optionalFields = [
       "middleName",
@@ -173,6 +180,9 @@ exports.createEmployee = async (req, res) => {
       "workLocation",
       "referencePersonName",
       "referencePersonContact",
+      "curBiometricEnrollmentId",
+      "newBiometricEnrollmentId",
+      "newEmployeeCode",
       "biometricEnrollmentId",
       "bankName",
       "bankAccountNumber",
@@ -385,7 +395,14 @@ exports.updateEmployee = async (req, res) => {
       if (!updatedData[field]) updatedData[field] = null;
     });
 
-    // Clean optional fields (including dateOfRejoining)
+    if (updatedData.curEmployeeCode === undefined && updatedData.employeeCode !== undefined) {
+      updatedData.curEmployeeCode = updatedData.employeeCode;
+    }
+    if (updatedData.curBiometricEnrollmentId === undefined && updatedData.biometricEnrollmentId !== undefined) {
+      updatedData.curBiometricEnrollmentId = updatedData.biometricEnrollmentId;
+    }
+
+    // Optional fields → convert empty string to null
     const optionalFields = [
       "middleName",
       "officialEmail",
@@ -404,6 +421,9 @@ exports.updateEmployee = async (req, res) => {
       "workLocation",
       "referencePersonName",
       "referencePersonContact",
+      "curBiometricEnrollmentId",
+      "newBiometricEnrollmentId",
+      "newEmployeeCode",
       "biometricEnrollmentId",
       "bankName",
       "bankAccountNumber",
@@ -612,6 +632,13 @@ exports.bulkUploadEmployees = async (req, res) => {
       try {
         const empData = { ...employees[i], companyId };
 
+        if (!empData.curEmployeeCode && empData.employeeCode) {
+          empData.curEmployeeCode = empData.employeeCode;
+        }
+        if (!empData.curBiometricEnrollmentId && empData.biometricEnrollmentId) {
+          empData.curBiometricEnrollmentId = empData.biometricEnrollmentId;
+        }
+
         // Convert boolean strings to actual booleans
         if (typeof empData.isTrainee === "string") {
           empData.isTrainee = empData.isTrainee.toLowerCase() === "true";
@@ -658,8 +685,8 @@ exports.bulkUploadEmployees = async (req, res) => {
 // @route   GET /api/employees/download-template
 // @access  Private
 exports.downloadTemplate = async (req, res) => {
-  const csvTemplate = `employeeCode,firstName,middleName,lastName,dateOfBirth,gender,bloodGroup,maritalStatus,personalEmail,officialEmail,mobileNumber,alternateMobile,emergencyContactName,emergencyContactNumber,emergencyContactRelationship,currentAddressLine1,currentAddressLine2,currentCity,currentState,currentPincode,currentCountry,permanentAddressLine1,permanentAddressLine2,permanentCity,permanentState,permanentPincode,permanentCountry,departmentId,designationId,employmentTypeId,employeeType,dateOfJoining,confirmationDate,probationPeriod,reportingManagerId,workLocation,employmentStatus,referencePersonName,referencePersonContact,shiftTypeId,leavePolicyId,weeklyOff,isOvertimeApplicable,isLeaveApplicable,biometricDeviceId,biometricEnrollmentId,basicSalary,bankName,bankAccountNumber,ifscCode,bankBranch,paymentMode,panNumber,uanNumber,esiNumber,isTransportRequired,busId,pickupPoint,isHostel,isTrainee,aadhaarNumber,passportNumber,drivingLicenseNumber,voterIdNumber,categoryId,casteId,religionId,status
-EMP001,John,M,Doe,1990-01-15,Male,A+,Single,john.doe@example.com,john.doe@company.com,9876543210,9876543211,Jane Doe,9876543212,Spouse,123 Main St,,New York,NY,10001,USA,123 Main St,,New York,NY,10001,USA,1,1,1,Permanent,2023-01-01,2023-04-01,3,2,Head Office,Active,Robert Smith,9876543213,1,1,Sunday,false,true,1,BIO001,25000,HDFC Bank,1234567890,HDFC0001234,NY Branch,Bank Transfer,ABCDE1234F,123456789012,1234567890,false,1,Main Street,false,false,123456789012,A1234567,DL123456,ABC1234567,1,1,1,Active`;
+  const csvTemplate = `curEmployeeCode,newEmployeeCode,firstName,middleName,lastName,dateOfBirth,gender,bloodGroup,maritalStatus,personalEmail,officialEmail,mobileNumber,alternateMobile,emergencyContactName,emergencyContactNumber,emergencyContactRelationship,currentAddressLine1,currentAddressLine2,currentCity,currentState,currentPincode,currentCountry,permanentAddressLine1,permanentAddressLine2,permanentCity,permanentState,permanentPincode,permanentCountry,departmentId,designationId,employmentTypeId,employeeType,dateOfJoining,confirmationDate,probationPeriod,reportingManagerId,workLocation,employmentStatus,referencePersonName,referencePersonContact,shiftTypeId,leavePolicyId,weeklyOff,isOvertimeApplicable,isLeaveApplicable,biometricDeviceId,curBiometricEnrollmentId,newBiometricEnrollmentId,basicSalary,bankName,bankAccountNumber,ifscCode,bankBranch,paymentMode,panNumber,uanNumber,esiNumber,isTransportRequired,busId,pickupPoint,isHostel,isTrainee,aadhaarNumber,passportNumber,drivingLicenseNumber,voterIdNumber,categoryId,casteId,religionId,status
+EMP001,,John,M,Doe,1990-01-15,Male,A+,Single,john.doe@example.com,john.doe@company.com,9876543210,9876543211,Jane Doe,9876543212,Spouse,123 Main St,,New York,NY,10001,USA,123 Main St,,New York,NY,10001,USA,1,1,1,Permanent,2023-01-01,2023-04-01,3,2,Head Office,Active,Robert Smith,9876543213,1,1,Sunday,false,true,1,BIO001,,25000,HDFC Bank,1234567890,HDFC0001234,NY Branch,Bank Transfer,ABCDE1234F,123456789012,1234567890,false,1,Main Street,false,false,123456789012,A1234567,DL123456,ABC1234567,1,1,1,Active`;
 
   res.setHeader("Content-Type", "text/csv");
   res.setHeader(

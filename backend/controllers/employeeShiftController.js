@@ -64,7 +64,7 @@ console.log(
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "firstName", "lastName", "employeeCode"],
+          attributes: ["id", "firstName", "lastName", "curEmployeeCode", "newEmployeeCode"],
           include: [
             {
               model: EmploymentType,
@@ -90,7 +90,9 @@ console.log(
           employeeName: r.employee
             ? r.employee.firstName
             : "N/A",
-          employeeCode: r.employee?.employeeCode || "N/A",
+          employeeCode: r.employee?.newEmployeeCode ? `${r.employee.curEmployeeCode || ''} / ${r.employee.newEmployeeCode}` : (r.employee?.curEmployeeCode || r.employee?.employeeCode || "N/A"),
+          curEmployeeCode: r.employee?.curEmployeeCode || r.employee?.employeeCode || "N/A",
+          newEmployeeCode: r.employee?.newEmployeeCode || "",
           employeeType: r.employee?.employmentType?.name || "N/A",
           totalDaysAllShifts: 0,
           totalWorkingHoursAllShifts: 0,

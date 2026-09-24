@@ -82,7 +82,7 @@ exports.getAttendanceReport = async (req, res) => {
           as: "employee",
           where: employeeWhere,
           attributes: [
-            "id", "firstName", "lastName", "employeeCode",
+            "id", "firstName", "lastName", "curEmployeeCode", "newEmployeeCode",
             "departmentId", "employmentTypeId", "gradeId", "categoryId",
           ],
           include: [

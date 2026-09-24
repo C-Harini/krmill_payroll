@@ -79,7 +79,7 @@ exports.getPFReport = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Month and year are required' });
     }
 
-    const whereClause = { salaryMonth: month, salaryYear: year, status: 'paid' };
+    const whereClause = { salaryMonth: month, salaryYear: year, status: { [Op.in]: ['paid', 'Generated'] } };
     if (companyId) whereClause.companyId = companyId;
 
     const employeeWhere = {};
@@ -92,7 +92,7 @@ exports.getPFReport = async (req, res) => {
           model: Employee,
           as: 'employee',
           where: employeeWhere,
-          attributes: ['employeeCode', 'firstName', 'lastName', 'uanNumber', 'epfNumber', 'dateOfJoining'],
+          attributes: ['curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName', 'uanNumber', 'epfNumber', 'dateOfJoining'],
           // ↑ if epfNumber field name differs in your DB, adjust here
           include: [
             { model: Department, as: 'department', attributes: ['departmentname', ['departmentname', 'departmentName'], ['departmentname', 'name']] }
@@ -100,7 +100,7 @@ exports.getPFReport = async (req, res) => {
         },
         { model: Company, as: 'company', attributes: ['name'] }
       ],
-      order: [[{ model: Employee, as: 'employee' }, 'employeeCode', 'ASC']]
+      order: [[{ model: Employee, as: 'employee' }, 'curEmployeeCode', 'ASC']]
     });
 
     const pfData = salaryData.map(record => {
@@ -159,7 +159,7 @@ exports.getESIReport = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Month and year are required' });
     }
 
-    const whereClause = { salaryMonth: month, salaryYear: year, status: 'paid' };
+    const whereClause = { salaryMonth: month, salaryYear: year, status: { [Op.in]: ['paid', 'Generated'] } };
     if (companyId) whereClause.companyId = companyId;
 
     const employeeWhere = {};
@@ -172,14 +172,14 @@ exports.getESIReport = async (req, res) => {
           model: Employee,
           as: 'employee',
           where: employeeWhere,
-          attributes: ['employeeCode', 'firstName', 'lastName', 'esiNumber', 'dateOfJoining'],
+          attributes: ['curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName', 'esiNumber', 'dateOfJoining'],
           include: [
             { model: Department, as: 'department', attributes: ['departmentname', ['departmentname', 'departmentName'], ['departmentname', 'name']] }
           ]
         },
         { model: Company, as: 'company', attributes: ['name'] }
       ],
-      order: [[{ model: Employee, as: 'employee' }, 'employeeCode', 'ASC']]
+      order: [[{ model: Employee, as: 'employee' }, 'curEmployeeCode', 'ASC']]
     });
 
     const esiData = salaryData.map(record => {
@@ -232,7 +232,7 @@ exports.getTaxReport = async (req, res) => {
   try {
     const { companyId, departmentId, month, year, quarter } = req.query;
 
-    const whereClause = { status: 'paid' };
+    const whereClause = { status: { [Op.in]: ['paid', 'Generated'] } };
     if (companyId) whereClause.companyId = companyId;
 
     if (quarter) {
@@ -268,7 +268,7 @@ exports.getTaxReport = async (req, res) => {
           model: Employee,
           as: 'employee',
           where: employeeWhere,
-          attributes: ['employeeCode', 'firstName', 'lastName', 'panNumber', 'dateOfJoining'],
+          attributes: ['curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName', 'panNumber', 'dateOfJoining'],
           include: [
             { model: Department, as: 'department', attributes: ['departmentname', ['departmentname', 'departmentName'], ['departmentname', 'name']] }
           ]
@@ -276,7 +276,7 @@ exports.getTaxReport = async (req, res) => {
         { model: Company, as: 'company', attributes: ['name', 'tanNumber'] }
       ],
       order: [
-        [{ model: Employee, as: 'employee' }, 'employeeCode', 'ASC'],
+        [{ model: Employee, as: 'employee' }, 'curEmployeeCode', 'ASC'],
         ['salaryMonth', 'ASC']
       ]
     });
@@ -335,7 +335,7 @@ exports.getProfessionalTaxReport = async (req, res) => {
     const period = getPTPeriod(month, year);
     const whereClause = {
       [Op.or]: period.map(p => ({ salaryMonth: p.month, salaryYear: String(p.year) })),
-      status: 'paid'
+      status: { [Op.in]: ['paid', 'Generated'] }
     };
     if (companyId) whereClause.companyId = companyId;
 
@@ -349,7 +349,7 @@ exports.getProfessionalTaxReport = async (req, res) => {
           model: Employee,
           as: 'employee',
           where: employeeWhere,
-          attributes: ['id', 'employeeCode', 'firstName', 'lastName', 'mobileNumber', 'officialEmail', 'providentFundNumber'],
+          attributes: ['id', 'curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName', 'mobileNumber', 'officialEmail', 'providentFundNumber'],
           include: [
             { model: Department, as: 'department', attributes: ['departmentname', ['departmentname', 'departmentName'], ['departmentname', 'name']] },
             { model: Relation, as: 'relations', attributes: ['name', 'relation'], required: false },
@@ -359,7 +359,7 @@ exports.getProfessionalTaxReport = async (req, res) => {
         },
         { model: Company, as: 'company', attributes: ['name'] }
       ],
-      order: [[{ model: Employee, as: 'employee' }, 'employeeCode', 'ASC']]
+      order: [[{ model: Employee, as: 'employee' }, 'curEmployeeCode', 'ASC']]
     });
 
     // Group by employee
@@ -444,7 +444,7 @@ exports.getLoanReport = async (req, res) => {
           model: Employee,
           as: 'employee',
           where: employeeWhere,
-          attributes: ['employeeCode', 'firstName', 'lastName', 'dateOfJoining'],
+          attributes: ['curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName', 'dateOfJoining'],
           include: [
             { model: Department, as: 'department', attributes: ['departmentname', ['departmentname', 'departmentName'], ['departmentname', 'name']] },
             { model: Company, as: 'company', attributes: ['name'] }
@@ -453,7 +453,7 @@ exports.getLoanReport = async (req, res) => {
       ],
       order: [
         ['status', 'ASC'],
-        [{ model: Employee, as: 'employee' }, 'employeeCode', 'ASC']
+        [{ model: Employee, as: 'employee' }, 'curEmployeeCode', 'ASC']
       ]
     });
 
@@ -509,7 +509,7 @@ exports.downloadPFReportPDF = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Month and year are required' });
     }
 
-    const whereClause = { salaryMonth: month, salaryYear: year, status: 'paid' };
+    const whereClause = { salaryMonth: month, salaryYear: year, status: { [Op.in]: ['paid', 'Generated'] } };
     if (companyId) whereClause.companyId = companyId;
     const employeeWhere = {};
     if (departmentId) employeeWhere.departmentId = departmentId;
@@ -521,12 +521,12 @@ exports.downloadPFReportPDF = async (req, res) => {
           model: Employee,
           as: 'employee',
           where: employeeWhere,
-          attributes: ['employeeCode', 'firstName', 'lastName', 'uanNumber', 'epfNumber'],
+          attributes: ['curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName', 'uanNumber', 'epfNumber'],
           include: [{ model: Department, as: 'department', attributes: ['departmentname', ['departmentname', 'departmentName'], ['departmentname', 'name']] }]
         },
         { model: Company, as: 'company', attributes: ['name'] }
       ],
-      order: [[{ model: Employee, as: 'employee' }, 'employeeCode', 'ASC']]
+      order: [[{ model: Employee, as: 'employee' }, 'curEmployeeCode', 'ASC']]
     });
 
     const pfData = salaryData.map(record => {
@@ -597,7 +597,7 @@ exports.downloadPFReportPDF = async (req, res) => {
 
       const values = [
         index + 1,
-        item.employee.employeeCode,
+        item.employee.newEmployeeCode ? `${item.employee.curEmployeeCode || ''} / ${item.employee.newEmployeeCode}` : (item.employee.curEmployeeCode || item.employee.employeeCode || ''),
         item.employee.firstName || '',
         item.employee.epfNumber || 'N/A',
         item.employee.uanNumber || 'N/A',
@@ -662,7 +662,7 @@ exports.downloadESIReportPDF = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Month and year are required' });
     }
 
-    const whereClause = { salaryMonth: month, salaryYear: year, status: 'paid' };
+    const whereClause = { salaryMonth: month, salaryYear: year, status: { [Op.in]: ['paid', 'Generated'] } };
     if (companyId) whereClause.companyId = companyId;
     const employeeWhere = {};
     if (departmentId) employeeWhere.departmentId = departmentId;
@@ -674,12 +674,12 @@ exports.downloadESIReportPDF = async (req, res) => {
           model: Employee,
           as: 'employee',
           where: employeeWhere,
-          attributes: ['employeeCode', 'firstName', 'lastName', 'esiNumber'],
+          attributes: ['curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName', 'esiNumber'],
           include: [{ model: Department, as: 'department', attributes: ['departmentName'] }]
         },
         { model: Company, as: 'company', attributes: ['name'] }
       ],
-      order: [[{ model: Employee, as: 'employee' }, 'employeeCode', 'ASC']]
+      order: [[{ model: Employee, as: 'employee' }, 'curEmployeeCode', 'ASC']]
     });
 
     const esiData = salaryData.map(record => {
@@ -747,7 +747,7 @@ exports.downloadESIReportPDF = async (req, res) => {
 
       const values = [
         index + 1,
-        item.employee.employeeCode,
+        item.employee.newEmployeeCode ? `${item.employee.curEmployeeCode || ''} / ${item.employee.newEmployeeCode}` : (item.employee.curEmployeeCode || item.employee.employeeCode || ''),
         item.employee.firstName || '',
         item.employee.esiNumber || 'N/A',
         item.basicPay.toFixed(2),
@@ -815,7 +815,7 @@ exports.downloadPTReportPDF = async (req, res) => {
     const period = getPTPeriod(month, year);
     const whereClause = {
       [Op.or]: period.map(p => ({ salaryMonth: p.month, salaryYear: String(p.year) })),
-      status: 'paid'
+      status: { [Op.in]: ['paid', 'Generated'] }
     };
     if (companyId) whereClause.companyId = companyId;
     const employeeWhere = {};
@@ -828,7 +828,7 @@ exports.downloadPTReportPDF = async (req, res) => {
           model: Employee,
           as: 'employee',
           where: employeeWhere,
-          attributes: ['id', 'employeeCode', 'firstName', 'lastName', 'mobileNumber', 'officialEmail', 'providentFundNumber'],
+          attributes: ['id', 'curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName', 'mobileNumber', 'officialEmail', 'providentFundNumber'],
           include: [
             { model: Department, as: 'department', attributes: ['departmentName'] },
             { model: Relation, as: 'relations', attributes: ['name', 'relation'], required: false },
@@ -838,7 +838,7 @@ exports.downloadPTReportPDF = async (req, res) => {
         },
         { model: Company, as: 'company', attributes: ['name'] }
       ],
-      order: [[{ model: Employee, as: 'employee' }, 'employeeCode', 'ASC']]
+      order: [[{ model: Employee, as: 'employee' }, 'curEmployeeCode', 'ASC']]
     });
 
     // Group by employee
@@ -947,7 +947,7 @@ exports.downloadPTReportPDF = async (req, res) => {
       const fixedVals = [
         index + 1,
         item.company?.name || 'N/A',
-        item.employee.employeeCode,
+        item.employee.newEmployeeCode ? `${item.employee.curEmployeeCode || ''} / ${item.employee.newEmployeeCode}` : (item.employee.curEmployeeCode || item.employee.employeeCode || ''),
         item.employee.firstName || '',
         item.fatherHusbandName,
         item.employee.providentFundNumber || 'N/A',
@@ -1025,7 +1025,7 @@ exports.downloadStatutoryReportsExcel = async (req, res) => {
     // ------------------------------------------
     if (!reportType || reportType === 'pf') {
       const salaryData = await SalaryGeneration.findAll({
-        where: { salaryMonth: month, salaryYear: year, status: 'paid', ...(companyId && { companyId }) },
+        where: { salaryMonth: month, salaryYear: year, status: { [Op.in]: ['paid', 'Generated'] }, ...(companyId && { companyId }) },
         include: [
           {
             model: Employee, as: 'employee',
@@ -1033,7 +1033,7 @@ exports.downloadStatutoryReportsExcel = async (req, res) => {
           },
           { model: Company, as: 'company' }
         ],
-        order: [[{ model: Employee, as: 'employee' }, 'employeeCode', 'ASC']]
+        order: [[{ model: Employee, as: 'employee' }, 'curEmployeeCode', 'ASC']]
       });
 
       const pfSheet = workbook.addWorksheet('EPF Report');
@@ -1074,7 +1074,7 @@ exports.downloadStatutoryReportsExcel = async (req, res) => {
 
         const row = pfSheet.getRow(rn);
         row.values = [
-          idx + 1, record.employee.employeeCode,
+          idx + 1, (record.employee.newEmployeeCode ? `${record.employee.curEmployeeCode || ''} / ${record.employee.newEmployeeCode}` : (record.employee.curEmployeeCode || record.employee.employeeCode || '')),
           record.employee.firstName || '',
           record.employee.epfNumber || 'N/A', record.employee.uanNumber || 'N/A',
           parseFloat(record.grossPay || 0), epfWage, epsWage, edliWage,
@@ -1102,7 +1102,7 @@ exports.downloadStatutoryReportsExcel = async (req, res) => {
     // ------------------------------------------
     if (!reportType || reportType === 'esi') {
       const salaryData = await SalaryGeneration.findAll({
-        where: { salaryMonth: month, salaryYear: year, status: 'paid', ...(companyId && { companyId }) },
+        where: { salaryMonth: month, salaryYear: year, status: { [Op.in]: ['paid', 'Generated'] }, ...(companyId && { companyId }) },
         include: [
           {
             model: Employee, as: 'employee',
@@ -1110,7 +1110,7 @@ exports.downloadStatutoryReportsExcel = async (req, res) => {
           },
           { model: Company, as: 'company' }
         ],
-        order: [[{ model: Employee, as: 'employee' }, 'employeeCode', 'ASC']]
+        order: [[{ model: Employee, as: 'employee' }, 'curEmployeeCode', 'ASC']]
       });
 
       const esiSheet = workbook.addWorksheet('ESI Report');
@@ -1149,7 +1149,7 @@ exports.downloadStatutoryReportsExcel = async (req, res) => {
 
         const row = esiSheet.getRow(rn);
         row.values = [
-          idx + 1, record.employee.employeeCode,
+          idx + 1, (record.employee.newEmployeeCode ? `${record.employee.curEmployeeCode || ''} / ${record.employee.newEmployeeCode}` : (record.employee.curEmployeeCode || record.employee.employeeCode || '')),
           record.employee.firstName || '',
           record.employee.esiNumber || 'N/A',
           basicPay, sa, totalWages, llpDays,
@@ -1180,12 +1180,12 @@ exports.downloadStatutoryReportsExcel = async (req, res) => {
         const ptSalary = await SalaryGeneration.findAll({
           where: {
             [Op.or]: period.map(p => ({ salaryMonth: p.month, salaryYear: String(p.year) })),
-            status: 'paid', ...(companyId && { companyId })
+            status: { [Op.in]: ['paid', 'Generated'] }, ...(companyId && { companyId })
           },
           include: [
             {
               model: Employee, as: 'employee',
-              attributes: ['id','employeeCode','firstName','lastName','mobileNumber','officialEmail','providentFundNumber'],
+              attributes: ['id','curEmployeeCode','newEmployeeCode','firstName','lastName','mobileNumber','officialEmail','providentFundNumber'],
               include: [
                 { model: Department, as: 'department', attributes: ['departmentName'] },
                 { model: Relation, as: 'relations', attributes: ['name','relation'], required: false },
@@ -1195,7 +1195,7 @@ exports.downloadStatutoryReportsExcel = async (req, res) => {
             },
             { model: Company, as: 'company', attributes: ['name'] }
           ],
-          order: [[{ model: Employee, as: 'employee' }, 'employeeCode', 'ASC']]
+          order: [[{ model: Employee, as: 'employee' }, 'curEmployeeCode', 'ASC']]
         });
 
         const empMap = {};
@@ -1268,7 +1268,7 @@ exports.downloadStatutoryReportsExcel = async (req, res) => {
           const monthVals = period.map(p => item.monthlyGross[`${p.month}-${p.year}`] || 0);
           row.values = [
             idx + 1, item.company?.name || 'N/A',
-            item.employee.employeeCode,
+            item.employee.newEmployeeCode ? `${item.employee.curEmployeeCode || ''} / ${item.employee.newEmployeeCode}` : (item.employee.curEmployeeCode || item.employee.employeeCode || ''),
             item.employee.firstName || '',
             item.fatherHusbandName,
             item.employee.providentFundNumber || 'N/A',

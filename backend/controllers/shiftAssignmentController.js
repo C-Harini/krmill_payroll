@@ -64,7 +64,7 @@ exports.getShiftAssignments = async (req, res) => {
                 {
                     model: Employee,
                     as: 'employee',
-                    attributes: ['id', 'firstName', 'lastName', 'employeeCode'],
+                    attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode', 'curBiometricEnrollmentId', 'newBiometricEnrollmentId'],
                 },
                 {
                     model: ShiftType,
@@ -94,7 +94,7 @@ exports.getShiftAssignmentById = async (req, res) => {
                 {
                     model: Employee,
                     as: 'employee',
-                    attributes: ['id', 'firstName', 'lastName', 'employeeCode'],
+                    attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode', 'curBiometricEnrollmentId', 'newBiometricEnrollmentId'],
                 },
                 {
                     model: ShiftType,
@@ -347,7 +347,7 @@ exports.updateShiftAssignment = async (req, res) => {
         
         const updated = await ShiftAssignment.findByPk(id, {
             include: [
-                { model: Employee, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'employeeCode'] },
+                { model: Employee, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode', 'curBiometricEnrollmentId', 'newBiometricEnrollmentId'] },
                 { model: ShiftType, as: 'shiftType', attributes: ['id', 'name', 'startTime', 'endTime'] },
             ],
         });

@@ -4,11 +4,25 @@ const PDFDocument = require("pdfkit");
 
 const REPORT_FIELDS = [
   {
+    key: "curEmployeeCode",
+    label: "Current Employee Code",
+    type: "string",
+    category: "Basic Information",
+    dbField: "curEmployeeCode",
+  },
+  {
+    key: "newEmployeeCode",
+    label: "New Employee Code",
+    type: "string",
+    category: "Basic Information",
+    dbField: "newEmployeeCode",
+  },
+  {
     key: "employeeCode",
     label: "Employee Code",
     type: "string",
     category: "Basic Information",
-    dbField: "employeeCode",
+    dbField: "curEmployeeCode",
   },
   {
     key: "firstName",
@@ -380,6 +394,20 @@ const REPORT_FIELDS = [
     dbField: "isOvertimeApplicable",
   },
   {
+    key: "curBiometricEnrollmentId",
+    label: "Current Biometric ID",
+    type: "string",
+    category: "Shift & Attendance",
+    dbField: "curBiometricEnrollmentId",
+  },
+  {
+    key: "newBiometricEnrollmentId",
+    label: "New Biometric ID",
+    type: "string",
+    category: "Shift & Attendance",
+    dbField: "newBiometricEnrollmentId",
+  },
+  {
     key: "isLeaveApplicable",
     label: "Leave Applicable",
     type: "boolean",
@@ -662,7 +690,7 @@ function buildIncludes(columns, models) {
     reportingManager: {
       model: models.Employee,
       as: "reportingManager",
-      attributes: ["id", "firstName", "lastName", "employeeCode"],
+      attributes: ["id", "firstName", "lastName", "curEmployeeCode"],
       required: false,
     },
   };
@@ -794,7 +822,7 @@ async function executeReportQuery(columns, conditions, companyId) {
     attributes,
     where,
     include: includes,
-    order: [["employeeCode", "ASC"]],
+    order: [["curEmployeeCode", "ASC"]],
     raw: false,
   });
 
@@ -1191,7 +1219,7 @@ module.exports = {
           {
             model: Employee,
             as: "employee",
-            attributes: ["id", "employeeCode", "firstName", "middleName", "lastName", "departmentId", "shiftTypeId"],
+            attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "middleName", "lastName", "departmentId", "shiftTypeId"],
             required: false
           },
           {
@@ -1265,7 +1293,7 @@ module.exports = {
           {
             model: Employee,
             as: "employee",
-            attributes: ["id", "employeeCode", "firstName", "middleName", "lastName", "departmentId", "shiftTypeId"],
+            attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "middleName", "lastName", "departmentId", "shiftTypeId"],
             required: false
           },
           {
@@ -1336,8 +1364,11 @@ module.exports = {
           ? (emp.firstName || emp.employeeCode)
           : (manualRecord ? manualRecord.empName : "");
 
+        const empCodeStr = emp ? (emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode)) : "";
         recordMap.set(key, {
-          ticketNo: emp ? emp.employeeCode : (manualRecord ? manualRecord.ticketNo : ""),
+          ticketNo: empCodeStr || (manualRecord ? manualRecord.ticketNo : ""),
+          curEmployeeCode: emp?.curEmployeeCode || "",
+          newEmployeeCode: emp?.newEmployeeCode || "",
           employeeName: empName,
           department: deptName,
           deptId: deptId ? parseInt(deptId) : null,
@@ -1366,8 +1397,11 @@ module.exports = {
             ? (emp.firstName || emp.employeeCode)
             : (mr.empName || "");
 
+          const empCodeStr = emp ? (emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode)) : "";
           recordMap.set(key, {
-            ticketNo: mr.ticketNo || (emp ? emp.employeeCode : ""),
+            ticketNo: mr.ticketNo || empCodeStr || "",
+            curEmployeeCode: emp?.curEmployeeCode || "",
+            newEmployeeCode: emp?.newEmployeeCode || "",
             employeeName: empName,
             department: deptName,
             deptId: deptId ? parseInt(deptId) : null,
@@ -1470,7 +1504,7 @@ module.exports = {
           {
             model: Employee,
             as: "employee",
-            attributes: ["id", "employeeCode", "firstName", "middleName", "lastName"]
+            attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "middleName", "lastName"],
           },
           {
             model: Department,
@@ -1503,8 +1537,11 @@ module.exports = {
           ? (emp.firstName || emp.employeeCode)
           : (r.empName || "");
 
+        const empCodeStr = emp ? (emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode)) : "";
         return {
-          ticketNo: emp ? emp.employeeCode : (r.ticketNo || ""),
+          ticketNo: empCodeStr || (r.ticketNo || ""),
+          curEmployeeCode: emp?.curEmployeeCode || "",
+          newEmployeeCode: emp?.newEmployeeCode || "",
           employeeName: empName,
           department: deptName,
           deptId: resolvedDeptId ? parseInt(resolvedDeptId) : null,
@@ -1633,7 +1670,7 @@ module.exports = {
           {
             model: Employee,
             as: "employee",
-            attributes: ["id", "employeeCode", "firstName", "middleName", "lastName"]
+            attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "middleName", "lastName"],
           },
           {
             model: Department,

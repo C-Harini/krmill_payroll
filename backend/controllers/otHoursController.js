@@ -706,7 +706,7 @@ exports.getOTHoursStats = async (req, res) => {
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "firstName", "lastName", "employeeCode"],
+          attributes: ["id", "firstName", "lastName", "curEmployeeCode", "newEmployeeCode"],
           include: [
             {
               model: EmployeeSalaryMaster,
@@ -779,7 +779,7 @@ exports.getOTHoursMultipleEntry = async (req, res) => {
             required: false,
           },
         ],
-        order: [["employeeCode", "ASC"]],
+        order: [["curEmployeeCode", "ASC"]],
       });
     } else {
       // Fallback: If no manual attendance records exist for this department/date,
@@ -798,7 +798,7 @@ exports.getOTHoursMultipleEntry = async (req, res) => {
             required: false,
           },
         ],
-        order: [["employeeCode", "ASC"]],
+        order: [["curEmployeeCode", "ASC"]],
       });
     }
 
@@ -886,7 +886,7 @@ exports.getOTHoursMultipleEntry = async (req, res) => {
     const unsavedEmployees = employees
       .filter((emp) => !excludeFromUnsaved.has(emp.id))
       .map((emp) => {
-        const code = emp.employeeCode || emp.ticketNo || (emp.dataValues ? emp.dataValues.employeeCode : "") || String(emp.id);
+        const code = emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode || emp.ticketNo || (emp.dataValues ? emp.dataValues.curEmployeeCode || emp.dataValues.employeeCode : "") || String(emp.id));
         const catName = emp.category
           ? emp.category.categoryCode || emp.category.categoryName || "O"
           : "O";
@@ -895,6 +895,8 @@ exports.getOTHoursMultipleEntry = async (req, res) => {
           employeeId: emp.id,
           ticketNo: code,
           employeeCode: code,
+          curEmployeeCode: emp.curEmployeeCode || emp.employeeCode,
+          newEmployeeCode: emp.newEmployeeCode || "",
           empName: emp.firstName,
           category: catName,
         };
@@ -903,7 +905,7 @@ exports.getOTHoursMultipleEntry = async (req, res) => {
     // 4. Format Enriched Saved Data list
     const savedData = savedRecords.map((r, index) => {
       const emp = r.employee;
-      const code = r.ticketNo || (emp ? emp.employeeCode || emp.ticketNo : "") || String(r.employeeId);
+      const code = r.ticketNo || (emp ? (emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode || emp.ticketNo)) : "") || String(r.employeeId);
       const catName = r.employee && r.employee.category
         ? r.employee.category.categoryCode || r.employee.category.categoryName
         : "O";
@@ -912,6 +914,8 @@ exports.getOTHoursMultipleEntry = async (req, res) => {
         slNo: index + 1,
         ticketNo: code,
         employeeCode: code,
+        curEmployeeCode: emp?.curEmployeeCode || emp?.employeeCode || "",
+        newEmployeeCode: emp?.newEmployeeCode || "",
         employeeName: emp ? emp.firstName : (r.empName ? r.empName.split(" ")[0] : ""),
         shiftName: r.shift ? r.shift.name : "B",
         category: catName,
@@ -1041,7 +1045,7 @@ exports.saveOTHoursMultipleEntry = async (req, res) => {
       const targetDay = moment(targetDate).format("dddd"); // e.g. "Sunday", "Monday", ...
       const employees = await Employee.findAll({
         where: { id: { [Op.in]: employeeIds } },
-        attributes: ["id", "firstName", "lastName", "employeeCode", "weeklyOff"],
+        attributes: ["id", "firstName", "lastName", "curEmployeeCode", "newEmployeeCode", "weeklyOff"],
       });
 
       const invalidEmployees = employees.filter((emp) => {
@@ -1051,7 +1055,7 @@ exports.saveOTHoursMultipleEntry = async (req, res) => {
 
       if (invalidEmployees.length > 0) {
         const names = invalidEmployees
-          .map((emp) => `${emp.firstName} (${emp.employeeCode})`)
+          .map((emp) => `${emp.firstName} (${emp.newEmployeeCode ? `${emp.curEmployeeCode} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode)})`)
           .join(", ");
         await transaction.rollback();
         return res.status(400).json({
@@ -1075,7 +1079,7 @@ exports.saveOTHoursMultipleEntry = async (req, res) => {
         shiftId: { [Op.ne]: shiftId },
       },
       include: [
-        { model: Employee, as: "employee", attributes: ["firstName", "employeeCode"] },
+        { model: Employee, as: "employee", attributes: ["firstName", "curEmployeeCode", "newEmployeeCode"] },
         { model: ShiftType, as: "shift", attributes: ["name"] },
       ],
       transaction,
@@ -1086,7 +1090,7 @@ exports.saveOTHoursMultipleEntry = async (req, res) => {
       const conflictDetails = alreadySavedDiffShift
         .map((r) => {
           const name = r.employee ? r.employee.firstName : (r.empName || `ID ${r.employeeId}`);
-          const code = r.ticketNo || (r.employee ? r.employee.employeeCode : "");
+          const code = r.ticketNo || (r.employee ? (r.employee.newEmployeeCode ? `${r.employee.curEmployeeCode} / ${r.employee.newEmployeeCode}` : (r.employee.curEmployeeCode || r.employee.employeeCode)) : "");
           const sName = r.shift ? r.shift.name : `Shift ${r.shiftId}`;
           return `${name}${code ? ` (${code})` : ""} in Shift ${sName}`;
         })

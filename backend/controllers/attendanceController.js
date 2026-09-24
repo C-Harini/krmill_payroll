@@ -238,7 +238,7 @@ exports.getShiftSummary = async (req, res) => {
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "firstName", "lastName", "employeeCode"],
+          attributes: ["id", "firstName", "lastName", "curEmployeeCode", "newEmployeeCode"],
           include: [
             {
               model: EmploymentType,
@@ -263,7 +263,9 @@ exports.getShiftSummary = async (req, res) => {
           employeeName: r.employee
             ? r.employee.firstName
             : "N/A",
-          employeeCode: r.employee?.employeeCode || "N/A",
+          employeeCode: r.employee?.newEmployeeCode ? `${r.employee.curEmployeeCode || ''} / ${r.employee.newEmployeeCode}` : (r.employee?.curEmployeeCode || r.employee?.employeeCode || "N/A"),
+          curEmployeeCode: r.employee?.curEmployeeCode || r.employee?.employeeCode || "N/A",
+          newEmployeeCode: r.employee?.newEmployeeCode || "",
           employeeType: r.employee?.employmentType?.name || "N/A",
           totalDaysAllShifts: 0,
           totalWorkingHoursAllShifts: 0,
@@ -463,7 +465,8 @@ exports.getAttendance = async (req, res) => {
       employeeWhere[Op.or] = [
         { firstName: { [Op.like]: `%${search}%` } },
         { lastName: { [Op.like]: `%${search}%` } },
-        { employeeCode: { [Op.like]: `%${search}%` } },
+        { curEmployeeCode: { [Op.like]: `%${search}%` } },
+        { newEmployeeCode: { [Op.like]: `%${search}%` } },
       ];
     }
     const catList = categoryIds
@@ -473,18 +476,21 @@ exports.getAttendance = async (req, res) => {
       employeeWhere.categoryId = { [Op.in]: catList };
     }
 
-    const isEmployeeRequired = !!search || (catList && catList.length > 0);
+    const hasEmpConditions = Reflect.ownKeys(employeeWhere).length > 0;
+    const isEmployeeRequired = hasEmpConditions;
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     const { count, rows } = await Attendance.findAndCountAll({
       where,
+      distinct: true,
+      subQuery: false,
       include: [
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "firstName", "lastName", "employeeCode", "categoryId", "departmentId"],
-          ...(Object.keys(employeeWhere).length > 0 && { where: employeeWhere }),
+          attributes: ["id", "firstName", "lastName", "curEmployeeCode", "newEmployeeCode", "categoryId", "departmentId"],
+          ...(hasEmpConditions && { where: employeeWhere }),
           required: isEmployeeRequired,
           include: [
             {
@@ -620,7 +626,7 @@ exports.updateAttendance = async (req, res) => {
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "firstName", "lastName", "employeeCode"],
+          attributes: ["id", "firstName", "lastName", "curEmployeeCode", "newEmployeeCode"],
           include: [
             {
               model: EmploymentType,
@@ -789,7 +795,7 @@ exports.getPermissionSummary = async (req, res) => {
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "firstName", "lastName", "employeeCode"],
+          attributes: ["id", "firstName", "lastName", "curEmployeeCode", "newEmployeeCode"],
           include: [
             {
               model: EmploymentType,
@@ -814,7 +820,9 @@ exports.getPermissionSummary = async (req, res) => {
           employeeName: r.employee
             ? r.employee.firstName
             : "N/A",
-          employeeCode: r.employee?.employeeCode || "N/A",
+          employeeCode: r.employee?.newEmployeeCode ? `${r.employee.curEmployeeCode || ''} / ${r.employee.newEmployeeCode}` : (r.employee?.curEmployeeCode || r.employee?.employeeCode || "N/A"),
+          curEmployeeCode: r.employee?.curEmployeeCode || r.employee?.employeeCode || "N/A",
+          newEmployeeCode: r.employee?.newEmployeeCode || "",
           employeeType: r.employee?.employmentType?.name || "N/A",
           minutesUsed: 0,
           days: [],
@@ -889,7 +897,7 @@ exports.getMultipleEntryAttendance = async (req, res) => {
           required: false,
         },
       ],
-      order: [["employeeCode", "ASC"]],
+      order: [["curEmployeeCode", "ASC"]],
     });
 
     // 2. Fetch saved records from DepartmentAttendance (hr_department_attendance)
@@ -933,11 +941,13 @@ exports.getMultipleEntryAttendance = async (req, res) => {
         const catCode = emp.category
           ? (emp.category.categoryName || emp.category.categoryCode)
           : "O";
-        const code = emp.employeeCode || emp.ticketNo || (emp.dataValues ? emp.dataValues.employeeCode : "") || String(emp.id);
+        const code = emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode || emp.ticketNo || (emp.dataValues ? emp.dataValues.curEmployeeCode || emp.dataValues.employeeCode : "") || String(emp.id));
         return {
           employeeId: emp.id,
           ticketNo: code,
           employeeCode: code,
+          curEmployeeCode: emp.curEmployeeCode || emp.employeeCode,
+          newEmployeeCode: emp.newEmployeeCode || "",
           empName: emp.firstName,
           category: catCode,
           isChecked: false,
@@ -946,12 +956,15 @@ exports.getMultipleEntryAttendance = async (req, res) => {
 
     // 4. Format Right Side (Saved Data)
     const savedData = savedRecords.map((rec, index) => {
-      const code = rec.ticketNo || (rec.employee ? rec.employee.employeeCode : "") || String(rec.employeeId);
+      const emp = rec.employee;
+      const code = rec.ticketNo || (emp ? (emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode || emp.ticketNo)) : "") || String(rec.employeeId);
       return {
         id: rec.id,
         slNo: index + 1,
         ticketNo: code,
         employeeCode: code,
+        curEmployeeCode: emp?.curEmployeeCode || emp?.employeeCode || "",
+        newEmployeeCode: emp?.newEmployeeCode || "",
         empName: rec.employee ? rec.employee.firstName : (rec.empName ? rec.empName.split(" ")[0] : ""),
         shift: rec.shiftName || "B",
         cat: rec.category || "O",
@@ -1056,7 +1069,7 @@ exports.saveMultipleEntryAttendance = async (req, res) => {
         shiftId: { [Op.ne]: shiftId },
       },
       include: [
-        { model: Employee, as: "employee", attributes: ["firstName", "employeeCode"] },
+        { model: Employee, as: "employee", attributes: ["firstName", "curEmployeeCode", "newEmployeeCode"] },
         { model: ShiftType, as: "shiftType", attributes: ["name"] },
       ],
       transaction,
@@ -1067,7 +1080,7 @@ exports.saveMultipleEntryAttendance = async (req, res) => {
       const conflictDetails = alreadyAssignedDiffShift
         .map((r) => {
           const name = r.employee ? r.employee.firstName : (r.empName || `ID ${r.employeeId}`);
-          const code = r.ticketNo || (r.employee ? r.employee.employeeCode : "");
+          const code = r.ticketNo || (r.employee ? (r.employee.newEmployeeCode ? `${r.employee.curEmployeeCode} / ${r.employee.newEmployeeCode}` : (r.employee.curEmployeeCode || r.employee.employeeCode)) : "");
           const sName = r.shiftName || (r.shiftType ? r.shiftType.name : `Shift ${r.shiftId}`);
           return `${name}${code ? ` (${code})` : ""} in Shift ${sName}`;
         })

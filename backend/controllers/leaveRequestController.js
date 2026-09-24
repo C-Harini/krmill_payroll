@@ -359,7 +359,7 @@ exports.getLeaveRequests = async (req, res) => {
         {
           model: Employee,
           as: 'Employee',
-          attributes: ['id', 'firstName', 'lastName', 'employeeCode']
+          attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode']
         },
         {
           model: LeaveType,
@@ -394,7 +394,7 @@ exports.getLeaveRequestById = async (req, res) => {
                 { 
                     model: Employee, 
                     as: 'Employee', 
-                    attributes: ['id', 'firstName', 'lastName', 'officialEmail', 'employeeCode'] 
+                    attributes: ['id', 'firstName', 'lastName', 'officialEmail', 'curEmployeeCode', 'newEmployeeCode'] 
                 },
                 { 
                     model: LeaveType, 
@@ -684,7 +684,7 @@ exports.getAllLeaveRequests = async (req, res) => {
         {
           model: Employee,
           as: 'Employee',
-          attributes: ['id', 'firstName', 'lastName', 'employeeCode']
+          attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode']
         }
       ],
       order: [['createdAt', 'DESC']]
@@ -874,7 +874,7 @@ exports.getPendingApprovals = async (req, res) => {
                     { 
                         model: Employee, 
                         as: 'Employee',
-                        attributes: ['id', 'firstName', 'lastName', 'officialEmail', 'employeeCode', 'designation']
+                        attributes: ['id', 'firstName', 'lastName', 'officialEmail', 'curEmployeeCode', 'newEmployeeCode', 'designation']
                     },
                     { 
                         model: LeaveType,
@@ -926,7 +926,7 @@ exports.getTeamLeaveCalendar = async (req, res) => {
                 { 
                     model: Employee, 
                     as: 'Employee',
-                    attributes: ['id', 'firstName', 'lastName', 'employeeCode', 'departmentId'],
+                    attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode', 'departmentId'],
                     ...(departmentId && {
                         where: { departmentId }
                     })

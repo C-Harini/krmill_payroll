@@ -30,7 +30,7 @@ exports.getLeaveAllocations = async (req, res) => {
                 {
                     model: Employee,
                     as: 'employee',
-                    attributes: ['id', 'employeeCode', 'firstName', 'lastName', 'departmentId'],
+                    attributes: ['id', 'curEmployeeCode', 'firstName', 'lastName', 'departmentId'],
                     include: [
                         {
                             model: Department,
@@ -159,7 +159,7 @@ exports.createLeaveAllocation = async (req, res) => {
                 if (existing) {
                     results.failed.push({ 
                         employeeId, 
-                        employeeCode: employee.employeeCode,
+                        employeeCode: employee.newEmployeeCode ? `${employee.curEmployeeCode || ''} / ${employee.newEmployeeCode}` : (employee.curEmployeeCode || employee.employeeCode),
                         error: 'Allocation already exists for this period' 
                     });
                     continue;
@@ -244,7 +244,7 @@ exports.createLeaveAllocation = async (req, res) => {
 
                 results.success.push({
                     employeeId,
-                    employeeCode: employee.employeeCode,
+                    employeeCode: employee.newEmployeeCode ? `${employee.curEmployeeCode || ''} / ${employee.newEmployeeCode}` : (employee.curEmployeeCode || employee.employeeCode),
                     allocationId: allocation.id,
                     allocated: allocatedLeaves,
                     carryForward
@@ -428,7 +428,13 @@ exports.bulkCreateLeaveAllocations = async (req, res) => {
                 let empId = employeeId;
                 if (!empId && employeeCode) {
                     const employee = await Employee.findOne({
-                        where: { employeeCode, companyId }
+                        where: {
+                            [Op.or]: [
+                                { curEmployeeCode: employeeCode },
+                                { newEmployeeCode: employeeCode }
+                            ],
+                            companyId
+                        }
                     });
                     if (!employee) {
                         results.failed.push({
@@ -589,7 +595,7 @@ exports.getLeaveBalanceReport = async (req, res) => {
                 {
                     model: Employee,
                     as: 'employee',
-                    attributes: ['id', 'employeeCode', 'firstName', 'lastName'],
+                    attributes: ['id', 'curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName'],
                     include: [
                         {
                             model: Department,
@@ -609,7 +615,9 @@ exports.getLeaveBalanceReport = async (req, res) => {
         });
 
         const report = allocations.map(alloc => ({
-            employeeCode: alloc.employee.employeeCode,
+            employeeCode: alloc.employee.newEmployeeCode ? `${alloc.employee.curEmployeeCode || ''} / ${alloc.employee.newEmployeeCode}` : (alloc.employee.curEmployeeCode || alloc.employee.employeeCode),
+            curEmployeeCode: alloc.employee.curEmployeeCode || alloc.employee.employeeCode,
+            newEmployeeCode: alloc.employee.newEmployeeCode || "",
             employeeName: alloc.employee.firstName,
             department: alloc.employee.department.name,
             leaveType: alloc.leaveType.name,

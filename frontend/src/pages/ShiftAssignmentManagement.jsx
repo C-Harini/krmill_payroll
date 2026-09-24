@@ -268,7 +268,7 @@ const ShiftAssignmentManagement = () => {
         const searchLower = employeeSearchTerm.toLowerCase();
         return employees.filter(emp => 
             formData.employeeIds.includes(emp.id) ||
-            `${emp.employeeCode || ''} ${emp.firstName || ''} ${emp.biometricEnrollmentId || ''}`.toLowerCase().includes(searchLower)
+            `${emp.curEmployeeCode || emp.employeeCode || ''} ${emp.newEmployeeCode || ''} ${emp.firstName || ''} ${emp.curBiometricEnrollmentId || emp.newBiometricEnrollmentId || emp.biometricEnrollmentId || ''}`.toLowerCase().includes(searchLower)
         );
     };
 
@@ -280,7 +280,7 @@ const ShiftAssignmentManagement = () => {
         if (options.length > 0) {
             const selectedEmps = employees.filter(emp => options.includes(emp.id));
             const displayNames = selectedEmps.map(emp => {
-                const enrollmentId = emp.biometricEnrollmentId || emp.employeeCode || '';
+                const enrollmentId = emp.curBiometricEnrollmentId || emp.newBiometricEnrollmentId || emp.biometricEnrollmentId || emp.curEmployeeCode || emp.newEmployeeCode || emp.employeeCode || '';
                 const name = emp.firstName || '';
                 return enrollmentId ? `${enrollmentId} - ${name}` : name;
             });
@@ -381,7 +381,7 @@ const ShiftAssignmentManagement = () => {
                                 <option value="">All Employees</option>
                                 {employees.map(emp => (
                                     <option key={emp.id} value={emp.id}>
-                                        {emp.employeeCode} - {emp.firstName}
+                                        {emp.curEmployeeCode || emp.employeeCode} {emp.newEmployeeCode ? `(${emp.newEmployeeCode})` : ''} - {emp.firstName}
                                     </option>
                                 ))}
                             </select>
@@ -484,7 +484,12 @@ const ShiftAssignmentManagement = () => {
                                             </td>
                                             <td className="px-4 py-3 text-sm font-medium text-gray-800">{assignment.id}</td>
                                             <td className="px-4 py-3">
-                                                <div className="font-bold text-gray-800">{assignment.employee?.employeeCode}</div>
+                                                <div className="font-bold text-gray-800">
+                                                    {assignment.employee?.curEmployeeCode || assignment.employee?.employeeCode}
+                                                    {assignment.employee?.newEmployeeCode && (
+                                                        <span className="ml-1 text-xs text-blue-600 font-medium">({assignment.employee.newEmployeeCode})</span>
+                                                    )}
+                                                </div>
                                                 <div className="text-sm text-gray-600">
                                                     {assignment.employee?.firstName} 
                                                 </div>
@@ -614,7 +619,7 @@ const ShiftAssignmentManagement = () => {
                                             {getFilteredEmployees().length > 0 ? (
                                                 getFilteredEmployees().map(emp => (
                                                     <option key={emp.id} value={emp.id}>
-                                                        {emp.biometricEnrollmentId || ''} - {emp.firstName || ''} 
+                                                        {emp.curBiometricEnrollmentId || emp.newBiometricEnrollmentId || emp.biometricEnrollmentId || emp.curEmployeeCode || emp.employeeCode || ''} - {emp.firstName || ''} 
                                                     </option>
                                                 ))
                                             ) : (

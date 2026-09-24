@@ -47,7 +47,7 @@ exports.getEmployeeDetails = async (req, res) => {
     const { count, rows: employees } = await Employee.findAndCountAll({
       where: whereClause,
       attributes: [
-        'id', 'employeeCode', 'firstName', 'lastName',
+        'id', 'curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName',
         'officialEmail', 'mobileNumber', 'dateOfJoining',
         'status', 'companyId', 'departmentId', 'designationId', 'employmentTypeId',
         'dateOfBirth', 'gender', 'bloodGroup', 'maritalStatus',
@@ -102,7 +102,9 @@ exports.getEmployeeDetails = async (req, res) => {
 
       return {
         employee_id: emp.id,
-        employee_code: emp.employeeCode,
+        employee_code: emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode),
+        cur_employee_code: emp.curEmployeeCode || emp.employeeCode,
+        new_employee_code: emp.newEmployeeCode || "",
         employee_name: emp.firstName || '',
         first_name: emp.firstName,
         last_name: '',
@@ -198,7 +200,7 @@ exports.getLeaveBalance = async (req, res) => {
     // Fetch employees
     const employees = await Employee.findAll({
       where: employeeWhere,
-      attributes: ['id', 'employeeCode', 'firstName', 'lastName', 'companyId', 'departmentId', 'employmentTypeId'],
+      attributes: ['id', 'curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName', 'companyId', 'departmentId', 'employmentTypeId'],
       include: [
         {
           model: Company,
@@ -302,7 +304,7 @@ exports.getLeaveBalance = async (req, res) => {
 
           leaveBalanceReport.push({
             employee_id: employee.id,
-            employee_code: employee.employeeCode || 'N/A',
+            employee_code: employee.newEmployeeCode ? `${employee.curEmployeeCode || ''} / ${employee.newEmployeeCode}` : (employee.curEmployeeCode || employee.employeeCode || 'N/A'),
             employee_name: employee.firstName || '',
             company_name: employee.company?.name || 'N/A',
             department_name: employee.department?.name || 'N/A',
@@ -321,7 +323,7 @@ exports.getLeaveBalance = async (req, res) => {
           // No allocation found - show 0s
           leaveBalanceReport.push({
             employee_id: employee.id,
-            employee_code: employee.employeeCode || 'N/A',
+            employee_code: employee.newEmployeeCode ? `${employee.curEmployeeCode || ''} / ${employee.newEmployeeCode}` : (employee.curEmployeeCode || employee.employeeCode || 'N/A'),
             employee_name: employee.firstName || '',
             company_name: employee.company?.name || 'N/A',
             department_name: employee.department?.name || 'N/A',
@@ -402,7 +404,7 @@ exports.getLeaveTaken = async (req, res) => {
     // Get employees
     const employees = await db.Employee.findAll({
       where: employeeWhere,
-      attributes: ['id', 'employeeCode', 'firstName', 'lastName']
+      attributes: ['id', 'curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName']
     });
 
     if (employees.length === 0) {
@@ -446,7 +448,7 @@ exports.getLeaveTaken = async (req, res) => {
         {
           model: db.Employee,
           as: 'Employee', // Changed from 'employee' to 'Employee'
-          attributes: ['id', 'employeeCode', 'firstName', 'lastName'],
+          attributes: ['id', 'curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName'],
           include: [
             {
               model: db.Company,
@@ -477,7 +479,7 @@ exports.getLeaveTaken = async (req, res) => {
     const formattedLeaves = leaves.map(leave => ({
       leave_id: leave.id,
       employee_id: leave.employeeId,
-      employee_code: leave.Employee?.employeeCode, // Changed from employee to Employee
+      employee_code: leave.Employee?.newEmployeeCode ? `${leave.Employee.curEmployeeCode || ''} / ${leave.Employee.newEmployeeCode}` : (leave.Employee?.curEmployeeCode || leave.Employee?.employeeCode),
       employee_name: leave.Employee?.firstName || '',
       company_name: leave.Employee?.company?.name || 'N/A',
       department_name: leave.Employee?.department?.name || 'N/A',
@@ -521,6 +523,7 @@ exports.getAttendanceReport = async (req, res) => {
       company_id,
       department_id,
       employee_id,
+      employee_code,
       from_date,
       to_date,
       attendance_status,
@@ -543,6 +546,12 @@ exports.getAttendanceReport = async (req, res) => {
     if (company_id) employeeWhere.companyId = company_id;
     if (department_id) employeeWhere.departmentId = department_id;
     if (employee_id) employeeWhere.id = employee_id;
+    if (employee_code) {
+      employeeWhere[Op.or] = [
+        { curEmployeeCode: employee_code },
+        { newEmployeeCode: employee_code }
+      ];
+    }
 
     const employees = await Employee.findAll({
       where: employeeWhere,
@@ -581,7 +590,7 @@ exports.getAttendanceReport = async (req, res) => {
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "employeeCode", "firstName", "lastName"],
+          attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "lastName"],
           include: [
             {
               model: Company,
@@ -620,7 +629,7 @@ exports.getAttendanceReport = async (req, res) => {
         attendance_id: att.id,
         employee_id: att.employeeId,
 
-        employee_code: att.employee?.employeeCode || "-",
+        employee_code: att.employee?.newEmployeeCode ? `${att.employee.curEmployeeCode || ''} / ${att.employee.newEmployeeCode}` : (att.employee?.curEmployeeCode || att.employee?.employeeCode || "-"),
         employee_name:
           att.employee?.firstName || "-",
 
@@ -706,7 +715,7 @@ exports.getBiometricReport = async (req, res) => {
 
     const employees = await Employee.findAll({
       where: employeeWhere,
-      attributes: ['id', 'employeeCode', 'firstName', 'lastName'],
+      attributes: ['id', 'curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName'],
       include: [
         {
           model: Company,
@@ -735,7 +744,7 @@ exports.getBiometricReport = async (req, res) => {
         {
           model: Employee,
           as: 'employee',  // matches db.BiometricPunch.belongsTo(db.Employee, { as: 'employee' })
-          attributes: ['id', 'employeeCode', 'firstName', 'lastName'],
+          attributes: ['id', 'curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName'],
           include: [
             { model: Company, as: 'company', attributes: ['id', 'name'] },
             { model: Department, as: 'department', attributes: ['id', 'departmentname', ['departmentname', 'name']], required: false },
@@ -756,7 +765,7 @@ exports.getBiometricReport = async (req, res) => {
     const formattedPunches = punches.map(p => ({
       punch_id: p.id,
       employee_id: p.employeeId,
-      employee_code: p.employee?.employeeCode,
+      employee_code: p.employee?.newEmployeeCode ? `${p.employee.curEmployeeCode || ''} / ${p.employee.newEmployeeCode}` : (p.employee?.curEmployeeCode || p.employee?.employeeCode),
       employee_name: p.employee?.firstName || '',
       company_id: p.employee?.company?.id,
       company_name: p.employee?.company?.name || 'N/A',
@@ -907,7 +916,7 @@ exports.getComprehensiveReport = async (req, res) => {
     const report = {
       employee_details: {
         employee_id: employee.id,
-        employee_code: employee.employeeCode,
+        employee_code: employee.newEmployeeCode ? `${employee.curEmployeeCode || ''} / ${employee.newEmployeeCode}` : (employee.curEmployeeCode || employee.employeeCode),
         employee_name: employee.firstName || '',
         first_name: employee.firstName,
         last_name: '',
@@ -975,7 +984,7 @@ exports.getComprehensiveReport = async (req, res) => {
 //     const employees = await Employee.findAll({
 //       where: whereClause,
 //       attributes: [
-//         'id', 'employeeCode', 'firstName', 'lastName',
+//         'id', 'curEmployeeCode', 'firstName', 'lastName',
 //         'officialEmail', 'mobileNumber', 'dateOfJoining',
 //         'status', 'companyId', 'departmentId', 'designationId', 'employmentTypeId'
 //       ],
@@ -1473,7 +1482,8 @@ exports.exportEmployeeDetailsExcel = async (req, res) => {
 
     // Define columns with ALL fields
     let excelColumns = [
-      { header: 'Employee Code', key: 'employeeCode', width: 15 },
+      { header: 'Employee Code', key: 'curEmployeeCode', width: 15 },
+      { header: 'New Employee Code', key: 'newEmployeeCode', width: 15 },
       { header: 'First Name', key: 'firstName', width: 15 },
       { header: 'Last Name', key: 'lastName', width: 15 },
       { header: 'Full Name', key: 'fullName', width: 25 },
@@ -1746,7 +1756,7 @@ async function getLeaveBalanceData({ company_id, department_id, employee_id, lea
 
   const employees = await Employee.findAll({
     where: employeeWhere,
-    attributes: ['id', 'employeeCode', 'firstName', 'lastName', 'companyId', 'departmentId'],
+    attributes: ['id', 'curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName', 'companyId', 'departmentId'],
     include: [
       { model: Company, as: 'company', attributes: ['id', 'name'], required: false },
       { model: Department, as: 'department', attributes: ['id', 'departmentname', ['departmentname', 'name']], required: false },
@@ -1785,7 +1795,7 @@ async function getLeaveBalanceData({ company_id, department_id, employee_id, lea
       const totalAllowed = allocatedLeaves + carryForward + accrued;
       const totalUsed = parseFloat(allocation?.usedLeaves || 0);
       rows.push({
-        employee_code: employee.employeeCode || 'N/A',
+        employee_code: employee.newEmployeeCode ? `${employee.curEmployeeCode || ''} / ${employee.newEmployeeCode}` : (employee.curEmployeeCode || employee.employeeCode || 'N/A'),
         employee_name: employee.firstName || '',
         company_name: employee.company?.name || 'N/A',
         department_name: employee.department?.name || 'N/A',
@@ -1951,7 +1961,7 @@ async function getLeaveTakenData({ company_id, department_id, employee_id, leave
     where: leaveWhere,
     include: [
       {
-        model: Employee, as: 'Employee', attributes: ['id', 'employeeCode', 'firstName', 'lastName'],
+        model: Employee, as: 'Employee', attributes: ['id', 'curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName'],
         include: [
           { model: Company, as: 'company', attributes: ['id', 'name'] },
           { model: Department, as: 'department', attributes: ['id', 'departmentname', ['departmentname', 'name']], required: false },
@@ -1964,7 +1974,7 @@ async function getLeaveTakenData({ company_id, department_id, employee_id, leave
   });
 
   return leaves.map(l => ({
-    employee_code: l.Employee?.employeeCode || 'N/A',
+    employee_code: l.Employee?.newEmployeeCode ? `${l.Employee.curEmployeeCode || ''} / ${l.Employee.newEmployeeCode}` : (l.Employee?.curEmployeeCode || l.Employee?.employeeCode || 'N/A'),
     employee_name: l.Employee?.firstName || '',
     company_name: l.Employee?.company?.name || 'N/A',
     department_name: l.Employee?.department?.name || 'N/A',
@@ -2114,7 +2124,7 @@ async function getAttendanceExportData({ company_id, department_id, employee_id,
     where: attendanceWhere,
     include: [
       {
-        model: Employee, as: 'employee', attributes: ['id', 'employeeCode', 'firstName', 'lastName'],
+        model: Employee, as: 'employee', attributes: ['id', 'curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName'],
         include: [
           { model: Company, as: 'company', attributes: ['id', 'name'] },
           { model: Department, as: 'department', attributes: ['id', 'departmentname', ['departmentname', 'name']], required: false }
@@ -2126,7 +2136,7 @@ async function getAttendanceExportData({ company_id, department_id, employee_id,
 
   return rows.map(att => ({
     attendance_date: att.attendanceDate,
-    employee_code: att.employee?.employeeCode || '',
+    employee_code: att.employee?.newEmployeeCode ? `${att.employee.curEmployeeCode || ''} / ${att.employee.newEmployeeCode}` : (att.employee?.curEmployeeCode || att.employee?.employeeCode || ''),
     employee_name: att.employee?.firstName || '',
     company_name: att.employee?.company?.name || 'N/A',
     department_name: att.employee?.department?.departmentname || 'N/A',
@@ -2384,7 +2394,7 @@ async function getBiometricExportData({ company_id, department_id, employee_id, 
     where: punchWhere,
     include: [
       {
-        model: Employee, as: 'employee', attributes: ['id', 'employeeCode', 'firstName', 'lastName'],
+        model: Employee, as: 'employee', attributes: ['id', 'curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName'],
         include: [
           { model: Company, as: 'company', attributes: ['id', 'name'] },
           { model: Department, as: 'department', attributes: ['id', 'departmentname', ['departmentname', 'name']], required: false }
@@ -2398,7 +2408,7 @@ async function getBiometricExportData({ company_id, department_id, employee_id, 
   return punches.map(p => ({
     punch_date: p.punchDate,
     punch_time: p.punchTime,
-    employee_code: p.employee?.employeeCode || '',
+    employee_code: p.employee?.newEmployeeCode ? `${p.employee.curEmployeeCode || ''} / ${p.employee.newEmployeeCode}` : (p.employee?.curEmployeeCode || p.employee?.employeeCode || ''),
     employee_name: p.employee?.firstName || '',
     company_name: p.employee?.company?.name || 'N/A',
     department_name: p.employee?.department?.name || 'N/A',
@@ -2772,7 +2782,7 @@ exports.getDiscrepancyReport = async (req, res) => {
 
     const employees = await Employee.findAll({
       where: employeeWhere,
-      attributes: ["id", "employeeCode", "firstName", "lastName", "departmentId"],
+      attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "lastName", "departmentId"],
       include: [
         {
           model: Department,
@@ -2863,7 +2873,7 @@ exports.getDiscrepancyReport = async (req, res) => {
         if (hasDiscrepancy) {
           discrepancies.push({
             employee_id: emp.id,
-            employee_code: emp.employeeCode || "-",
+            employee_code: emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode || "-"),
             employee_name: emp.firstName,
             department_name: emp.department?.departmentname || "N/A",
             company_name: emp.company?.name || "N/A",
@@ -3048,7 +3058,7 @@ exports.getDiscrepancyHistory = async (req, res) => {
           model: Employee,
           as: 'employee',
           where: Object.keys(employeeWhere).length > 0 ? employeeWhere : undefined,
-          attributes: ['id', 'employeeCode', 'firstName', 'lastName'],
+          attributes: ['id', 'curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName'],
           include: [
             {
               model: Department,

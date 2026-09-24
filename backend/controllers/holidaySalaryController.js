@@ -119,7 +119,8 @@ exports.fetchHolidayAttendance = async (req, res) => {
           where: employeeWhere,
           attributes: [
             "id",
-            "employeeCode",
+            "curEmployeeCode",
+            "newEmployeeCode",
             "firstName",
             "lastName",
             "departmentId",
@@ -217,7 +218,9 @@ exports.fetchHolidayAttendance = async (req, res) => {
         rows.push({
           id: record.id,
           employeeId: emp.id,
-          employeeCode: emp.employeeCode,
+          employeeCode: emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode),
+          curEmployeeCode: emp.curEmployeeCode || emp.employeeCode,
+          newEmployeeCode: emp.newEmployeeCode || "",
           employeeName: emp.firstName,
           departmentId: emp.departmentId,
           departmentName: emp.department?.departmentname || "",
@@ -328,7 +331,7 @@ exports.getMonthReport = async (req, res) => {
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "employeeCode", "firstName", "lastName"],
+          attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "lastName"],
           include: [
             {
               model: EmploymentType,

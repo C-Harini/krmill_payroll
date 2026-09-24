@@ -10,10 +10,23 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
       },
       // BASIC INFORMATION
-      employeeCode: {
+      curEmployeeCode: {
         type: DataTypes.STRING,
         allowNull: false,
         unique: true,
+      },
+      newEmployeeCode: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      employeeCode: {
+        type: DataTypes.VIRTUAL,
+        get() {
+          return this.getDataValue("curEmployeeCode");
+        },
+        set(value) {
+          this.setDataValue("curEmployeeCode", value);
+        },
       },
       firstName: {
         type: DataTypes.STRING,
@@ -326,9 +339,22 @@ module.exports = (sequelize, DataTypes) => {
           key: "id",
         },
       },
-      biometricEnrollmentId: {
+      curBiometricEnrollmentId: {
         type: DataTypes.STRING,
         allowNull: true,
+      },
+      newBiometricEnrollmentId: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      biometricEnrollmentId: {
+        type: DataTypes.VIRTUAL,
+        get() {
+          return this.getDataValue("curBiometricEnrollmentId");
+        },
+        set(value) {
+          this.setDataValue("curBiometricEnrollmentId", value);
+        },
       },
 
       // SALARY & BANK
@@ -572,13 +598,57 @@ module.exports = (sequelize, DataTypes) => {
     return this.firstName || "";
   };
 
-  // Safe check to ensure workload column exists in the database table
+  // Ensure JSON serialization provides backward-compatible employeeCode & biometricEnrollmentId
+  Employee.prototype.toJSON = function () {
+    const values = Object.assign({}, this.get());
+    if (values.curEmployeeCode !== undefined && values.employeeCode === undefined) {
+      values.employeeCode = values.curEmployeeCode;
+    }
+    if (values.curBiometricEnrollmentId !== undefined && values.biometricEnrollmentId === undefined) {
+      values.biometricEnrollmentId = values.curBiometricEnrollmentId;
+    }
+    return values;
+  };
+
+  // Safe checks to ensure columns exist in the database table
   sequelize.query("SHOW COLUMNS FROM employees LIKE 'workload'").then(([results]) => {
     if (!results || results.length === 0) {
       return sequelize.query("ALTER TABLE employees ADD COLUMN workload DECIMAL(10, 2) DEFAULT NULL");
     }
   }).catch((err) => {
     console.error("Note: could not auto-verify workload column on employees table:", err.message);
+  });
+
+  sequelize.query("SHOW COLUMNS FROM employees LIKE 'curEmployeeCode'").then(([results]) => {
+    if (!results || results.length === 0) {
+      return sequelize.query("ALTER TABLE employees CHANGE COLUMN employeeCode curEmployeeCode VARCHAR(255) NOT NULL");
+    }
+  }).catch((err) => {
+    console.error("Note: could not auto-verify curEmployeeCode column on employees table:", err.message);
+  });
+
+  sequelize.query("SHOW COLUMNS FROM employees LIKE 'newEmployeeCode'").then(([results]) => {
+    if (!results || results.length === 0) {
+      return sequelize.query("ALTER TABLE employees ADD COLUMN newEmployeeCode VARCHAR(255) DEFAULT NULL");
+    }
+  }).catch((err) => {
+    console.error("Note: could not auto-verify newEmployeeCode column on employees table:", err.message);
+  });
+
+  sequelize.query("SHOW COLUMNS FROM employees LIKE 'curBiometricEnrollmentId'").then(([results]) => {
+    if (!results || results.length === 0) {
+      return sequelize.query("ALTER TABLE employees CHANGE COLUMN biometricEnrollmentId curBiometricEnrollmentId VARCHAR(255) DEFAULT NULL");
+    }
+  }).catch((err) => {
+    console.error("Note: could not auto-verify curBiometricEnrollmentId column on employees table:", err.message);
+  });
+
+  sequelize.query("SHOW COLUMNS FROM employees LIKE 'newBiometricEnrollmentId'").then(([results]) => {
+    if (!results || results.length === 0) {
+      return sequelize.query("ALTER TABLE employees ADD COLUMN newBiometricEnrollmentId VARCHAR(255) DEFAULT NULL");
+    }
+  }).catch((err) => {
+    console.error("Note: could not auto-verify newBiometricEnrollmentId column on employees table:", err.message);
   });
 
   // Force sync to update table structure (only in development)

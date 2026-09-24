@@ -14,6 +14,8 @@ const EmployeeFormModal = ({
   const [religions, setReligions] = useState([]);
   const [formData, setFormData] = useState({
     // Basic Info
+    curEmployeeCode: "",
+    newEmployeeCode: "",
     employeeCode: "",
     firstName: "",
     middleName: "",
@@ -77,6 +79,8 @@ const EmployeeFormModal = ({
     isOvertimeApplicable: false,
     isLeaveApplicable: true,
     biometricDeviceId: "",
+    curBiometricEnrollmentId: "",
+    newBiometricEnrollmentId: "",
     biometricEnrollmentId: "",
 
     // Salary & Bank
@@ -136,6 +140,12 @@ const EmployeeFormModal = ({
     setFormData((prev) => ({
       ...prev,
       ...employee,
+      curEmployeeCode: employee.curEmployeeCode || employee.employeeCode || "",
+      newEmployeeCode: employee.newEmployeeCode || "",
+      employeeCode: employee.curEmployeeCode || employee.employeeCode || "",
+      curBiometricEnrollmentId: employee.curBiometricEnrollmentId || employee.biometricEnrollmentId || "",
+      newBiometricEnrollmentId: employee.newBiometricEnrollmentId || "",
+      biometricEnrollmentId: employee.curBiometricEnrollmentId || employee.biometricEnrollmentId || "",
       gradeId: (employee.gradeId !== null && employee.gradeId !== undefined && employee.gradeId !== 0 && employee.gradeId !== '0') 
         ? String(employee.gradeId) 
         : (employee.grade?.id ? String(employee.grade.id) : ""),
@@ -218,6 +228,8 @@ const EmployeeFormModal = ({
     const { name, value, type, checked } = e.target;
     setFormData((prev) => {
       const updatedData = { ...prev, [name]: type === "checkbox" ? checked : value };
+      if (name === "curEmployeeCode") updatedData.employeeCode = value;
+      if (name === "curBiometricEnrollmentId") updatedData.biometricEnrollmentId = value;
       if (name === "dateOfJoining" || name === "dateOfRejoining" || name === "relievingDate") {
         updatedData.experience = calculateExperience(
           updatedData.dateOfJoining,
@@ -257,7 +269,7 @@ const EmployeeFormModal = ({
   const getTabStatus = (tabId) => {
     switch (tabId) {
       case 0:
-        return formData.employeeCode && formData.firstName && formData.lastName &&
+        return (formData.curEmployeeCode || formData.employeeCode) && formData.firstName && formData.lastName &&
                formData.dateOfBirth && formData.gender ? "✓" : "⚠️";
       case 1:
         return formData.personalEmail && formData.mobileNumber &&
@@ -277,7 +289,7 @@ const EmployeeFormModal = ({
     const ok = (v) => v !== undefined && v !== null && String(v).trim() !== "";
     switch (activeTab) {
       case 0:
-        return ok(formData.employeeCode) && ok(formData.firstName) &&
+        return ok(formData.curEmployeeCode || formData.employeeCode) && ok(formData.firstName) &&
                ok(formData.lastName) && ok(formData.dateOfBirth) && ok(formData.gender);
       case 1:
         return ok(formData.personalEmail) && ok(formData.mobileNumber) &&
@@ -316,7 +328,7 @@ const EmployeeFormModal = ({
     e.preventDefault();
 
     const requiredFields = {
-      "Employee Code":   formData.employeeCode,
+      "CUR EMPCODE":     formData.curEmployeeCode || formData.employeeCode,
       "First Name":      formData.firstName,
       "Last Name":       formData.lastName,
       "Date of Birth":   formData.dateOfBirth,
@@ -466,11 +478,23 @@ const EmployeeFormModal = ({
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">
-                    Employee Code <span className="text-red-500">*</span>
+                    CUR EMPCODE <span className="text-red-500">*</span>
                   </label>
                   <input
-                    type="text" name="employeeCode" value={formData.employeeCode}
+                    type="text" name="curEmployeeCode" value={formData.curEmployeeCode || formData.employeeCode || ""}
                     onChange={handleInputChange} required
+                    placeholder="e.g. EMP001"
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    NEW EMPCODE
+                  </label>
+                  <input
+                    type="text" name="newEmployeeCode" value={formData.newEmployeeCode || ""}
+                    onChange={handleInputChange}
+                    placeholder="e.g. NEW001"
                     className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   />
                 </div>
@@ -975,7 +999,7 @@ const EmployeeFormModal = ({
                     <span className="text-2xl">🔐</span>
                     <h3 className="text-lg font-bold text-slate-800">Biometric Information</h3>
                   </div>
-                  <div className="grid grid-cols-2 gap-6">
+                  <div className="grid grid-cols-3 gap-6">
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-2">Biometric Device</label>
                       <select name="biometricDeviceId" value={formData.biometricDeviceId} onChange={handleInputChange} className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white transition-all">
@@ -984,8 +1008,12 @@ const EmployeeFormModal = ({
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-2">Biometric Enrollment ID</label>
-                      <input type="text" name="biometricEnrollmentId" value={formData.biometricEnrollmentId} onChange={handleInputChange} className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">CUR BIOMETRIC ENROLLMENT ID</label>
+                      <input type="text" name="curBiometricEnrollmentId" value={formData.curBiometricEnrollmentId || formData.biometricEnrollmentId || ""} onChange={handleInputChange} placeholder="Current biometric ID" className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">NEW BIOMETRIC ENROLLMENT ID</label>
+                      <input type="text" name="newBiometricEnrollmentId" value={formData.newBiometricEnrollmentId || ""} onChange={handleInputChange} placeholder="New biometric ID" className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
                     </div>
                   </div>
                 </div>

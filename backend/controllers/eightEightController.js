@@ -28,8 +28,8 @@ exports.getEightEightMultipleEntry = async (req, res) => {
         departmentId,
         status: "Active",
       },
-      attributes: ["id", "employeeCode", "firstName", "middleName", "lastName"],
-      order: [["employeeCode", "ASC"]],
+      attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "middleName", "lastName"],
+      order: [["curEmployeeCode", "ASC"]],
     });
 
     // 2. Fetch already saved 8-8 records matching the query config
@@ -50,7 +50,7 @@ exports.getEightEightMultipleEntry = async (req, res) => {
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "employeeCode", "firstName", "middleName", "lastName"],
+          attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "middleName", "lastName"],
           include: [
             {
               model: Category,
@@ -74,7 +74,9 @@ exports.getEightEightMultipleEntry = async (req, res) => {
       return {
         id: r.id,
         slNo: index + 1,
-        ticketNo: emp ? emp.employeeCode : "",
+        ticketNo: emp ? (emp.curEmployeeCode || emp.employeeCode) : "",
+        curEmployeeCode: emp ? emp.curEmployeeCode : "",
+        newEmployeeCode: emp ? emp.newEmployeeCode : "",
         employeeName: emp ? emp.firstName : "",
         shiftName: r.shift ? r.shift.name : "",
         category: emp && emp.category ? emp.category.categoryName : "",

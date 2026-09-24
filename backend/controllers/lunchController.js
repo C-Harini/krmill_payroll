@@ -44,7 +44,7 @@ exports.downloadLunchLogs = async (req, res) => {
 
     for (let i = 0; i < employees.length; i++) {
       const emp = employees[i];
-      const enrollmentId = emp.employeeCode || `EM00${emp.id}`;
+      const enrollmentId = emp.curBiometricEnrollmentId || emp.newBiometricEnrollmentId || emp.curEmployeeCode || emp.newEmployeeCode || emp.employeeCode || `EM00${emp.id}`;
 
       // Simulate a few punch scenarios:
       // Employee 1: Normal Lunch Break (1:00 PM to 1:25 PM)
@@ -350,7 +350,7 @@ exports.getLunchRecords = async (req, res) => {
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "employeeCode", "firstName", "lastName"],
+          attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "lastName"],
           include: [
             { model: Department, as: "department", attributes: ["departmentname"] }
           ]
@@ -384,7 +384,7 @@ exports.getEmployeeLunchReport = async (req, res) => {
     const records = await LunchAttendance.findAll({
       where,
       include: [
-        { model: Employee, as: "employee", attributes: ["id", "employeeCode", "firstName", "lastName"] },
+        { model: Employee, as: "employee", attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "lastName"] },
         { model: ShiftType, as: "shift", attributes: ["name"] }
       ],
       order: [["date", "DESC"]]
@@ -412,7 +412,7 @@ exports.getNoPunchReport = async (req, res) => {
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "employeeCode", "firstName", "lastName"],
+          attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "lastName"],
           include: [
             { model: Department, as: "department", attributes: ["departmentname"] }
           ]
@@ -444,7 +444,7 @@ exports.getLateInReport = async (req, res) => {
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "employeeCode", "firstName", "lastName"],
+          attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "lastName"],
           include: [
             { model: Department, as: "department", attributes: ["departmentname"] }
           ]

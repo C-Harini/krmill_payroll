@@ -51,8 +51,8 @@ const TierBadge = ({ tier }) => {
   return (
     <span
       className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${tier === "high"
-          ? "bg-emerald-100 text-emerald-700"
-          : "bg-amber-100 text-amber-700"
+        ? "bg-emerald-100 text-emerald-700"
+        : "bg-amber-100 text-amber-700"
         }`}
     >
       {tier === "high" ? "★ High" : "Low"}
@@ -103,10 +103,10 @@ const DayAdjuster = ({ rawDays, adjustedDays, onChange }) => {
       </button>
       <span
         className={`w-8 text-center font-bold text-sm tabular-nums ${adjustedDays < CONFIG.MIN_DAYS
-            ? "text-red-500"
-            : adjustedDays >= CONFIG.HIGH_TIER_DAYS
-              ? "text-emerald-600"
-              : "text-amber-600"
+          ? "text-red-500"
+          : adjustedDays >= CONFIG.HIGH_TIER_DAYS
+            ? "text-emerald-600"
+            : "text-amber-600"
           }`}
       >
         {adjustedDays}
@@ -1522,8 +1522,8 @@ export default function AttendanceIncentiveManagement() {
           <button
             onClick={() => { setActiveTab("calculate"); setError(null); setSuccess(null); }}
             className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${activeTab === "calculate"
-                ? "bg-white text-blue-600 shadow-sm border border-slate-100"
-                : "text-slate-500 hover:text-slate-700 hover:bg-slate-100/50"
+              ? "bg-white text-blue-600 shadow-sm border border-slate-100"
+              : "text-slate-500 hover:text-slate-700 hover:bg-slate-100/50"
               }`}
           >
             📊 Incentive Calculation
@@ -1531,8 +1531,8 @@ export default function AttendanceIncentiveManagement() {
           <button
             onClick={() => { setActiveTab("manual"); setError(null); setSuccess(null); }}
             className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${activeTab === "manual"
-                ? "bg-white text-blue-600 shadow-sm border border-slate-100"
-                : "text-slate-500 hover:text-slate-700 hover:bg-slate-100/50"
+              ? "bg-white text-blue-600 shadow-sm border border-slate-100"
+              : "text-slate-500 hover:text-slate-700 hover:bg-slate-100/50"
               }`}
           >
             ✏️ Manual Incentive Entry
@@ -1540,8 +1540,8 @@ export default function AttendanceIncentiveManagement() {
           <button
             onClick={() => { setActiveTab("packaging"); setError(null); setSuccess(null); }}
             className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${activeTab === "packaging"
-                ? "bg-white text-blue-600 shadow-sm border border-slate-100"
-                : "text-slate-500 hover:text-slate-700 hover:bg-slate-100/50"
+              ? "bg-white text-blue-600 shadow-sm border border-slate-100"
+              : "text-slate-500 hover:text-slate-700 hover:bg-slate-100/50"
               }`}
           >
             📦 Packaging Incentive
@@ -1549,8 +1549,8 @@ export default function AttendanceIncentiveManagement() {
           <button
             onClick={() => { setActiveTab("conditions"); setError(null); setSuccess(null); }}
             className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${activeTab === "conditions"
-                ? "bg-white text-blue-600 shadow-sm border border-slate-100"
-                : "text-slate-500 hover:text-slate-700 hover:bg-slate-100/50"
+              ? "bg-white text-blue-600 shadow-sm border border-slate-100"
+              : "text-slate-500 hover:text-slate-700 hover:bg-slate-100/50"
               }`}
           >
             ⚙️ Incentive Conditions
@@ -2567,8 +2567,8 @@ export default function AttendanceIncentiveManagement() {
                             <tr
                               key={rec.employeeId}
                               className={`transition-colors ${rec.selected
-                                  ? "bg-amber-50/40 hover:bg-amber-50/70"
-                                  : "hover:bg-slate-50"
+                                ? "bg-amber-50/40 hover:bg-amber-50/70"
+                                : "hover:bg-slate-50"
                                 }`}
                             >
                               <td className="px-4 py-3 font-medium text-slate-400 text-xs">
@@ -2615,8 +2615,8 @@ export default function AttendanceIncentiveManagement() {
                               <td className="px-4 py-3">
                                 <span
                                   className={`text-sm font-bold ${rec.incentiveAmount > 0
-                                      ? "text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200"
-                                      : "text-slate-400"
+                                    ? "text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200"
+                                    : "text-slate-400"
                                     }`}
                                 >
                                   ₹{parseFloat(rec.incentiveAmount || 0).toFixed(2)}
@@ -2837,10 +2837,10 @@ export default function AttendanceIncentiveManagement() {
                             </td>
                             <td className="px-5 py-4 text-center">
                               <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cond.gender === "MALE"
-                                  ? "bg-blue-50 text-blue-700"
-                                  : cond.gender === "FEMALE"
-                                    ? "bg-pink-50 text-pink-700"
-                                    : "bg-slate-100 text-slate-600"
+                                ? "bg-blue-50 text-blue-700"
+                                : cond.gender === "FEMALE"
+                                  ? "bg-pink-50 text-pink-700"
+                                  : "bg-slate-100 text-slate-600"
                                 }`}>
                                 {cond.gender || "ALL"}
                               </span>

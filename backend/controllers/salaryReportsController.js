@@ -223,15 +223,18 @@ const buildBreakdown = (details = [], attnIncentive = 0) => {
   return { earnings, deductions };
 };
 
+const hasEmpConditions = (obj) => Reflect.ownKeys(obj || {}).length > 0;
+
 const salaryIncludes = (empWhere = {}) => [
   {
     model: Employee,
     as: "employee",
-    where: Object.keys(empWhere).length ? empWhere : undefined,
-    required: !!Object.keys(empWhere).length,
+    where: hasEmpConditions(empWhere) ? empWhere : undefined,
+    required: hasEmpConditions(empWhere),
     attributes: [
       "id",
-      "employeeCode",
+      "curEmployeeCode",
+      "newEmployeeCode",
       "firstName",
       "lastName",
       "bankAccountNumber",
@@ -347,6 +350,15 @@ const buildFilterConditions = async (query) => {
   const empWhere = {};
   if (departmentId) empWhere.departmentId = departmentId;
 
+  const searchCode = query.employeeCode || query.empCode || query.search;
+  if (searchCode) {
+    empWhere[Op.or] = [
+      { curEmployeeCode: searchCode },
+      { newEmployeeCode: searchCode },
+      { firstName: { [Op.like]: `%${searchCode}%` } }
+    ];
+  }
+
   if (category) {
     const catLower = category.toLowerCase().trim();
     if (catLower === "management" || catLower === "manager") {
@@ -438,6 +450,7 @@ exports.getSalaryReport = async (req, res) => {
     const rows = await SalaryGeneration.findAll({
       where,
       include: salaryIncludes(empWhere),
+      subQuery: false,
       order: baseOrder,
       limit: parseInt(limit),
       offset,
@@ -546,7 +559,7 @@ exports.getSalaryReport = async (req, res) => {
     const prevTotal =
       (await SalaryGeneration.sum("SalaryGeneration.netSalary", {
         where: prevWhere,
-        include: Object.keys(prevEmpWhere).length
+        include: hasEmpConditions(prevEmpWhere)
           ? [
               {
                 model: Employee,
@@ -952,7 +965,7 @@ function addStaffSheet(
     const rowData = [
       sno++,
       r.employee?.firstName || "",
-      r.employee?.employeeCode || "",
+      r.employee?.newEmployeeCode ? `${r.employee.curEmployeeCode || ''} / ${r.employee.newEmployeeCode}` : (r.employee?.curEmployeeCode || r.employee?.employeeCode || ""),
       r.employee?.designation?.name || "",
       salaryVal,
       toNum(r.presentDays),
@@ -1145,7 +1158,7 @@ function addWorkerSheet(wb, sheetName, records, name, monthLabel, opts = {}) {
     const rowData = [
       sno++,
       r.employee?.firstName || "",
-      r.employee?.employeeCode || "",
+      r.employee?.newEmployeeCode ? `${r.employee.curEmployeeCode || ''} / ${r.employee.newEmployeeCode}` : (r.employee?.curEmployeeCode || r.employee?.employeeCode || ""),
       r.employee?.department?.departmentname || "",
       wagesPerDay,
       toNum(r.presentDays),
@@ -1465,7 +1478,7 @@ exports.downloadSalaryReportPDF = async (req, res) => {
         const baseCells = [
           sno,
           r.employee?.firstName || "",
-          r.employee?.employeeCode || "",
+          r.employee?.newEmployeeCode ? `${r.employee.curEmployeeCode || ''} / ${r.employee.newEmployeeCode}` : (r.employee?.curEmployeeCode || r.employee?.employeeCode || ""),
           r.employee?.designation?.name ||
             r.employee?.department?.departmentname ||
             "",
@@ -1740,8 +1753,8 @@ exports.downloadBankStatementPDF = async (req, res) => {
         if (y > 720) drawBankHeader(true);
         const cells = [
           sno,
-          r.employee?.employeeCode || "",
-          r.employee?.employeeCode || "",
+          r.employee?.curEmployeeCode || r.employee?.employeeCode || "",
+          r.employee?.newEmployeeCode || "",
           r.employee?.firstName || "",
           r.employee?.bankAccountNumber || "N/A",
           `₹${r.netSalary.toLocaleString("en-IN")}`,
@@ -1888,8 +1901,8 @@ exports.downloadBankStatementExcel = async (req, res) => {
       dRec.forEach((r) => {
         const row = ws.addRow([
           sno++,
-          r.employee?.employeeCode || "",
-          r.employee?.employeeCode || "",
+          r.employee?.curEmployeeCode || r.employee?.employeeCode || "",
+          r.employee?.newEmployeeCode || "",
           r.employee?.firstName || "",
           r.employee?.bankAccountNumber || "N/A",
           toNum(r.netSalary),
@@ -2029,7 +2042,7 @@ exports.downloadPayslip = async (req, res) => {
     doc.font("Helvetica").fontSize(9);
     const left = [
       ["Name", emp.firstName || ""],
-      ["Emp Code", emp.employeeCode],
+      ["Emp Code", emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode)],
       ["Designation", emp.designation?.name || "-"],
     ];
     const right = [
@@ -2219,7 +2232,8 @@ exports.getPayslipList = async (req, res) => {
           where: Object.keys(empWhere).length ? empWhere : undefined,
           attributes: [
             "id",
-            "employeeCode",
+            "curEmployeeCode",
+            "newEmployeeCode",
             "firstName",
             "lastName",
             "gradeId",

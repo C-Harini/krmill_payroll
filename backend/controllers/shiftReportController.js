@@ -228,7 +228,7 @@ exports.getShiftReport = async (req, res) => {
             attributes: ["id", "departmentname", "acronym"]
           }
         ],
-        order: [["employeeCode", "ASC"]]
+        order: [["curEmployeeCode", "ASC"]]
       });
 
       // 3. Fetch attendance records for the date range
@@ -326,7 +326,9 @@ exports.getShiftReport = async (req, res) => {
         summary.push({
           employeeId: emp.id,
           employeeName: (emp.firstName || "").trim(),
-          employeeCode: emp.employeeCode,
+          employeeCode: emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode),
+          curEmployeeCode: emp.curEmployeeCode || emp.employeeCode,
+          newEmployeeCode: emp.newEmployeeCode || "",
           departmentAcronym: emp.department?.acronym || emp.department?.departmentname || "-",
           dailyAttendance,
           totals: {
@@ -377,7 +379,8 @@ exports.getShiftReport = async (req, res) => {
             "id",
             "firstName",
             "lastName",
-            "employeeCode",
+            "curEmployeeCode",
+            "newEmployeeCode",
             "weeklyOff",
           ], // ← include weeklyOff
           include: [
@@ -405,7 +408,9 @@ exports.getShiftReport = async (req, res) => {
           employeeName: r.employee
             ? r.employee.firstName || ""
             : "N/A",
-          employeeCode: r.employee?.employeeCode || "N/A",
+          employeeCode: r.employee?.newEmployeeCode ? `${r.employee.curEmployeeCode || ''} / ${r.employee.newEmployeeCode}` : (r.employee?.curEmployeeCode || r.employee?.employeeCode || "N/A"),
+          curEmployeeCode: r.employee?.curEmployeeCode || r.employee?.employeeCode || "N/A",
+          newEmployeeCode: r.employee?.newEmployeeCode || null,
           employeeType: r.employee?.employmentType?.name || "N/A",
           weeklyOff: r.employee?.weeklyOff || null, // e.g. "SUNDAY" or "SUNDAY,SATURDAY"
           totalDaysAllShifts: 0,
@@ -608,11 +613,13 @@ exports.getShiftReport = async (req, res) => {
 
     // ── Step 8: Format response ───────────────────────────────────────────────
     const summary = Object.values(byEmp)
-      .sort((a, b) => a.employeeCode.localeCompare(b.employeeCode))
+      .sort((a, b) => (a.curEmployeeCode || a.employeeCode || "").localeCompare(b.curEmployeeCode || b.employeeCode || ""))
       .map((emp) => ({
         employeeId: emp.employeeId,
         employeeName: emp.employeeName,
-        employeeCode: emp.employeeCode,
+        employeeCode: emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode),
+        curEmployeeCode: emp.curEmployeeCode || emp.employeeCode,
+        newEmployeeCode: emp.newEmployeeCode || null,
         employeeType: emp.employeeType,
         weeklyOff: emp.weeklyOff,
         totalDaysAllShifts: emp.totalDaysAllShifts,

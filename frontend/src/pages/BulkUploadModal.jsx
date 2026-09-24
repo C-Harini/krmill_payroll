@@ -225,7 +225,7 @@ const BulkUploadModal = ({ companyId, onClose, onUploadComplete }) => {
                                     <div className="space-y-2 max-h-40 overflow-y-auto">
                                         {uploadResults.errors.map((err, idx) => (
                                             <div key={idx} className="text-xs text-red-800 bg-white p-2 rounded border border-red-100">
-                                                <strong>Row {err.row}</strong> ({err.employeeCode}): {err.error}
+                                                <strong>Row {err.row}</strong> ({err.curEmployeeCode || err.employeeCode}): {err.error}
                                             </div>
                                         ))}
                                     </div>

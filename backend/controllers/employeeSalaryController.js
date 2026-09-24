@@ -32,7 +32,7 @@ exports.getEmployeeSalaries = async (req, res) => {
             include: [
                 { 
                     model: Employee, 
-                    attributes: ['id', 'firstName', 'lastName', 'employeeCode', 'officialEmail']
+                    attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode', 'officialEmail']
                 },
                 { 
                     model: Company, 
@@ -63,7 +63,7 @@ exports.getCurrentSalary = async (req, res) => {
             include: [
                 { 
                     model: Employee, 
-                    attributes: ['id', 'firstName', 'lastName', 'employeeCode', 'officialEmail']
+                    attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode', 'officialEmail']
                 },
                 { model: Company, attributes: ['id', 'name'] },
                 {
@@ -107,7 +107,7 @@ exports.getSalaryForDate = async (req, res) => {
                 ]
             },
             include: [
-                { model: Employee, attributes: ['id', 'firstName', 'lastName', 'employeeCode'] },
+                { model: Employee, attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode'] },
                 {
                     model: EmployeeSalaryComponent,
                     include: [{ model: SalaryComponent }],
@@ -135,7 +135,7 @@ exports.getSalaryHistory = async (req, res) => {
         const history = await EmployeeSalaryMaster.findAll({
             where: { employeeId },
             include: [
-                { model: Employee, attributes: ['id', 'firstName', 'lastName', 'employeeCode'] },
+                { model: Employee, attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode'] },
                 {
                     model: EmployeeSalaryComponent,
                     include: [{ model: SalaryComponent, attributes: ['name', 'code', 'type'] }]
@@ -159,7 +159,7 @@ exports.getRevisionHistory = async (req, res) => {
         const history = await SalaryRevisionHistory.findAll({
             where: { employeeId },
             include: [
-                { model: Employee, attributes: ['id', 'firstName', 'lastName', 'employeeCode'] },
+                { model: Employee, attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode'] },
                 { model: Company, attributes: ['id', 'name'] }
             ],
             order: [['revisionDate', 'DESC']]
@@ -302,7 +302,13 @@ exports.bulkAssignSalary = async (req, res) => {
                 employee = await Employee.findByPk(employeeId, { transaction });
             } else {
                 employee = await Employee.findOne({
-                    where: { employeeCode, companyId },
+                    where: {
+                        [Op.or]: [
+                            { curEmployeeCode: employeeCode },
+                            { newEmployeeCode: employeeCode }
+                        ],
+                        companyId
+                    },
                     transaction
                 });
             }

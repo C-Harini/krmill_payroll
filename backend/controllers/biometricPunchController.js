@@ -40,7 +40,7 @@ exports.getBiometricPunches = async (req, res) => {
                 {
                     model: Employee,
                     as: 'employee',
-                    attributes: ['id', 'employeeCode', 'firstName', 'lastName', 'profilePhoto'],
+                    attributes: ['id', 'curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName', 'profilePhoto'],
                     include: [
                         { model: Department, as: 'department', attributes: ['departmentname', ['departmentname', 'departmentName'], ['departmentname', 'name']] },
                         { model: Designation, as: 'designation', attributes: ['name'] }
@@ -183,7 +183,7 @@ exports.recordPunch = async (req, res) => {
         const newPunch = await BiometricPunch.create({
             employeeId: employeeId,
             biometricDeviceId: biometricDeviceId || null,
-            biometricEnrollmentId: biometricEnrollmentId || employee.biometricEnrollmentId,
+            biometricEnrollmentId: biometricEnrollmentId || employee.curBiometricEnrollmentId || employee.newBiometricEnrollmentId || employee.biometricEnrollmentId,
             punchTime: punchTime,
             punchDate: punchDate,
             punchType: punchType,
@@ -210,7 +210,7 @@ exports.recordPunch = async (req, res) => {
                 {
                     model: Employee,
                     as: 'employee',
-                    attributes: ['id', 'employeeCode', 'firstName', 'lastName'],
+                    attributes: ['id', 'curEmployeeCode', 'newEmployeeCode', 'firstName', 'lastName'],
                     include: [{ model: Department, as: 'department', attributes: ['departmentname', ['departmentname', 'name']] }]
                 },
                 { model: BiometricDevice, as: 'device', attributes: ['id', 'name', 'location'] },
@@ -529,7 +529,12 @@ exports.fetchAndImportPunches = async (req, res) => {
 
                 const employee = await Employee.findOne({
                     where: {
-                        biometricEnrollmentId: biometricNumber,
+                        [Op.or]: [
+                            { curBiometricEnrollmentId: biometricNumber },
+                            { newBiometricEnrollmentId: biometricNumber },
+                            { curEmployeeCode: biometricNumber },
+                            { newEmployeeCode: biometricNumber },
+                        ],
                         companyId: companyId,
                         status: 'Active'
                     },

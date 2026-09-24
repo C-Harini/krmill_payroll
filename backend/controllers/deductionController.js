@@ -18,7 +18,7 @@ exports.getDeductions = async (req, res) => {
         const deductions = await Deduction.findAll({
             where,
             include: [
-                { model: Employee, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'employeeCode'] },
+                { model: Employee, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode'] },
                 { model: Department, as: 'department', attributes: ['id', 'departmentname', 'acronym'] },
             ],
             order: [['createdAt', 'DESC']],
@@ -56,7 +56,7 @@ exports.createDeduction = async (req, res) => {
 
         const deduction = await Deduction.findByPk(newDeduction.id, {
             include: [
-                { model: Employee, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'employeeCode'] },
+                { model: Employee, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode'] },
                 { model: Department, as: 'department', attributes: ['id', 'departmentname', 'acronym'] },
             ],
         });
@@ -100,7 +100,7 @@ exports.updateDeduction = async (req, res) => {
 
         const updated = await Deduction.findByPk(id, {
             include: [
-                { model: Employee, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'employeeCode'] },
+                { model: Employee, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode'] },
                 { model: Department, as: 'department', attributes: ['id', 'departmentname', ['departmentname', 'name'], 'acronym'] },
             ],
         });
@@ -155,7 +155,7 @@ exports.getConsolidatedReport = async (req, res) => {
         const deductions = await Deduction.findAll({
             where,
             include: [
-                { model: Employee, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'employeeCode'] },
+                { model: Employee, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode'] },
                 { model: Department, as: 'department', attributes: ['id', 'departmentname', ['departmentname', 'name'], 'acronym'] },
             ],
             order: [
@@ -171,7 +171,9 @@ exports.getConsolidatedReport = async (req, res) => {
             if (!employeeMap[key]) {
                 employeeMap[key] = {
                     employeeId: d.employeeId,
-                    employeeCode: d.employee.employeeCode,
+                    employeeCode: d.employee.curEmployeeCode || d.employee.employeeCode,
+                    curEmployeeCode: d.employee.curEmployeeCode,
+                    newEmployeeCode: d.employee.newEmployeeCode,
                     employeeName: d.employee.firstName,
                     departmentId: d.departmentId,
                     departmentName: d.department.name,

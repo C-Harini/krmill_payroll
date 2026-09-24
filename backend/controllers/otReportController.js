@@ -51,7 +51,7 @@ exports.getOTReport = async (req, res) => {
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "employeeCode", "firstName", "lastName"],
+          attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "lastName"],
           include: [
             {
               model: EmployeeSalaryMaster,
@@ -90,7 +90,9 @@ exports.getOTReport = async (req, res) => {
 
         grouped[empId] = {
           employeeId:   empId,
-          employeeCode: record.employee?.employeeCode || "N/A",
+          employeeCode: record.employee?.newEmployeeCode ? `${record.employee.curEmployeeCode || ''} / ${record.employee.newEmployeeCode}` : (record.employee?.curEmployeeCode || record.employee?.employeeCode || "N/A"),
+          curEmployeeCode: record.employee?.curEmployeeCode || record.employee?.employeeCode || "N/A",
+          newEmployeeCode: record.employee?.newEmployeeCode || "",
           employeeName: record.employee?.firstName || "",
           department:   record.department?.departmentName || record.department?.name || "N/A",
           departmentId: record.departmentId,
@@ -167,7 +169,7 @@ exports.getOTReportSummary = async (req, res) => {
         {
           model: Employee,
           as: "employee",
-          attributes: ["id", "firstName", "lastName", "employeeCode"],
+          attributes: ["id", "firstName", "lastName", "curEmployeeCode", "newEmployeeCode"],
           include: [
             {
               model: EmployeeSalaryMaster,

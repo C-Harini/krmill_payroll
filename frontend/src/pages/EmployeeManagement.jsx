@@ -187,7 +187,12 @@ const EmployeeManagement = () => {
 
     // Filter employees
     const filteredEmployees = employees.filter(e =>
+        e.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         e.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        e.curEmployeeCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        e.newEmployeeCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        e.curBiometricEnrollmentId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        e.newBiometricEnrollmentId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         e.employeeCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         e.personalEmail?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         e.employeeType?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -272,7 +277,8 @@ const EmployeeManagement = () => {
                     <table className="w-full">
                         <thead>
                             <tr className="bg-gradient-to-r from-slate-700 to-slate-800 text-white">
-                                <th className="px-6 py-3 text-left text-sm font-semibold">Emp Code</th>
+                                <th className="px-4 py-3 text-left text-sm font-semibold whitespace-nowrap">CUR EMPCODE</th>
+                                <th className="px-4 py-3 text-left text-sm font-semibold whitespace-nowrap">NEW EMPCODE</th>
                                 <th className="px-6 py-3 text-left text-sm font-semibold">Name</th>
                                 <th className="px-6 py-3 text-left text-sm font-semibold">Emp Type</th>
                                 <th className="px-6 py-3 text-left text-sm font-semibold">Grade</th>
@@ -286,7 +292,7 @@ const EmployeeManagement = () => {
                         <tbody className="divide-y divide-slate-200">
                             {loading ? (
                                 <tr>
-                                    <td colSpan="9" className="px-6 py-8 text-center">
+                                    <td colSpan="10" className="px-6 py-8 text-center">
                                         <div className="flex justify-center items-center gap-2">
                                             <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
                                             <span className="text-slate-600">Loading employees...</span>
@@ -296,7 +302,8 @@ const EmployeeManagement = () => {
                             ) : filteredEmployees.length > 0 ? (
                                 filteredEmployees.map((emp, index) => (
                                     <tr key={emp.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-slate-50'} hover:bg-blue-50 transition-colors`}>
-                                        <td className="px-6 py-4 text-sm font-medium text-slate-800">{emp.employeeCode}</td>
+                                        <td className="px-4 py-4 text-sm font-bold text-slate-800">{emp.curEmployeeCode || emp.employeeCode || '-'}</td>
+                                        <td className="px-4 py-4 text-sm font-semibold text-blue-700">{emp.newEmployeeCode || '-'}</td>
                                         <td className="px-6 py-4 text-sm font-medium text-slate-800">{emp.firstName}</td>
                                         <td className="px-6 py-4 text-sm">
                                             <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
@@ -348,7 +355,7 @@ const EmployeeManagement = () => {
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan="9" className="px-6 py-8 text-center">
+                                    <td colSpan="10" className="px-6 py-8 text-center">
                                         <div className="text-slate-500">
                                             <span className="text-4xl mb-2 block">👥</span>
                                             <p>No employees found.</p>

@@ -1,4 +1,4 @@
-const cron = require('node-cron');
+    const cron = require('node-cron');
 const { BiometricDevice, BiometricPunch, Employee, ShiftType, Company } = require('../models');
 const { Op } = require('sequelize');
 const moment = require('moment');
@@ -298,7 +298,12 @@ class BiometricAutoSyncService {
                     // Find employee
                     const employee = await Employee.findOne({
                         where: {
-                            biometricEnrollmentId: biometricNumber,
+                            [Op.or]: [
+                                { curBiometricEnrollmentId: biometricNumber },
+                                { newBiometricEnrollmentId: biometricNumber },
+                                { curEmployeeCode: biometricNumber },
+                                { newEmployeeCode: biometricNumber },
+                            ],
                             companyId: device.companyId,
                             status: 'Active'
                         },

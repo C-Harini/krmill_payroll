@@ -219,7 +219,7 @@ exports.getHostelIncentiveCalculations = async (req, res) => {
         { model: Category, as: "category", attributes: ["id", "categoryName"] },
         { model: Designation, as: "designation", attributes: ["id", "name"] },
       ],
-      order: [["employeeCode", "ASC"]],
+      order: [["curEmployeeCode", "ASC"]],
     });
 
     // Filter employees: Category name containing HOSTEL or isHostel flag
@@ -415,7 +415,9 @@ exports.getHostelIncentiveCalculations = async (req, res) => {
 
       return {
         id: emp.id,
-        employeeCode: emp.employeeCode,
+        employeeCode: emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode),
+        curEmployeeCode: emp.curEmployeeCode || emp.employeeCode,
+        newEmployeeCode: emp.newEmployeeCode || "",
         employeeName: emp.firstName,
         gender: emp.gender,
         dateOfJoining: emp.dateOfJoining,
@@ -640,7 +642,7 @@ exports.getAll = async (req, res) => {
       include: [
         { model: Company, as: "company", attributes: ["id", "name"] },
         { model: Department, as: "department", attributes: ["id", "departmentname"] },
-        { model: Employee, as: "employee", attributes: ["id", "firstName", "lastName", "employeeCode"] },
+        { model: Employee, as: "employee", attributes: ["id", "firstName", "lastName", "curEmployeeCode", "newEmployeeCode"] },
       ],
       order: [["id", "DESC"]],
     });

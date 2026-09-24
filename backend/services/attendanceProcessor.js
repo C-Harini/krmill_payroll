@@ -752,7 +752,7 @@
 //       "id",
 //       "firstName",
 //       "lastName",
-//       "employeeCode",
+//       "curEmployeeCode",
 //       "companyId",
 //       "shiftTypeId",
 //     ],
@@ -2120,7 +2120,7 @@ const processRealtimePunch = async ({ employeeId, punchTime, punchType, companyI
   const punchDate = toLocalMoment(punchTime).format("YYYY-MM-DD");
 
   const employee = await Employee.findByPk(employeeId, {
-    attributes: ["id", "firstName", "lastName", "employeeCode", "companyId", "shiftTypeId"],
+    attributes: ["id", "firstName", "lastName", "curEmployeeCode", "companyId", "shiftTypeId"],
     include: [{ model: EmploymentType, as: "employmentType" }],
   });
   if (!employee) throw new Error(`Employee ${employeeId} not found`);

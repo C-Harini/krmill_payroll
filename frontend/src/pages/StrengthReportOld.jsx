@@ -256,6 +256,47 @@ const StrengthReportOld = () => {
         ]);
       });
 
+      // 8 to 8 Entries
+      if (report.eightEightRows && report.eightEightRows.length > 0) {
+        bodyRows.push([
+          { content: "8 TO 8 ENTRIES", colSpan: 13, styles: { fontStyle: "bold", fillColor: [226, 232, 240], fontSize: 7, halign: "left" } },
+        ]);
+
+        report.eightEightRows.forEach((row) => {
+          bodyRows.push([
+            { content: row.departmentName, styles: { fontStyle: "bold", halign: "left" } },
+            { content: String(cv(row.shiftA.strength)), styles: { halign: "center" } },
+            { content: "", styles: { halign: "center" } },
+            { content: "", styles: { halign: "center" } },
+            { content: "", styles: { halign: "center" } },
+            { content: "", styles: { halign: "center" } },
+            { content: "", styles: { halign: "center" } },
+            { content: "", styles: { halign: "center" } },
+            { content: "", styles: { halign: "center" } },
+            { content: "", styles: { halign: "center" } },
+            { content: "", styles: { halign: "center", fontStyle: "bold" } },
+            { content: "", styles: { halign: "center", fontStyle: "bold" } },
+            { content: "", styles: { halign: "center", fontStyle: "bold" } },
+          ]);
+        });
+
+        bodyRows.push([
+          { content: "TOTAL 8 TO 8", styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "left" } },
+          { content: String(cv(report.eightEightSummary?.total)), styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: "", styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: "", styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: "", styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: "", styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: "", styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: "", styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: "", styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: "", styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: "", styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: "", styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+          { content: "", styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "center" } },
+        ]);
+      }
+
       // Grand total
       bodyRows.push([
         { content: "GRAND TOTAL", styles: { fontStyle: "bold", fillColor: [226, 232, 240], halign: "left" } },
@@ -482,6 +523,51 @@ const StrengthReportOld = () => {
                     </React.Fragment>
                   );
                 })}
+
+                {/* 8 to 8 Entries Section (Informational - not added to totals) */}
+                {report.eightEightRows && report.eightEightRows.length > 0 && (
+                  <React.Fragment>
+                    <tr style={S.catRow}>
+                      <td colSpan={13} style={S.catCell}>
+                        8 TO 8 ENTRIES (INFORMATIONAL)
+                      </td>
+                    </tr>
+                    {report.eightEightRows.map((row) => (
+                      <tr key={row.departmentName} style={S.dataRow}>
+                        <td style={S.tdDept}>{row.departmentName}</td>
+                        <td style={S.tdNum}>{cv(row.shiftA.strength)}</td>
+                        <td style={S.tdNum}></td>
+                        <td style={S.tdNum}></td>
+                        <td style={S.tdNum}></td>
+                        <td style={S.tdNum}></td>
+                        <td style={S.tdNum}></td>
+                        <td style={S.tdNum}></td>
+                        <td style={S.tdNum}></td>
+                        <td style={S.tdNum}></td>
+                        <td style={S.tdReq}></td>
+                        <td style={S.tdTotal}></td>
+                        <td style={S.tdTotal}></td>
+                      </tr>
+                    ))}
+                    <tr style={S.catTotalRow}>
+                      <td style={{ ...S.tdDept, ...S.catTotalLabel }}>
+                        TOTAL 8 TO 8
+                      </td>
+                      <td style={S.tdCatTotal}>{cv(report.eightEightSummary?.total)}</td>
+                      <td style={S.tdCatTotal}></td>
+                      <td style={S.tdCatTotal}></td>
+                      <td style={S.tdCatTotal}></td>
+                      <td style={S.tdCatTotal}></td>
+                      <td style={S.tdCatTotal}></td>
+                      <td style={S.tdCatTotal}></td>
+                      <td style={S.tdCatTotal}></td>
+                      <td style={S.tdCatTotal}></td>
+                      <td style={S.tdCatTotal}></td>
+                      <td style={S.tdCatTotal}></td>
+                      <td style={S.tdCatTotal}></td>
+                    </tr>
+                  </React.Fragment>
+                )}
 
                 {/* Grand Total */}
                 <tr style={S.grandTotalRow}>

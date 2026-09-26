@@ -91,7 +91,7 @@ function isEmployeeWeekOffDay(emp, targetDate, att) {
  * Shared data generator for JSON report & Excel export
  */
 async function generateStrengthReportData(companyId, date) {
-  const { Attendance, Employee, Department, Company, Category, OTHours, ShiftType, LeaveRequest } = db;
+  const { Attendance, Employee, Department, Company, Category, OTHours, ShiftType, LeaveRequest, EightEightEntry } = db;
   const targetDate = moment(date).format("YYYY-MM-DD");
 
   // ── 0. Company ────────────────────────────────────────────
@@ -218,6 +218,95 @@ async function generateStrengthReportData(companyId, date) {
     nest: true,
   });
 
+  // ── 2d. 8 to 8 Counts (EightEightEntry) ───────────────────
+  const eightEightRecords = await EightEightEntry.findAll({
+    where: {
+      companyId,
+      date: {
+        [Op.gte]: moment(targetDate).startOf("day").toDate(),
+        [Op.lte]: moment(targetDate).endOf("day").toDate(),
+      },
+      status: "Active",
+    },
+    raw: true,
+  });
+
+  const eightEightCounts = {
+    Preparatory: 0,
+    Spinning: 0,
+    Autoconner: 0,
+  };
+
+  const matchCategory88 = (entryType) => {
+    const et = (entryType || "").trim().toUpperCase();
+    if (et.includes("PREP")) return "Preparatory";
+    if (et.includes("SPG") || et.includes("SPIN")) return "Spinning";
+    if (et.includes("AUTO")) return "Autoconner";
+    return null;
+  };
+
+  let foundBulk88 = false;
+  eightEightRecords.forEach((r) => {
+    if (r.employeeId === null || r.employeeId === undefined) {
+      const cat = matchCategory88(r.entryType);
+      if (cat) {
+        eightEightCounts[cat] += parseFloat(r.hours) || 0;
+        foundBulk88 = true;
+      }
+    }
+  });
+
+  if (!foundBulk88) {
+    eightEightRecords.forEach((r) => {
+      if (r.employeeId !== null && r.employeeId !== undefined) {
+        const cat = matchCategory88(r.entryType);
+        if (cat) {
+          const val = parseFloat(r.hours);
+          eightEightCounts[cat] += (isNaN(val) || val <= 0) ? 1 : val;
+        }
+      }
+    });
+  }
+
+  const eightEightRows = [
+    {
+      departmentName: "8 to 8 Preparatory",
+      shiftA: { strength: round(eightEightCounts.Preparatory), sotCount: 0, hotHours: 0 },
+      shiftB: { strength: 0, sotCount: 0, hotHours: 0 },
+      shiftC: { strength: 0, sotCount: 0, hotHours: 0 },
+      req: 0,
+      totalStrength: 0,
+      totalHot: 0,
+      isEightEight: true,
+    },
+    {
+      departmentName: "8 to 8 Spinning",
+      shiftA: { strength: round(eightEightCounts.Spinning), sotCount: 0, hotHours: 0 },
+      shiftB: { strength: 0, sotCount: 0, hotHours: 0 },
+      shiftC: { strength: 0, sotCount: 0, hotHours: 0 },
+      req: 0,
+      totalStrength: 0,
+      totalHot: 0,
+      isEightEight: true,
+    },
+    {
+      departmentName: "8 to 8 Autoconner",
+      shiftA: { strength: round(eightEightCounts.Autoconner), sotCount: 0, hotHours: 0 },
+      shiftB: { strength: 0, sotCount: 0, hotHours: 0 },
+      shiftC: { strength: 0, sotCount: 0, hotHours: 0 },
+      req: 0,
+      totalStrength: 0,
+      totalHot: 0,
+      isEightEight: true,
+    },
+  ];
+
+  const eightEightTotal = round(
+    eightEightCounts.Preparatory +
+    eightEightCounts.Spinning +
+    eightEightCounts.Autoconner
+  );
+
   // ── 3. Aggregate strength per department per shift ─────────
   attendances.forEach((att) => {
     const emp = att.employee;
@@ -257,8 +346,12 @@ async function generateStrengthReportData(companyId, date) {
       const shiftB = formatShift(dept.shifts.B);
       const shiftC = formatShift(dept.shifts.C);
 
-      // STR = total strength across all shifts
-      const totalStrength = round(shiftA.strength + shiftB.strength + shiftC.strength);
+      // STR = total strength across all shifts (including week-off S OT attendance)
+      const totalStrength = round(
+        shiftA.strength + (shiftA.sotCount || 0) +
+        shiftB.strength + (shiftB.sotCount || 0) +
+        shiftC.strength + (shiftC.sotCount || 0)
+      );
       // H.OT = total OT hours across all shifts
       const totalHot = round(shiftA.hotHours + shiftB.hotHours + shiftC.hotHours);
 
@@ -288,7 +381,7 @@ async function generateStrengthReportData(companyId, date) {
     categoryGroups[cat].departments.push(dept);
   });
 
-  // ── 6. Grand Total ────────────────────────────────────────
+  // ── 6. Grand Total (Excludes 8 to 8 rows per design) ───────
   const grandTotal = {
     req: 0,
     shiftA: { strength: 0, sotCount: 0, hotHours: 0 },
@@ -322,6 +415,13 @@ async function generateStrengthReportData(companyId, date) {
     targetDate,
     departmentRows,
     categoryGroups: Object.values(categoryGroups),
+    eightEightRows,
+    eightEightSummary: {
+      prep: round(eightEightCounts.Preparatory),
+      spg: round(eightEightCounts.Spinning),
+      auto: round(eightEightCounts.Autoconner),
+      total: eightEightTotal,
+    },
     grandTotal,
   };
 }
@@ -350,6 +450,8 @@ exports.getStrengthReport = async (req, res) => {
         companyId: parseInt(companyId),
         companyName: reportData.company.name,
         categoryGroups: reportData.categoryGroups,
+        eightEightRows: reportData.eightEightRows,
+        eightEightSummary: reportData.eightEightSummary,
         grandTotal: reportData.grandTotal,
       },
     });
@@ -378,7 +480,7 @@ exports.exportStrengthReportExcel = async (req, res) => {
       return res.status(404).json({ error: "Company not found" });
     }
 
-    const { company, departmentRows, grandTotal } = reportData;
+    const { company, departmentRows, eightEightRows, eightEightSummary, grandTotal } = reportData;
 
     // ── Build Excel ───────────────────────────────────────────
     const wb = new ExcelJS.Workbook();
@@ -505,7 +607,62 @@ exports.exportStrengthReportExcel = async (req, res) => {
       });
     });
 
-    // Grand Total
+    // ── 8 to 8 Rows (Informational - not included in totals) ────
+    if (eightEightRows && eightEightRows.length > 0) {
+      ws.mergeCells(ri, 1, ri, TOTAL_COLS);
+      const e8CatCell = ws.getCell(ri, 1);
+      e8CatCell.value = "8 TO 8 ENTRIES (INFORMATIONAL)";
+      e8CatCell.font = { bold: true, size: 9, color: { argb: "FF334155" } };
+      e8CatCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: CAT_BG } };
+      e8CatCell.alignment = { horizontal: "left", vertical: "middle" };
+      for (let c = 1; c <= TOTAL_COLS; c++) ws.getCell(ri, c).border = thin();
+      ws.getRow(ri).height = 16;
+      ri++;
+
+      eightEightRows.forEach((eRow) => {
+        const row = ws.getRow(ri++);
+        row.height = 15;
+        const vals = [
+          eRow.departmentName,
+          cellVal(eRow.shiftA.strength), "-", "-",
+          "-", "-", "-",
+          "-", "-", "-",
+          "-",
+          "-",
+          "-",
+        ];
+        vals.forEach((v, idx) => {
+          const c = row.getCell(idx + 1);
+          c.value = v;
+          c.font = { size: 9 };
+          c.alignment = { horizontal: idx === 0 ? "left" : "center", vertical: "middle" };
+          c.border = thin();
+        });
+      });
+
+      // 8-8 Subtotal
+      const e8SubRow = ws.getRow(ri++);
+      e8SubRow.height = 15;
+      const e8SubVals = [
+        "TOTAL 8 TO 8",
+        cellVal(eightEightSummary?.total), "-", "-",
+        "-", "-", "-",
+        "-", "-", "-",
+        "-",
+        "-",
+        "-",
+      ];
+      e8SubVals.forEach((v, idx) => {
+        const c = e8SubRow.getCell(idx + 1);
+        c.value = v;
+        c.font = { bold: true, size: 9 };
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
+        c.alignment = { horizontal: idx === 0 ? "left" : "center", vertical: "middle" };
+        c.border = thin();
+      });
+    }
+
+    // Grand Total (Excludes 8 to 8)
     const gtRow = ws.getRow(ri++);
     gtRow.height = 18;
     const gtVals = [

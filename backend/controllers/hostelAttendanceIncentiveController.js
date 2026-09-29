@@ -81,19 +81,28 @@ const calculateHostelIncentive = ({
   // Remaining days for condition-based regular calculation
   const remainingDays = Math.max(0, payableDays - effective88Days);
 
+  const shiftRuleKey = resolveHostelShiftKey(shiftMap);
+
   // Match condition from DB or fallback to default Hostel config
   const empCatId = employee.categoryId || null;
   const empDeptId = employee.departmentId || null;
 
   let cond = dbConditions.find(
-    (c) => c.categoryId === empCatId && c.departmentId === empDeptId && c.status === "Active"
+    (c) => c.categoryId === empCatId && c.departmentId === empDeptId && c.shiftRuleKey === shiftRuleKey && c.status === "Active"
   );
   if (!cond) {
-    cond = dbConditions.find((c) => c.categoryId === empCatId && !c.departmentId && c.status === "Active");
+    cond = dbConditions.find(
+      (c) => c.categoryId === empCatId && !c.departmentId && c.shiftRuleKey === shiftRuleKey && c.status === "Active"
+    );
   }
   if (!cond) {
     cond = dbConditions.find(
-      (c) => !c.categoryId && !c.departmentId && c.gradeKey === "HOSTEL" && c.status === "Active"
+      (c) => !c.categoryId && c.departmentId === empDeptId && c.shiftRuleKey === shiftRuleKey && c.status === "Active"
+    );
+  }
+  if (!cond) {
+    cond = dbConditions.find(
+      (c) => !c.categoryId && !c.departmentId && c.gradeKey === "HOSTEL" && c.shiftRuleKey === shiftRuleKey && c.status === "Active"
     );
   }
 
@@ -107,12 +116,11 @@ const calculateHostelIncentive = ({
     },
   };
 
-  const shiftRuleKey = resolveHostelShiftKey(shiftMap);
   let minDays = defaultHostelConfig.minDays !== undefined ? defaultHostelConfig.minDays : (INCENTIVE_CONFIG.MIN_DAYS || 22);
   let highTierDays = defaultHostelConfig.highTierDays !== undefined ? defaultHostelConfig.highTierDays : (INCENTIVE_CONFIG.HIGH_TIER_DAYS || 24);
   let lowTierRate = 15;
   let highTierRate = 20;
-  let shiftLabel = "I Shift only";
+  let shiftLabel = shiftRuleKey === "SHIFT_I_II_AND_I_II_III" ? "Combo Shifts" : "I Shift only";
 
   if (cond) {
     minDays = cond.minDays !== null && cond.minDays !== undefined ? cond.minDays : minDays;
@@ -438,14 +446,14 @@ exports.getHostelIncentiveCalculations = async (req, res) => {
         eightEightDays: calc.eightEightDays,
         eightEightPay: calc.eightEightPay,
         remainingDays: calc.remainingDays,
-        shiftKey: saved ? saved.shiftKey : calc.shiftKey,
-        shiftLabel: saved ? saved.shiftLabel : calc.shiftLabel,
-        tier: saved ? saved.tier : calc.tier,
-        ratePerDay: saved ? parseFloat(saved.ratePerDay) : calc.ratePerDay,
+        shiftKey: saved && saved.shiftKey ? saved.shiftKey : calc.shiftKey,
+        shiftLabel: saved && saved.shiftLabel ? saved.shiftLabel : calc.shiftLabel,
+        tier: saved && saved.tier ? saved.tier : calc.tier,
+        ratePerDay: saved && parseFloat(saved.ratePerDay) > 0 ? parseFloat(saved.ratePerDay) : calc.ratePerDay,
         regularIncentive: calc.regularIncentive,
-        incentive: saved ? parseFloat(saved.incentive) : calc.totalIncentive,
+        incentive: saved && parseFloat(saved.incentive) > 0 ? parseFloat(saved.incentive) : calc.totalIncentive,
         note: calc.note,
-        isSaved: !!saved,
+        isSaved: !!(saved && (saved.shiftKey || parseFloat(saved.incentive) > 0)),
       };
     });
 

@@ -497,7 +497,8 @@ export default function SalaryReports() {
 
   const activeSRT = SALARY_REPORT_TYPES.find((t) => t.key === salaryReportType);
   const hasData =
-    salaryReport && Object.keys(salaryReport.data || {}).length > 0;
+    (salaryReport?.records && salaryReport.records.length > 0) ||
+    (salaryReport && Object.keys(salaryReport.data || {}).length > 0);
 
   /* ================================================================
      RENDER
@@ -960,6 +961,36 @@ function SalaryTab({
   const showEL = report?.meta?.showEL;
   const showWO = report?.meta?.showWO;
 
+  const records = React.useMemo(() => {
+    let list = [];
+    if (report?.records && Array.isArray(report.records)) {
+      list = [...report.records];
+    } else if (report?.data) {
+      Object.values(report.data).forEach((d) => {
+        if (d?.records) list.push(...d.records);
+      });
+    }
+    // Sort in ascending order of employee name (A to Z)
+    return list.sort((a, b) => {
+      const nameA = (a.employee?.firstName || "").trim().toLowerCase();
+      const nameB = (b.employee?.firstName || "").trim().toLowerCase();
+      if (nameA !== nameB) return nameA.localeCompare(nameB);
+      return (a.employee?.curEmployeeCode || "").localeCompare(b.employee?.curEmployeeCode || "");
+    });
+  }, [report]);
+
+  const isDailyReport =
+    filters?.salaryType === "daily" ||
+    filters?.category === "worker" ||
+    (records &&
+      records.length > 0 &&
+      records.every(
+        (r) =>
+          r.empSalaryType === "daily" ||
+          (r.employee?.workingType || "").toLowerCase() === "daily",
+      ));
+  const salHeader = isDailyReport ? "Daily Wages" : "Month Sal";
+
   return (
     <div className="space-y-5">
       {/* Action bar */}
@@ -969,12 +1000,12 @@ function SalaryTab({
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <SummaryCard
                 label="Employees"
-                value={report.summary.recordsCount || 0}
+                value={report.summary.recordsCount || records.length || 0}
                 color="blue"
               />
               <SummaryCard
                 label="Grand Total Net"
-                value={`₹${fmt(report.summary.grandTotal)}`}
+                value={`₹${fmt(report.summary.grandTotal || records.reduce((s, r) => s + (r.netSalary || 0), 0))}`}
                 color="green"
               />
               {showEL && (
@@ -1052,306 +1083,291 @@ function SalaryTab({
         </div>
       </div>
 
-      {/* Department tables */}
-      {hasData ? (
-        Object.entries(report.data).map(([dept, { records }]) => {
-          const isDailyReport =
-            filters?.salaryType === "daily" ||
-            filters?.category === "worker" ||
-            (records &&
-              records.length > 0 &&
-              records.every(
-                (r) =>
-                  r.empSalaryType === "daily" ||
-                  (r.employee?.workingType || "").toLowerCase() === "daily",
-              ));
-          const salHeader = isDailyReport ? "Daily Wages" : "Month Sal";
+      {/* Salary Report Table */}
+      {hasData && records.length > 0 ? (
+        <div className="bg-white rounded-xl shadow overflow-hidden border border-slate-100">
+          <div
+            className={`bg-gradient-to-r ${activeSRT.header} px-5 py-3 flex items-center justify-between`}
+          >
+            <span className="text-white font-bold">{activeSRT.full}</span>
+            <span className="text-white/80 text-sm font-medium">
+              {records.length} Employees · Net: ₹
+              {fmt(records.reduce((s, r) => s + (r.netSalary || 0), 0))}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  {/* Fixed columns */}
+                  {[
+                    "S.No",
+                    "Name",
+                    "T.No",
+                    "Dept",
+                    "Desig",
+                    salHeader,
+                    "W.Days",
+                    "NH/FH",
+                    "EL",
+                    "AB",
+                    "WH",
+                    "Basic",
+                    "HRA",
+                    "Spl",
+                    "Conv",
+                    "NH Wages",
+                    "Incentive",
+                    "Earnings",
+                    "PF",
+                    "ESI",
+                    "Adv",
+                    "Mess",
+                    "Store",
+                    "Other",
+                    "EB",
+                    "T.Dedu",
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="px-2 py-2 text-left font-semibold text-slate-600 whitespace-nowrap"
+                    >
+                      {h}
+                    </th>
+                  ))}
 
-          return (
-            <div
-              key={dept}
-              className="bg-white rounded-xl shadow overflow-hidden border border-slate-100"
-            >
-              <div
-                className={`bg-gradient-to-r ${activeSRT.header} px-5 py-3 flex items-center justify-between`}
-              >
-                <span className="text-white font-bold">{dept}</span>
-                <span className="text-white/70 text-sm">
-                  {records.length} employees · Net: ₹
-                  {fmt(records.reduce((s, r) => s + (r.netSalary || 0), 0))}
-                </span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                      {/* Fixed columns */}
-                      {[
-                        "S.No",
-                        "Name",
-                        "T.No",
-                        "Desig",
-                        salHeader,
-                        "W.Days",
-                        "NH/FH",
-                        "EL",
-                        "AB",
-                        "WH",
-                        "Basic",
-                        "HRA",
-                        "Spl",
-                        "Conv",
-                        "NH Wages",
-                        "Incentive",
-                        "Earnings",
-                        "PF",
-                        "ESI",
-                        "Adv",
-                        "Mess",
-                        "Store",
-                        "Other",
-                        "EB",
-                        "T.Dedu",
-                      ].map((h) => (
-                        <th
-                          key={h}
-                          className="px-2 py-2 text-left font-semibold text-slate-600 whitespace-nowrap"
-                        >
-                          {h}
-                        </th>
-                      ))}
+                  {/* EL column */}
+                  {showEL && (
+                    <th
+                      className={`px-2 py-2 text-center font-semibold whitespace-nowrap ${
+                        reportType === "with_el"
+                          ? "text-green-700 bg-green-50"
+                          : "text-orange-700 bg-orange-50"
+                      }`}
+                    >
+                      {report.meta.elLabel}
+                    </th>
+                  )}
 
-                      {/* EL column */}
+                  {/* WO column */}
+                  {showWO && (
+                    <th
+                      className={`px-2 py-2 text-center font-semibold whitespace-nowrap ${
+                        reportType === "with_weekoff"
+                          ? "text-purple-700 bg-purple-50"
+                          : "text-amber-700 bg-amber-50"
+                      }`}
+                    >
+                      {report.meta.woLabel}
+                    </th>
+                  )}
+
+                  {/* Adjusted / total days column */}
+                  {(showEL || showWO) && (
+                    <th className="px-2 py-2 text-center font-semibold text-indigo-700 bg-indigo-50 whitespace-nowrap">
+                      {report.meta.totalLabel}
+                    </th>
+                  )}
+
+                  <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 whitespace-nowrap">
+                    Net
+                  </th>
+                  <th className="px-2 py-2 text-right font-semibold text-slate-600 whitespace-nowrap">
+                    Net(Rnd)
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {records.map((r, i) => {
+                  const e = r.earnings || {};
+                  const d = r.deductions || {};
+                  const earnings =
+                    (e.basic || 0) +
+                    (e.hra || 0) +
+                    (e.spl || 0) +
+                    (e.conv || 0) +
+                    (e.nhfh || 0) +
+                    (e.incentive || 0) +
+                    (e.ent || 0);
+                  const tDedu =
+                    (d.pf || 0) +
+                    (d.esi || 0) +
+                    (d.adv || 0) +
+                    (d.mess || 0) +
+                    (d.store || 0) +
+                    (d.other || 0) +
+                    (d.eb || 0) +
+                    (d.loan || 0);
+
+                  const isDailyRow =
+                    (r.empSalaryType || "").toLowerCase() === "daily" ||
+                    (r.employee?.workingType || "").toLowerCase() === "daily" ||
+                    filters?.salaryType === "daily" ||
+                    filters?.category === "worker";
+                  const workedDays =
+                    (Number(r.presentDays) || 0) + (Number(r.paidLeaveDays) || 0);
+                  const totalDailyBase =
+                    (Number(r.basicSalary) || 0) + (Number(e.spl) || 0);
+                  const calcDailyWage =
+                    r.dailyWage ??
+                    (workedDays > 0
+                      ? Math.round(totalDailyBase / workedDays)
+                      : r.monthlySalary || 0);
+                  const displaySalary = isDailyRow ? calcDailyWage : r.monthlySalary;
+
+                  return (
+                    <tr
+                      key={r.id}
+                      className={i % 2 === 0 ? "bg-white" : "bg-slate-50/50"}
+                    >
+                      <td className="px-2 py-1.5 text-slate-500">{i + 1}</td>
+                      <td className="px-2 py-1.5 whitespace-nowrap font-medium text-slate-800">
+                        {r.employee?.firstName}
+                      </td>
+                      <td className="px-2 py-1.5 font-mono text-slate-600">
+                        {r.employee?.curEmployeeCode ? `${r.employee.curEmployeeCode}${r.employee.newEmployeeCode ? ` / ${r.employee.newEmployeeCode}` : ''}` : (r.employee?.employeeCode || "-")}
+                      </td>
+                      <td className="px-2 py-1.5 whitespace-nowrap text-slate-600 font-medium">
+                        {r.employee?.department?.departmentname || "-"}
+                      </td>
+                      <td className="px-2 py-1.5 whitespace-nowrap text-slate-500">
+                        {r.employee?.designation?.name || "-"}
+                      </td>
+                      <td className="px-2 py-1.5 text-right font-medium text-slate-700">
+                        {displaySalary != null && displaySalary !== ""
+                          ? Number(displaySalary).toLocaleString("en-IN")
+                          : "-"}
+                      </td>
+                      <td className="px-2 py-1.5 text-right">
+                        {r.presentDays}
+                      </td>
+                      <td className="px-2 py-1.5 text-right">{r.nhFhDays}</td>
+                      <td className="px-2 py-1.5 text-right">
+                        {r.paidLeaveDays}
+                      </td>
+                      <td className="px-2 py-1.5 text-right">
+                        {r.absentDays}
+                      </td>
+                      <td className="px-2 py-1.5 text-right">
+                        {r.weekOffDays}
+                      </td>
+                      <Num v={e.basic} /> <Num v={e.hra} /> <Num v={e.spl} />
+                      <Num v={e.conv} /> <Num v={e.nhfh} />{" "}
+                      <Num v={e.incentive} />
+                      <td className="px-2 py-1.5 text-right font-semibold text-blue-700 bg-blue-50/60">
+                        {earnings.toLocaleString("en-IN")}
+                      </td>
+                      <Num v={d.pf} /> <Num v={d.esi} /> <Num v={d.adv} />
+                      <Num v={d.mess} /> <Num v={d.store} />
+                      <Num v={(d.other || 0) + (d.loan || 0)} />{" "}
+                      <Num v={d.eb} />
+                      <td className="px-2 py-1.5 text-right font-semibold text-red-700 bg-red-50/60">
+                        {tDedu.toLocaleString("en-IN")}
+                      </td>
+                      {/* EL cell */}
                       {showEL && (
-                        <th
-                          className={`px-2 py-2 text-center font-semibold whitespace-nowrap ${
+                        <td
+                          className={`px-2 py-1.5 text-center font-bold ${
                             reportType === "with_el"
-                              ? "text-green-700 bg-green-50"
-                              : "text-orange-700 bg-orange-50"
+                              ? "text-green-700 bg-green-50/70"
+                              : "text-orange-700 bg-orange-50/70"
                           }`}
                         >
-                          {report.meta.elLabel}
-                        </th>
+                          {reportType === "with_el" ? "+" : ""}
+                          {r.paidLeaveDays ?? 0}
+                        </td>
                       )}
-
-                      {/* WO column */}
+                      {/* WO cell */}
                       {showWO && (
-                        <th
-                          className={`px-2 py-2 text-center font-semibold whitespace-nowrap ${
+                        <td
+                          className={`px-2 py-1.5 text-center font-bold ${
                             reportType === "with_weekoff"
-                              ? "text-purple-700 bg-purple-50"
-                              : "text-amber-700 bg-amber-50"
+                              ? "text-purple-700 bg-purple-50/70"
+                              : "text-amber-700 bg-amber-50/70"
                           }`}
                         >
-                          {report.meta.woLabel}
-                        </th>
+                          {reportType === "with_weekoff" ? "+" : "−"}
+                          {r.weekOffDays ?? 0}
+                        </td>
                       )}
-
-                      {/* Adjusted / total days column */}
+                      {/* Adjusted days */}
                       {(showEL || showWO) && (
-                        <th className="px-2 py-2 text-center font-semibold text-indigo-700 bg-indigo-50 whitespace-nowrap">
-                          {report.meta.totalLabel}
-                        </th>
-                      )}
-
-                      <th className="px-2 py-2 text-right font-semibold text-green-700 bg-green-50 whitespace-nowrap">
-                        Net
-                      </th>
-                      <th className="px-2 py-2 text-right font-semibold text-slate-600 whitespace-nowrap">
-                        Net(Rnd)
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {records.map((r, i) => {
-                      const e = r.earnings || {};
-                      const d = r.deductions || {};
-                      const earnings =
-                        (e.basic || 0) +
-                        (e.hra || 0) +
-                        (e.spl || 0) +
-                        (e.conv || 0) +
-                        (e.nhfh || 0) +
-                        (e.incentive || 0) +
-                        (e.ent || 0);
-                      const tDedu =
-                        (d.pf || 0) +
-                        (d.esi || 0) +
-                        (d.adv || 0) +
-                        (d.mess || 0) +
-                        (d.store || 0) +
-                        (d.other || 0) +
-                        (d.eb || 0) +
-                        (d.loan || 0);
-
-                      const isDailyRow =
-                        (r.empSalaryType || "").toLowerCase() === "daily" ||
-                        (r.employee?.workingType || "").toLowerCase() === "daily" ||
-                        filters?.salaryType === "daily" ||
-                        filters?.category === "worker";
-                      const workedDays =
-                        (Number(r.presentDays) || 0) + (Number(r.paidLeaveDays) || 0);
-                      const totalDailyBase =
-                        (Number(r.basicSalary) || 0) + (Number(e.spl) || 0);
-                      const calcDailyWage =
-                        r.dailyWage ??
-                        (workedDays > 0
-                          ? Math.round(totalDailyBase / workedDays)
-                          : r.monthlySalary || 0);
-                      const displaySalary = isDailyRow ? calcDailyWage : r.monthlySalary;
-
-                      return (
-                        <tr
-                          key={r.id}
-                          className={i % 2 === 0 ? "bg-white" : "bg-slate-50/50"}
-                        >
-                          <td className="px-2 py-1.5 text-slate-500">{i + 1}</td>
-                          <td className="px-2 py-1.5 whitespace-nowrap font-medium text-slate-800">
-                            {r.employee?.firstName}
-                          </td>
-                          <td className="px-2 py-1.5 font-mono text-slate-600">
-                            {r.employee?.employeeCode}
-                          </td>
-                          <td className="px-2 py-1.5 whitespace-nowrap text-slate-500">
-                            {r.employee?.designation?.name || "-"}
-                          </td>
-                          <td className="px-2 py-1.5 text-right font-medium text-slate-700">
-                            {displaySalary != null && displaySalary !== ""
-                              ? Number(displaySalary).toLocaleString("en-IN")
-                              : "-"}
-                          </td>
-                          <td className="px-2 py-1.5 text-right">
-                            {r.presentDays}
-                          </td>
-                          <td className="px-2 py-1.5 text-right">{r.nhFhDays}</td>
-                          <td className="px-2 py-1.5 text-right">
-                            {r.paidLeaveDays}
-                          </td>
-                          <td className="px-2 py-1.5 text-right">
-                            {r.absentDays}
-                          </td>
-                          <td className="px-2 py-1.5 text-right">
-                            {r.weekOffDays}
-                          </td>
-                          <Num v={e.basic} /> <Num v={e.hra} /> <Num v={e.spl} />
-                          <Num v={e.conv} /> <Num v={e.nhfh} />{" "}
-                          <Num v={e.incentive} />
-                          <td className="px-2 py-1.5 text-right font-semibold text-blue-700 bg-blue-50/60">
-                            {earnings.toLocaleString("en-IN")}
-                          </td>
-                          <Num v={d.pf} /> <Num v={d.esi} /> <Num v={d.adv} />
-                          <Num v={d.mess} /> <Num v={d.store} />
-                          <Num v={(d.other || 0) + (d.loan || 0)} />{" "}
-                          <Num v={d.eb} />
-                          <td className="px-2 py-1.5 text-right font-semibold text-red-700 bg-red-50/60">
-                            {tDedu.toLocaleString("en-IN")}
-                          </td>
-                          {/* EL cell */}
-                          {showEL && (
-                            <td
-                              className={`px-2 py-1.5 text-center font-bold ${
-                                reportType === "with_el"
-                                  ? "text-green-700 bg-green-50/70"
-                                  : "text-orange-700 bg-orange-50/70"
-                              }`}
-                            >
-                              {reportType === "with_el" ? "+" : ""}
-                              {r.paidLeaveDays ?? 0}
-                            </td>
-                          )}
-                          {/* WO cell */}
-                          {showWO && (
-                            <td
-                              className={`px-2 py-1.5 text-center font-bold ${
-                                reportType === "with_weekoff"
-                                  ? "text-purple-700 bg-purple-50/70"
-                                  : "text-amber-700 bg-amber-50/70"
-                              }`}
-                            >
-                              {reportType === "with_weekoff" ? "+" : "−"}
-                              {r.weekOffDays ?? 0}
-                            </td>
-                          )}
-                          {/* Adjusted days */}
-                          {(showEL || showWO) && (
-                            <td className="px-2 py-1.5 text-center font-bold text-indigo-700 bg-indigo-50/60">
-                              {r.grandTotalDays ?? r.presentDays}
-                            </td>
-                          )}
-                          <td className="px-2 py-1.5 text-right font-bold text-green-700 bg-green-50/60">
-                            {r.netSalary?.toLocaleString("en-IN")}
-                          </td>
-                          <td className="px-2 py-1.5 text-right font-bold">
-                            {r.netRounded?.toLocaleString("en-IN")}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-
-                  {/* Dept totals */}
-                  <tfoot>
-                    <tr className="bg-slate-200/70 font-bold text-xs border-t border-slate-300">
-                      <td
-                        colSpan={16}
-                        className="px-2 py-2 text-right text-slate-700"
-                      >
-                        Dept Total
-                      </td>
-                      <td className="px-2 py-2 text-right text-blue-700">
-                        {records
-                          .reduce((s, r) => s + (r.grossSalary || 0), 0)
-                          .toLocaleString("en-IN")}
-                      </td>
-                      <td colSpan={7}></td>
-                      <td className="px-2 py-2 text-right text-red-700">
-                        {records
-                          .reduce((s, r) => s + (r.totalDeductions || 0), 0)
-                          .toLocaleString("en-IN")}
-                      </td>
-                      {showEL && (
-                        <td
-                          className={`px-2 py-2 text-center ${reportType === "with_el" ? "text-green-700" : "text-orange-700"}`}
-                        >
-                          {records.reduce(
-                            (s, r) => s + (r.paidLeaveDays || 0),
-                            0,
-                          )}
+                        <td className="px-2 py-1.5 text-center font-bold text-indigo-700 bg-indigo-50/60">
+                          {r.grandTotalDays ?? r.presentDays}
                         </td>
                       )}
-                      {showWO && (
-                        <td
-                          className={`px-2 py-2 text-center ${reportType === "with_weekoff" ? "text-purple-700" : "text-amber-700"}`}
-                        >
-                          {records.reduce((s, r) => s + (r.weekOffDays || 0), 0)}
-                        </td>
-                      )}
-                      {(showEL || showWO) && (
-                        <td className="px-2 py-2 text-center text-indigo-700">
-                          {records.reduce(
-                            (s, r) =>
-                              s + (r.grandTotalDays || r.presentDays || 0),
-                            0,
-                          )}
-                        </td>
-                      )}
-                      <td className="px-2 py-2 text-right text-green-700">
-                        {records
-                          .reduce((s, r) => s + (r.netSalary || 0), 0)
-                          .toLocaleString("en-IN")}
+                      <td className="px-2 py-1.5 text-right font-bold text-green-700 bg-green-50/60">
+                        {r.netSalary?.toLocaleString("en-IN")}
                       </td>
-                      <td className="px-2 py-2 text-right">
-                        {records
-                          .reduce((s, r) => s + (r.netRounded || 0), 0)
-                          .toLocaleString("en-IN")}
+                      <td className="px-2 py-1.5 text-right font-bold">
+                        {r.netRounded?.toLocaleString("en-IN")}
                       </td>
                     </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-          );
-        })
+                  );
+                })}
+              </tbody>
+
+              {/* Total Row */}
+              <tfoot>
+                <tr className="bg-slate-200/70 font-bold text-xs border-t border-slate-300">
+                  <td
+                    colSpan={17}
+                    className="px-2 py-2 text-right text-slate-700 font-bold"
+                  >
+                    Total
+                  </td>
+                  <td className="px-2 py-2 text-right text-blue-700">
+                    {records
+                      .reduce((s, r) => s + (r.grossSalary || 0), 0)
+                      .toLocaleString("en-IN")}
+                  </td>
+                  <td colSpan={7}></td>
+                  <td className="px-2 py-2 text-right text-red-700">
+                    {records
+                      .reduce((s, r) => s + (r.totalDeductions || 0), 0)
+                      .toLocaleString("en-IN")}
+                  </td>
+                  {showEL && (
+                    <td
+                      className={`px-2 py-2 text-center ${reportType === "with_el" ? "text-green-700" : "text-orange-700"}`}
+                    >
+                      {records.reduce(
+                        (s, r) => s + (r.paidLeaveDays || 0),
+                        0,
+                      )}
+                    </td>
+                  )}
+                  {showWO && (
+                    <td
+                      className={`px-2 py-2 text-center ${reportType === "with_weekoff" ? "text-purple-700" : "text-amber-700"}`}
+                    >
+                      {records.reduce((s, r) => s + (r.weekOffDays || 0), 0)}
+                    </td>
+                  )}
+                  {(showEL || showWO) && (
+                    <td className="px-2 py-2 text-center text-indigo-700">
+                      {records.reduce(
+                        (s, r) =>
+                          s + (r.grandTotalDays || r.presentDays || 0),
+                        0,
+                      )}
+                    </td>
+                  )}
+                  <td className="px-2 py-2 text-right text-green-700">
+                    {records
+                      .reduce((s, r) => s + (r.netSalary || 0), 0)
+                      .toLocaleString("en-IN")}
+                  </td>
+                  <td className="px-2 py-2 text-right">
+                    {records
+                      .reduce((s, r) => s + (r.netRounded || 0), 0)
+                      .toLocaleString("en-IN")}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
       ) : (
         <EmptyState
           loading={loading}

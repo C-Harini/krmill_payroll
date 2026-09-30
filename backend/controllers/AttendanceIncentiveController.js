@@ -155,45 +155,63 @@ const resolveShiftKey = (shiftMap, gradeKey) => {
     const hasII = shiftII > 0;
     const hasIII = shiftIII > 0;
 
-    // Highest combo: II>=12 AND III>0
-    if (
-      available.includes("SHIFT_I_II_III_AND_II_III") &&
-      iiOk &&
-      hasIII &&
-      totalDays >= INCENTIVE_CONFIG.MIN_DAYS
-    )
-      return "SHIFT_I_II_III_AND_II_III";
-
-    // Pure II only
-    if (
-      available.includes("SHIFT_II") &&
-      hasII &&
-      !hasI &&
-      !hasIII &&
-      shiftII >= INCENTIVE_CONFIG.MIN_DAYS
-    )
-      return "SHIFT_II";
-
-    // Pure III only
+    // 1. Pure III only (Night Shift only)
     if (
       available.includes("SHIFT_III") &&
       hasIII &&
       !hasI &&
       !hasII &&
       shiftIII >= INCENTIVE_CONFIG.MIN_DAYS
-    )
+    ) {
       return "SHIFT_III";
+    }
 
-    // I+II or I+III combo
+    // 2. Highest combo: I+II+III / II+III / III Shift (Night shift or 3-shift rotation)
+    // Applies when:
+    // - Worked in all 3 shifts (hasI && hasII && hasIII)
+    // - Worked in II + III ((hasII && hasIII) || (iiOk && hasIII))
+    // - Worked predominant Night Shift (shiftIII >= 12 days)
+    if (
+      available.includes("SHIFT_I_II_III_AND_II_III") &&
+      (
+        (hasI && hasII && hasIII) ||
+        (hasII && hasIII) ||
+        iiiOk
+      ) &&
+      totalDays >= INCENTIVE_CONFIG.MIN_DAYS
+    ) {
+      return "SHIFT_I_II_III_AND_II_III";
+    }
+
+    // 3. Pure II only (Second Shift only)
+    if (
+      available.includes("SHIFT_II") &&
+      hasII &&
+      !hasI &&
+      !hasIII &&
+      shiftII >= INCENTIVE_CONFIG.MIN_DAYS
+    ) {
+      return "SHIFT_II";
+    }
+
+    // 4. Two-shift combo: I+II / I+III / II Shift
+    // Applies when:
+    // - Worked I + II
+    // - Worked I + III
+    // - Or worked predominant II shift (shiftII >= 12 days)
     if (
       available.includes("SHIFT_I_II_AND_I_III") &&
-      iOk &&
-      (iiOk || hasIII) &&
-      !(iiOk && hasIII) &&
+      (
+        (hasI && hasII) ||
+        (hasI && hasIII) ||
+        iiOk
+      ) &&
       totalDays >= INCENTIVE_CONFIG.MIN_DAYS
-    )
+    ) {
       return "SHIFT_I_II_AND_I_III";
+    }
 
+    // 5. Default Day Shift Only
     return "SHIFT_I";
   }
 
@@ -462,7 +480,20 @@ const calculateIncentive = (
   }
 
   const stdGradeKey = resolveGradeKey(categoryName, designationName);
-  const resolvedShiftKey = resolveShiftKey(shiftMap, stdGradeKey);
+  let resolvedShiftKey = resolveShiftKey(shiftMap, stdGradeKey);
+
+  // Male experience override: Male workers with >= 3 years exp in OTHERS are restricted to Day Shift rate
+  let maleOverrideApplied = false;
+  if (stdGradeKey === "OTHERS") {
+    const isMale = String(employee.gender || "").toUpperCase() === "MALE";
+    const expYears = getExperienceYears(employee.dateOfJoining);
+    const threshold = config.MALE_EXP_THRESHOLD !== undefined ? config.MALE_EXP_THRESHOLD : 3;
+    if (isMale && expYears >= threshold) {
+      resolvedShiftKey = "SHIFT_I";
+      maleOverrideApplied = true;
+    }
+  }
+
   const cond = findMatchingCondition(employee, categoryName, dbConditions, resolvedShiftKey);
 
   let minDays;
@@ -539,14 +570,11 @@ const calculateIncentive = (
       note: `Not eligible based on worked shifts for rule ${shiftRuleKey}`,
     };
   }
-  let maleOverrideApplied = false;
-
   // Male experience override (OTHERS only)
   if (maleExpOverride) {
     const isMale = String(employee.gender || "").toUpperCase() === "MALE";
     const expYears = getExperienceYears(employee.dateOfJoining);
     if (isMale && expYears >= maleExpThreshold) {
-      // For standard others we might adjust shiftKey, but keep generic rate logic
       maleOverrideApplied = true;
     }
   }

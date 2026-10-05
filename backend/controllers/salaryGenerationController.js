@@ -393,7 +393,7 @@ const getAttendanceIncentive = async (employeeId, month, year, att = null) => {
         attributes: ["attendanceDate", "status", "shiftId", "shiftName"],
       }),
       AttendanceIncentiveCondition.findAll({
-        where: { status: "Active" },
+        where: { status: "Active", gradeKey: { [Op.ne]: "HOSTEL" } },
       }),
       ShiftType.findAll({ attributes: ["id", "name"] }),
     ]);
@@ -422,6 +422,26 @@ const getAttendanceIncentive = async (employeeId, month, year, att = null) => {
     }
 
     const categoryName = emp.category?.categoryName || "";
+    const isHostelCategory = categoryName.toUpperCase().includes("HOSTEL");
+
+    if (isHostelCategory) {
+      const { calculateHostelIncentive } = require("./hostelAttendanceIncentiveController");
+      const hostelConditions = await AttendanceIncentiveCondition.findAll({
+        where: { status: "Active", gradeKey: "HOSTEL" },
+      });
+      const calc = calculateHostelIncentive({
+        employee: emp,
+        shiftMap,
+        categoryName,
+        adjustedDays: rawDays,
+        slabDays: 0,
+        explicitRawDays: rawDays,
+        eightEightDays: 0,
+        dbConditions: hostelConditions,
+      });
+      return toNum(calc?.totalIncentive) || 0;
+    }
+
     const calc = calculateIncentive(emp, shiftMap, categoryName, null, null, 0, rawDays, dbConditions);
     return toNum(calc?.incentive) || 0;
   } catch (err) {

@@ -226,7 +226,7 @@ const getEffectiveIncentiveConfig = async (companyId = null) => {
   try {
     if (AttendanceIncentiveCondition) {
       await AttendanceIncentiveCondition.sync();
-      const where = { status: "Active" };
+      const where = { status: "Active", gradeKey: { [Op.ne]: "HOSTEL" } };
       if (companyId) {
         where[Op.or] = [{ companyId }, { companyId: null }];
       }
@@ -401,8 +401,7 @@ const isShiftEligible = (shiftMap, shiftRuleKey) => {
 };
 
 const findMatchingCondition = (employee, categoryName, dbConditions, resolvedShiftKey, shiftMap = null) => {
-  const empCatId = employee.categoryId || null;
-  const empDeptId = employee.departmentId || null;
+  const empDeptId = employee.departmentId ? Number(employee.departmentId) : null;
   const designationName = employee.designation?.name || "";
   const stdGradeKey = resolveGradeKey(categoryName, designationName);
   const empGender = String(employee.gender || "").toUpperCase();
@@ -415,33 +414,52 @@ const findMatchingCondition = (employee, categoryName, dbConditions, resolvedShi
     return c.shiftRuleKey === resolvedShiftKey;
   };
 
-  // 1. Match specific category AND specific department AND resolvedShiftKey
-  let match = dbConditions.find(
-    (c) => c.categoryId === empCatId && c.departmentId === empDeptId && isEligibleForCond(c)
+  const matchesDept = (c) => {
+    if (c.departmentIds) {
+      try {
+        const dIds = typeof c.departmentIds === "string" ? JSON.parse(c.departmentIds) : c.departmentIds;
+        if (Array.isArray(dIds) && dIds.length > 0) {
+          return empDeptId && dIds.map(Number).includes(empDeptId);
+        }
+      } catch (e) {}
+    }
+    if (c.departmentId) {
+      return empDeptId && Number(c.departmentId) === empDeptId;
+    }
+    return false;
+  };
+
+  const isUniversalDept = (c) => {
+    if (c.departmentId) return false;
+    if (c.departmentIds) {
+      try {
+        const dIds = typeof c.departmentIds === "string" ? JSON.parse(c.departmentIds) : c.departmentIds;
+        if (Array.isArray(dIds) && dIds.length > 0) return false;
+      } catch (e) {}
+    }
+    return true;
+  };
+
+  // CRITICAL: Regular Attendance Incentive must strictly NEVER match HOSTEL conditions!
+  const regularConditions = (dbConditions || []).filter(
+    (c) => c.status === "Active" && c.gradeKey !== "HOSTEL"
+  );
+
+  // 1. Match specific department (single or multiple) AND shift eligibility
+  let match = regularConditions.find(
+    (c) => matchesDept(c) && isEligibleForCond(c)
   );
   if (match) return match;
 
-  // 2. Match specific category (any/all department) AND resolvedShiftKey
-  match = dbConditions.find(
-    (c) => c.categoryId === empCatId && !c.departmentId && isEligibleForCond(c)
+  // 2. Match standard gradeKey (universal across departments) AND shift eligibility
+  match = regularConditions.find(
+    (c) => isUniversalDept(c) && c.gradeKey === stdGradeKey && isEligibleForCond(c)
   );
   if (match) return match;
 
-  // 3. Match specific department (any/all category) AND resolvedShiftKey
-  match = dbConditions.find(
-    (c) => !c.categoryId && c.departmentId === empDeptId && isEligibleForCond(c)
-  );
-  if (match) return match;
-
-  // 4. Match standard gradeKey AND resolvedShiftKey
-  match = dbConditions.find(
-    (c) => !c.categoryId && !c.departmentId && c.gradeKey === stdGradeKey && isEligibleForCond(c)
-  );
-  if (match) return match;
-
-  // 5. Match universal rule (All Categories & All Departments) AND resolvedShiftKey
-  match = dbConditions.find(
-    (c) => !c.categoryId && !c.departmentId && isEligibleForCond(c)
+  // 3. Match universal rule (All Departments) AND shift eligibility
+  match = regularConditions.find(
+    (c) => isUniversalDept(c) && isEligibleForCond(c)
   );
   if (match) return match;
 
@@ -656,11 +674,17 @@ exports.getAttendanceIncentives = async (req, res) => {
       ],
     });
 
-    if (!employees.length) {
+    // Exclude employees belonging to HOSTEL category - pure for Hostel Attendance Incentive!
+    const regularEmployees = employees.filter((emp) => {
+      const catName = (emp.category?.categoryName || "").toUpperCase();
+      return !catName.includes("HOSTEL");
+    });
+
+    if (!regularEmployees.length) {
       return res.status(200).json({ records: [] });
     }
 
-    const employeeIdList = employees.map((e) => e.id);
+    const employeeIdList = regularEmployees.map((e) => e.id);
 
     const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
     const lastDay = new Date(year, month, 0).getDate();
@@ -686,7 +710,11 @@ exports.getAttendanceIncentives = async (req, res) => {
         attributes: ["employeeId", "days", "slabDays", "otDays", "shiftTypeId", "entryDate", "slot"],
       }),
       AttendanceIncentiveCondition.findAll({
-        where: { companyId, status: "Active" },
+        where: {
+          companyId,
+          status: "Active",
+          gradeKey: { [Op.ne]: "HOSTEL" },
+        },
       }),
       ShiftType.findAll({
         where: { companyId },
@@ -732,7 +760,7 @@ exports.getAttendanceIncentives = async (req, res) => {
 
     const effectiveConfig = await getEffectiveIncentiveConfig(companyId);
 
-    const records = employees.map((emp) => {
+    const records = regularEmployees.map((emp) => {
       const categoryName = emp.category?.categoryName || "";
       const saved = savedByEmp[emp.id];
 
@@ -887,7 +915,11 @@ exports.recalculateIncentive = async (req, res) => {
     const effectiveConfig = await getEffectiveIncentiveConfig(companyId);
 
     const activeDbConditions = await AttendanceIncentiveCondition.findAll({
-      where: { companyId, status: "Active" },
+      where: {
+        companyId,
+        status: "Active",
+        gradeKey: { [Op.ne]: "HOSTEL" },
+      },
     });
 
     const calc = calculateIncentive(
@@ -1277,12 +1309,20 @@ exports.saveDailyEntries = async (req, res) => {
 
 exports.getConditions = async (req, res) => {
   try {
-    const { companyId } = req.query;
+    const { companyId, gradeKey } = req.query;
     await AttendanceIncentiveCondition.sync();
 
     const where = { status: "Active" };
     if (companyId) {
       where[Op.or] = [{ companyId }, { companyId: null }];
+    }
+    if (gradeKey === "HOSTEL") {
+      where.gradeKey = "HOSTEL";
+    } else if (gradeKey && gradeKey !== "ALL" && gradeKey !== "NON_HOSTEL") {
+      where.gradeKey = gradeKey;
+    } else {
+      // Regular attendance incentive conditions must NEVER include HOSTEL conditions!
+      where.gradeKey = { [Op.ne]: "HOSTEL" };
     }
 
     let conditions = await AttendanceIncentiveCondition.findAll({
@@ -1319,8 +1359,8 @@ exports.createCondition = async (req, res) => {
   try {
     const {
       companyId,
-      categoryId,
       departmentId,
+      departmentIds,
       shiftTypeId,
       gender,
       gradeKey,
@@ -1338,16 +1378,44 @@ exports.createCondition = async (req, res) => {
       remarks,
     } = req.body;
 
-    const gKey = (gradeKey || gradeName || "CUSTOM").toUpperCase().trim().replace(/[^A-Z0-9_]/g, "_");
+    let gKey = (gradeKey || gradeName || "CUSTOM").toUpperCase().trim().replace(/[^A-Z0-9_]/g, "_");
+    // If not creating through hostel routes, ensure gradeKey is never accidentally "HOSTEL"
+    if (gKey === "HOSTEL" && !req.baseUrl?.includes("hostel") && !req.originalUrl?.includes("hostel")) {
+      gKey = "ALL_DEPARTMENTS";
+    }
     let sKey = (shiftRuleKey || shiftLabel || "SHIFT_I").trim();
     if (!sKey.startsWith("[") && !sKey.startsWith("{")) {
       sKey = sKey.replace(/[^A-Za-z0-9_]/g, "_");
     }
 
+    let finalDeptId = null;
+    let finalDeptIds = null;
+
+    if (departmentIds) {
+      const arr = Array.isArray(departmentIds)
+        ? departmentIds
+        : (typeof departmentIds === "string" ? (departmentIds.startsWith("[") ? JSON.parse(departmentIds) : departmentIds.split(",")) : []);
+
+      if (Array.isArray(arr) && !arr.includes("ALL")) {
+        const validIds = arr.map(Number).filter((id) => !isNaN(id) && id > 0);
+        if (validIds.length === 1) {
+          finalDeptId = validIds[0];
+          finalDeptIds = JSON.stringify(validIds);
+        } else if (validIds.length > 1) {
+          finalDeptId = null;
+          finalDeptIds = JSON.stringify(validIds);
+        }
+      }
+    } else if (departmentId && departmentId !== "ALL") {
+      finalDeptId = parseInt(departmentId, 10);
+      finalDeptIds = JSON.stringify([finalDeptId]);
+    }
+
     const newCond = await AttendanceIncentiveCondition.create({
       companyId: companyId ? parseInt(companyId, 10) : null,
-      categoryId: categoryId && categoryId !== "ALL" ? parseInt(categoryId, 10) : null,
-      departmentId: departmentId && departmentId !== "ALL" ? parseInt(departmentId, 10) : null,
+      categoryId: null, // Category option removed
+      departmentId: finalDeptId,
+      departmentIds: finalDeptIds,
       shiftTypeId: shiftTypeId ? parseInt(shiftTypeId, 10) : null,
       gender: gender || "ALL",
       gradeKey: gKey,
@@ -1383,8 +1451,8 @@ exports.updateCondition = async (req, res) => {
 
     const {
       companyId,
-      categoryId,
       departmentId,
+      departmentIds,
       shiftTypeId,
       gender,
       gradeKey,
@@ -1409,10 +1477,45 @@ exports.updateCondition = async (req, res) => {
       sKey = sKey.replace(/[^A-Za-z0-9_]/g, "_");
     }
 
+    let finalDeptId;
+    let finalDeptIds;
+
+    if (departmentIds !== undefined) {
+      const arr = Array.isArray(departmentIds)
+        ? departmentIds
+        : (typeof departmentIds === "string" ? (departmentIds.startsWith("[") ? JSON.parse(departmentIds) : departmentIds.split(",")) : []);
+
+      if (Array.isArray(arr) && !arr.includes("ALL")) {
+        const validIds = arr.map(Number).filter((id) => !isNaN(id) && id > 0);
+        if (validIds.length === 1) {
+          finalDeptId = validIds[0];
+          finalDeptIds = JSON.stringify(validIds);
+        } else if (validIds.length > 1) {
+          finalDeptId = null;
+          finalDeptIds = JSON.stringify(validIds);
+        } else {
+          finalDeptId = null;
+          finalDeptIds = null;
+        }
+      } else {
+        finalDeptId = null;
+        finalDeptIds = null;
+      }
+    } else if (departmentId !== undefined) {
+      if (departmentId && departmentId !== "ALL") {
+        finalDeptId = parseInt(departmentId, 10);
+        finalDeptIds = JSON.stringify([finalDeptId]);
+      } else {
+        finalDeptId = null;
+        finalDeptIds = null;
+      }
+    }
+
     await cond.update({
       ...(companyId !== undefined && { companyId: companyId ? parseInt(companyId, 10) : null }),
-      ...(categoryId !== undefined && { categoryId: categoryId && categoryId !== "ALL" ? parseInt(categoryId, 10) : null }),
-      ...(departmentId !== undefined && { departmentId: departmentId && departmentId !== "ALL" ? parseInt(departmentId, 10) : null }),
+      categoryId: null, // Category option removed
+      ...(finalDeptId !== undefined && { departmentId: finalDeptId }),
+      ...(finalDeptIds !== undefined && { departmentIds: finalDeptIds }),
       ...(shiftTypeId !== undefined && { shiftTypeId: shiftTypeId ? parseInt(shiftTypeId, 10) : null }),
       ...(gender !== undefined && { gender }),
       ...(gKey && { gradeKey: gKey }),
@@ -1456,10 +1559,15 @@ exports.deleteCondition = async (req, res) => {
 
 exports.resetConditions = async (req, res) => {
   try {
-    const { companyId } = req.body;
+    const { companyId, gradeKey } = req.body;
     const where = {};
     if (companyId) {
       where[Op.or] = [{ companyId }, { companyId: null }];
+    }
+    if (gradeKey === "HOSTEL") {
+      where.gradeKey = "HOSTEL";
+    } else {
+      where.gradeKey = { [Op.ne]: "HOSTEL" };
     }
 
     await AttendanceIncentiveCondition.destroy({ where });

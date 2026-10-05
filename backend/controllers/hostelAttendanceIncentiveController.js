@@ -46,6 +46,106 @@ const resolveHostelShiftKey = (shiftMap) => {
   return "SHIFT_I";
 };
 
+const isHostelShiftEligible = (shiftMap = {}, shiftRuleKey = "") => {
+  const shiftI =
+    (shiftMap["I"] || 0) +
+    (shiftMap["A"] || 0) +
+    (shiftMap["Staff"] || 0) +
+    (shiftMap["SUP_A"] || 0) +
+    (shiftMap["SHIFT_I"] || 0);
+
+  const shiftII =
+    (shiftMap["II"] || 0) +
+    (shiftMap["B"] || 0) +
+    (shiftMap["SUP_B"] || 0) +
+    (shiftMap["SHIFT_II"] || 0);
+
+  const shiftIII =
+    (shiftMap["III"] || 0) +
+    (shiftMap["C"] || 0) +
+    (shiftMap["SUP_C"] || 0) +
+    (shiftMap["SHIFT_III"] || 0);
+
+  // If the rule is a JSON array string representing multiple custom combinations:
+  if (shiftRuleKey && (shiftRuleKey.startsWith("[") || shiftRuleKey.startsWith("{"))) {
+    try {
+      const combos = JSON.parse(shiftRuleKey);
+      if (Array.isArray(combos)) {
+        for (const combo of combos) {
+          let comboSatisfied = true;
+          let hasAtLeastOneRequiredShift = false;
+
+          // Check if combo contains conditions array (new structure)
+          if (Array.isArray(combo.conditions) && combo.conditions.length > 0) {
+            for (const cond of combo.conditions) {
+              const reqDays = Number(cond.minDays) || 0;
+              const shifts = Array.isArray(cond.shifts) ? cond.shifts : [];
+              if (shifts.length > 0) {
+                hasAtLeastOneRequiredShift = true;
+                let totalShiftDays = 0;
+                if (shifts.includes("I")) totalShiftDays += shiftI;
+                if (shifts.includes("II")) totalShiftDays += shiftII;
+                if (shifts.includes("III")) totalShiftDays += shiftIII;
+
+                if (totalShiftDays < reqDays) {
+                  comboSatisfied = false;
+                  break;
+                }
+              }
+            }
+          } else {
+            // Legacy format check
+            if (combo.hasOwnProperty("I")) {
+              hasAtLeastOneRequiredShift = true;
+              if (shiftI < Number(combo.I)) {
+                comboSatisfied = false;
+              }
+            }
+            if (combo.hasOwnProperty("II")) {
+              hasAtLeastOneRequiredShift = true;
+              if (shiftII < Number(combo.II)) {
+                comboSatisfied = false;
+              }
+            }
+            if (combo.hasOwnProperty("III")) {
+              hasAtLeastOneRequiredShift = true;
+              if (shiftIII < Number(combo.III)) {
+                comboSatisfied = false;
+              }
+            }
+          }
+
+          if (hasAtLeastOneRequiredShift && comboSatisfied) {
+            return true; // Any one combo satisfied is sufficient!
+          }
+        }
+        return false;
+      }
+    } catch (err) {
+      console.error("Error parsing multi-combo JSON shiftRuleKey in hostel:", err);
+    }
+  }
+
+  if (shiftRuleKey === "SHIFT_I") {
+    return shiftI > 0;
+  }
+  if (shiftRuleKey === "SHIFT_II") {
+    return shiftII > 0;
+  }
+  if (shiftRuleKey === "SHIFT_III") {
+    return shiftIII > 0;
+  }
+  if (shiftRuleKey === "SHIFT_I_II_AND_I_II_III") {
+    const activeShiftsCount = (shiftI > 0 ? 1 : 0) + (shiftII > 0 ? 1 : 0) + (shiftIII > 0 ? 1 : 0);
+    return activeShiftsCount > 1;
+  }
+  if (shiftRuleKey === "ALL_SHIFTS" || shiftRuleKey === "ANY") {
+    return (shiftI + shiftII + shiftIII) > 0;
+  }
+
+  return (shiftI + shiftII + shiftIII) > 0;
+};
+
 const calculateHostelIncentive = ({
   employee,
   shiftMap = {},
@@ -84,26 +184,57 @@ const calculateHostelIncentive = ({
   const shiftRuleKey = resolveHostelShiftKey(shiftMap);
 
   // Match condition from DB or fallback to default Hostel config
-  const empCatId = employee.categoryId || null;
-  const empDeptId = employee.departmentId || null;
+  const empDeptId = employee.departmentId ? Number(employee.departmentId) : null;
 
-  let cond = dbConditions.find(
-    (c) => c.categoryId === empCatId && c.departmentId === empDeptId && c.shiftRuleKey === shiftRuleKey && c.status === "Active"
+  const matchesDept = (c) => {
+    if (c.departmentIds) {
+      try {
+        const dIds = typeof c.departmentIds === "string" ? JSON.parse(c.departmentIds) : c.departmentIds;
+        if (Array.isArray(dIds) && dIds.length > 0) {
+          return empDeptId && dIds.map(Number).includes(empDeptId);
+        }
+      } catch (e) {}
+    }
+    if (c.departmentId) {
+      return empDeptId && Number(c.departmentId) === empDeptId;
+    }
+    return false;
+  };
+
+  const isUniversalDept = (c) => {
+    if (c.departmentId) return false;
+    if (c.departmentIds) {
+      try {
+        const dIds = typeof c.departmentIds === "string" ? JSON.parse(c.departmentIds) : c.departmentIds;
+        if (Array.isArray(dIds) && dIds.length > 0) return false;
+      } catch (e) {}
+    }
+    return true;
+  };
+
+  const isEligibleForCond = (c) => {
+    if (c.shiftRuleKey && (c.shiftRuleKey.startsWith("[") || c.shiftRuleKey.startsWith("{"))) {
+      return isHostelShiftEligible(shiftMap, c.shiftRuleKey);
+    }
+    if (c.shiftRuleKey === "SHIFT_I_II_AND_I_II_III") {
+      return shiftRuleKey === "SHIFT_I_II_AND_I_II_III";
+    }
+    if (c.shiftRuleKey === "SHIFT_I") {
+      return shiftRuleKey === "SHIFT_I";
+    }
+    return isHostelShiftEligible(shiftMap, c.shiftRuleKey);
+  };
+
+  // Strictly only consider active conditions that are HOSTEL
+  const hostelConditions = (dbConditions || []).filter(
+    (c) => c.status === "Active" && c.gradeKey === "HOSTEL"
   );
+
+  // 1. Dept match + shift match
+  let cond = hostelConditions.find((c) => matchesDept(c) && isEligibleForCond(c));
+  // 2. Universal dept + shift match
   if (!cond) {
-    cond = dbConditions.find(
-      (c) => c.categoryId === empCatId && !c.departmentId && c.shiftRuleKey === shiftRuleKey && c.status === "Active"
-    );
-  }
-  if (!cond) {
-    cond = dbConditions.find(
-      (c) => !c.categoryId && c.departmentId === empDeptId && c.shiftRuleKey === shiftRuleKey && c.status === "Active"
-    );
-  }
-  if (!cond) {
-    cond = dbConditions.find(
-      (c) => !c.categoryId && !c.departmentId && c.gradeKey === "HOSTEL" && c.shiftRuleKey === shiftRuleKey && c.status === "Active"
-    );
+    cond = hostelConditions.find((c) => isUniversalDept(c) && isEligibleForCond(c));
   }
 
   const defaultHostelConfig = INCENTIVE_CONFIG.GRADES.HOSTEL || {
@@ -120,6 +251,8 @@ const calculateHostelIncentive = ({
   let highTierDays = defaultHostelConfig.highTierDays !== undefined ? defaultHostelConfig.highTierDays : (INCENTIVE_CONFIG.HIGH_TIER_DAYS || 24);
   let lowTierRate = 15;
   let highTierRate = 20;
+  let tier3Days = 26;
+  let tier3Rate = 0;
   let shiftLabel = shiftRuleKey === "SHIFT_I_II_AND_I_II_III" ? "Combo Shifts" : "I Shift only";
 
   if (cond) {
@@ -127,6 +260,8 @@ const calculateHostelIncentive = ({
     highTierDays = cond.highTierDays !== null && cond.highTierDays !== undefined ? cond.highTierDays : highTierDays;
     lowTierRate = parseFloat(cond.lowTierRate) || 0;
     highTierRate = parseFloat(cond.highTierRate) || 0;
+    tier3Days = cond.tier3Days !== null && cond.tier3Days !== undefined ? cond.tier3Days : 26;
+    tier3Rate = parseFloat(cond.tier3Rate) || 0;
     shiftLabel = cond.shiftLabel || cond.shiftRuleKey || shiftLabel;
   } else {
     const shiftCfg = defaultHostelConfig.shifts[shiftRuleKey] || defaultHostelConfig.shifts["SHIFT_I"];
@@ -145,8 +280,16 @@ const calculateHostelIncentive = ({
   const isEligibleForRegular = totalDays >= minDays;
 
   if (isEligibleForRegular) {
-    tier = totalDays >= highTierDays ? "high" : "low";
-    ratePerDay = tier === "high" ? highTierRate : lowTierRate;
+    if (tier3Rate > 0 && totalDays >= tier3Days) {
+      tier = "tier3";
+      ratePerDay = tier3Rate;
+    } else if (totalDays >= highTierDays) {
+      tier = "high";
+      ratePerDay = highTierRate;
+    } else {
+      tier = "low";
+      ratePerDay = lowTierRate;
+    }
     regularIncentive = Math.round(remainingDays * ratePerDay * 100) / 100;
   }
 
@@ -230,10 +373,10 @@ exports.getHostelIncentiveCalculations = async (req, res) => {
       order: [["curEmployeeCode", "ASC"]],
     });
 
-    // Filter employees: Category name containing HOSTEL or isHostel flag
+    // Filter employees: Purely for category HOSTEL
     const hostelEmployees = employees.filter((emp) => {
       const catName = (emp.category?.categoryName || "").toUpperCase();
-      return catName.includes("HOSTEL") || emp.isHostel === true;
+      return catName.includes("HOSTEL");
     });
 
     if (!hostelEmployees.length) {
@@ -287,6 +430,7 @@ exports.getHostelIncentiveCalculations = async (req, res) => {
           where: {
             companyId: { [Op.or]: [companyId, null] },
             status: "Active",
+            gradeKey: "HOSTEL",
           },
         }),
         ShiftType.findAll({
@@ -525,6 +669,7 @@ exports.recalculateHostelIncentive = async (req, res) => {
       where: {
         companyId: { [Op.or]: [companyId, null] },
         status: "Active",
+        gradeKey: "HOSTEL",
       },
     });
 

@@ -179,6 +179,218 @@ const ShiftMultiSelectDropdown = ({ selectedShifts = [], onChange }) => {
   );
 };
 
+const DepartmentMultiSelectDropdown = ({ departments = [], selectedIds = ["ALL"], onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+        setSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const isAll = !selectedIds || selectedIds.includes("ALL") || selectedIds.length === 0 || (departments.length > 0 && selectedIds.length === departments.length);
+
+  const filtered = departments.filter((d) => {
+    const name = d.departmentname || d.name || "";
+    return name.toLowerCase().includes(search.toLowerCase());
+  });
+
+  const toggleAll = () => {
+    if (isAll) {
+      onChange([]);
+    } else {
+      onChange(["ALL"]);
+    }
+  };
+
+  const toggleDept = (id) => {
+    if (isAll) {
+      onChange([id]);
+      return;
+    }
+
+    let updated;
+    if (selectedIds.includes(id)) {
+      updated = selectedIds.filter((x) => x !== id);
+    } else {
+      updated = [...selectedIds, id];
+    }
+
+    if (departments.length > 0 && updated.length === departments.length) {
+      onChange(["ALL"]);
+    } else {
+      onChange(updated);
+    }
+  };
+
+  let displayText = "All Departments";
+  if (!isAll) {
+    const names = selectedIds
+      .map((id) => {
+        const found = departments.find((d) => d.id === id);
+        return found ? (found.departmentname || found.name) : `ID ${id}`;
+      })
+      .filter(Boolean);
+
+    if (names.length === 0) {
+      displayText = "-- Select Department(s) --";
+    } else if (names.length <= 2) {
+      displayText = names.join(", ");
+    } else {
+      displayText = `${names.slice(0, 2).join(", ")} (+${names.length - 2} more)`;
+    }
+  }
+
+  return (
+    <div className="relative inline-block w-full" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-slate-200 bg-slate-50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
+      >
+        <div className="flex items-center gap-2 truncate">
+          <span className="text-slate-500">🏢</span>
+          <span className={`truncate ${isAll ? "font-semibold text-blue-700" : "text-slate-800 font-semibold"}`}>
+            {displayText}
+          </span>
+          {isAll && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">
+              ALL
+            </span>
+          )}
+          {!isAll && selectedIds.length > 0 && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800">
+              {selectedIds.length} Selected
+            </span>
+          )}
+        </div>
+        <svg
+          className={`w-4 h-4 text-slate-400 flex-shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl py-2 animate-in fade-in zoom-in-95 duration-100 max-h-72 flex flex-col">
+          <div className="px-3 pb-2 border-b border-slate-100">
+            <input
+              type="text"
+              placeholder="Search departments…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white"
+              autoFocus
+            />
+          </div>
+
+          <div className="py-1 border-b border-slate-100 bg-slate-50/50">
+            <label
+              className="flex items-center justify-between px-3 py-1.5 text-xs hover:bg-blue-50 cursor-pointer select-none transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={isAll}
+                  onChange={toggleAll}
+                  className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                />
+                <span className={`font-bold ${isAll ? "text-blue-700" : "text-slate-700"}`}>
+                  All Departments
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-400 font-semibold">
+                {departments.length} total
+              </span>
+            </label>
+          </div>
+
+          <div className="overflow-y-auto flex-1 py-1">
+            {filtered.map((dept) => {
+              const isChecked = isAll || selectedIds.includes(dept.id);
+              return (
+                <label
+                  key={dept.id}
+                  className="flex items-center gap-2.5 px-3 py-1.5 text-xs hover:bg-blue-50 cursor-pointer select-none transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => toggleDept(dept.id)}
+                    className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                  />
+                  <span className={`font-medium ${isChecked ? "text-blue-900 font-semibold" : "text-slate-700"}`}>
+                    {dept.departmentname || dept.name}
+                  </span>
+                </label>
+              );
+            })}
+            {filtered.length === 0 && (
+              <p className="text-center text-slate-400 text-xs py-3">
+                No matching departments
+              </p>
+            )}
+          </div>
+          <div className="px-3 pt-2 pb-1 border-t border-slate-100 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => onChange(["ALL"])}
+              className="text-[11px] text-slate-500 hover:text-slate-800 font-medium"
+            >
+              Reset to All
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold px-2 py-0.5 rounded hover:bg-blue-50"
+            >
+              Done ✓
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const formatConditionDepts = (cond, departments = []) => {
+  if (cond.departmentIds) {
+    try {
+      const parsed = typeof cond.departmentIds === "string" ? JSON.parse(cond.departmentIds) : cond.departmentIds;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        if (departments.length > 0 && parsed.length === departments.length) {
+          return "All Departments";
+        }
+        const names = parsed
+          .map((id) => {
+            const found = departments.find((d) => d.id === id);
+            return found ? (found.departmentname || found.name) : `ID ${id}`;
+          })
+          .filter(Boolean);
+        return names.join(", ");
+      }
+    } catch (e) {}
+  }
+  if (cond.department?.departmentname) {
+    return cond.department.departmentname;
+  }
+  if (cond.departmentId) {
+    const found = departments.find((d) => d.id === cond.departmentId);
+    return found ? (found.departmentname || found.name) : `ID ${cond.departmentId}`;
+  }
+  return "All Departments";
+};
+
 const ShiftBreakdown = ({ breakdown }) => {
   if (!breakdown || !Object.keys(breakdown).length)
     return <span className="text-gray-400 text-xs">No data</span>;
@@ -741,8 +953,9 @@ export default function AttendanceIncentiveManagement() {
     maleExpThreshold: 3,
   });
   const [conditionForm, setConditionForm] = useState({
-    gradeKey: "MIXING",
-    gradeName: "Mixing",
+    selectedDepartments: ["ALL"],
+    gradeKey: "ALL_DEPARTMENTS",
+    gradeName: "All Departments",
     shiftRuleKey: "SHIFT_I",
     shiftLabel: "Day Shift Only",
     minDays: 22,
@@ -1018,12 +1231,11 @@ export default function AttendanceIncentiveManagement() {
   const handleOpenAddCondition = () => {
     setEditingCondition(null);
     setConditionForm({
-      categoryId: "",
-      departmentId: "",
+      selectedDepartments: ["ALL"],
       shiftTypeId: "",
       gender: "ALL",
-      gradeKey: "",
-      gradeName: "",
+      gradeKey: "ALL_DEPARTMENTS",
+      gradeName: "All Departments",
       shiftRuleKey: "SHIFT_I",
       shiftLabel: "Shift I Only",
       minDays: 22,
@@ -1053,9 +1265,22 @@ export default function AttendanceIncentiveManagement() {
 
   const handleOpenEditCondition = (cond) => {
     setEditingCondition(cond);
+    let selectedDepts = ["ALL"];
+    if (cond.departmentIds) {
+      try {
+        const parsed = typeof cond.departmentIds === "string" ? JSON.parse(cond.departmentIds) : cond.departmentIds;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          selectedDepts = parsed;
+        }
+      } catch (e) {}
+    } else if (cond.departmentId) {
+      selectedDepts = [cond.departmentId];
+    } else {
+      selectedDepts = ["ALL"];
+    }
+
     setConditionForm({
-      categoryId: cond.categoryId ? cond.categoryId : (cond.category ? cond.category.id : "ALL"),
-      departmentId: cond.departmentId ? cond.departmentId : (cond.department ? cond.department.id : "ALL"),
+      selectedDepartments: selectedDepts,
       shiftTypeId: cond.shiftTypeId || "",
       gender: cond.gender || "ALL",
       gradeKey: cond.gradeKey,
@@ -1074,6 +1299,28 @@ export default function AttendanceIncentiveManagement() {
     });
     setConditionCombos(parseShiftRuleKeyToCombos(cond.shiftRuleKey, cond.minComboDays));
     setShowConditionModal(true);
+  };
+
+  const handleDepartmentsChange = (newDepts) => {
+    setConditionForm((p) => {
+      const isAll = !newDepts || newDepts.includes("ALL") || newDepts.length === 0 || (conditionDepartments.length > 0 && newDepts.length === conditionDepartments.length);
+      let autoName = "All Departments";
+      if (!isAll) {
+        const names = newDepts
+          .map((id) => {
+            const found = conditionDepartments.find((d) => d.id === id);
+            return found ? (found.departmentname || found.name) : null;
+          })
+          .filter(Boolean);
+        autoName = names.length > 0 ? names.join(", ") : "All Departments";
+      }
+      return {
+        ...p,
+        selectedDepartments: newDepts,
+        gradeName: autoName,
+        gradeKey: autoName.toUpperCase().replace(/[^A-Z0-9_]/g, "_"),
+      };
+    });
   };
 
   const handleSaveConditionSubmit = async (e) => {
@@ -1111,21 +1358,24 @@ export default function AttendanceIncentiveManagement() {
       return;
     }
 
-    if (!conditionForm.categoryId && !conditionForm.departmentId) {
-      setError("Please select at least a Category or a Department (or choose 'All').");
-      return;
-    }
+    const selectedDepts = conditionForm.selectedDepartments || ["ALL"];
+    const isAll =
+      selectedDepts.includes("ALL") ||
+      selectedDepts.length === 0 ||
+      (conditionDepartments.length > 0 && selectedDepts.length === conditionDepartments.length);
+
+    const deptVal = !isAll && selectedDepts.length === 1 ? parseInt(selectedDepts[0], 10) : null;
+    const deptIdsVal = !isAll && selectedDepts.length > 0 ? selectedDepts.map(Number) : null;
+
+    const finalGradeName = conditionForm.gradeName?.trim() || (isAll ? "All Departments" : "Custom Departments");
+    const finalGradeKey = conditionForm.gradeKey?.trim() || finalGradeName.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
 
     try {
-      const catVal = conditionForm.categoryId && conditionForm.categoryId !== "ALL" ? parseInt(conditionForm.categoryId, 10) : null;
-      const deptVal = conditionForm.departmentId && conditionForm.departmentId !== "ALL" ? parseInt(conditionForm.departmentId, 10) : null;
-      const finalGradeName = conditionForm.gradeName?.trim() || "All Categories & Departments";
-      const finalGradeKey = conditionForm.gradeKey?.trim() || finalGradeName.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
-
       const payload = {
         ...conditionForm,
-        categoryId: catVal,
+        categoryId: null, // Category option removed
         departmentId: deptVal,
+        departmentIds: deptIdsVal,
         gradeName: finalGradeName,
         gradeKey: finalGradeKey,
         shiftRuleKey,
@@ -1227,7 +1477,10 @@ export default function AttendanceIncentiveManagement() {
     apiRequest(`/categories?companyId=${filters.companyId}`)
       .then((d) => {
         const list = Array.isArray(d) ? d : d.data || [];
-        const filtered = list.filter((c) => !(c.categoryName || c.name || "").toUpperCase().includes("STAFF"));
+        const filtered = list.filter((c) => {
+          const cat = (c.categoryName || c.name || "").toUpperCase();
+          return !cat.includes("STAFF") && !cat.includes("HOSTEL");
+        });
         setCategories(filtered);
       })
       .catch((e) => setError(e.message));
@@ -1246,11 +1499,13 @@ export default function AttendanceIncentiveManagement() {
     if (filters.categoryId) q.set("categoryId", filters.categoryId);
     apiRequest(`/employees?${q}`)
       .then((d) => {
-        const list = (Array.isArray(d) ? d : d.employees || []).map((e) => ({
-          id: e.id,
-          employeeCode: e.employeeCode,
-          employeeName: e.firstName,
-        }));
+        const list = (Array.isArray(d) ? d : d.employees || [])
+          .filter((e) => !((e.category?.categoryName || "").toUpperCase().includes("HOSTEL")))
+          .map((e) => ({
+            id: e.id,
+            employeeCode: e.employeeCode,
+            employeeName: e.firstName,
+          }));
         setAllEmployees(list);
       })
       .catch((e) => setError(e.message))
@@ -3056,12 +3311,12 @@ export default function AttendanceIncentiveManagement() {
                       {conditions
                         .filter((c) => {
                           const matchesGrade = conditionFilterGrade === "ALL" || c.gradeKey === conditionFilterGrade;
+                          const deptText = formatConditionDepts(c, conditionDepartments);
                           const matchesSearch =
                             !conditionSearch ||
                             (c.gradeName || c.gradeKey || "").toLowerCase().includes(conditionSearch.toLowerCase()) ||
                             (c.shiftLabel || c.shiftRuleKey || "").toLowerCase().includes(conditionSearch.toLowerCase()) ||
-                            (c.category?.categoryName || "").toLowerCase().includes(conditionSearch.toLowerCase()) ||
-                            (c.department?.departmentname || "").toLowerCase().includes(conditionSearch.toLowerCase()) ||
+                            deptText.toLowerCase().includes(conditionSearch.toLowerCase()) ||
                             (c.remarks || "").toLowerCase().includes(conditionSearch.toLowerCase());
                           return matchesGrade && matchesSearch;
                         })
@@ -3074,11 +3329,8 @@ export default function AttendanceIncentiveManagement() {
                                 {cond.gradeName || cond.gradeKey}
                               </span>
                               <div className="flex flex-wrap items-center gap-1 mt-1.5">
-                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-100">
-                                  Cat: {cond.category?.categoryName || (cond.categoryId ? `ID ${cond.categoryId}` : "All")}
-                                </span>
-                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-100">
-                                  Dept: {cond.department?.departmentname || (cond.departmentId ? `ID ${cond.departmentId}` : "All")}
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                  🏢 Dept: {formatConditionDepts(cond, conditionDepartments)}
                                 </span>
                               </div>
                             </td>
@@ -3189,97 +3441,19 @@ export default function AttendanceIncentiveManagement() {
                   )}
 
                   <form onSubmit={handleSaveConditionSubmit} className="space-y-4">
-                    {/* Row 1: Category & Department Dropdowns */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
-                          Category Selection
-                        </label>
-                        <select
-                          value={conditionForm.categoryId || ""}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const cId = val === "ALL" ? "ALL" : (val ? parseInt(val, 10) : "");
-                            const matched = conditionCategories.find((c) => c.id === cId);
-                            const catName = val === "ALL" ? "All" : (matched ? (matched.categoryName || matched.name) : "");
-
-                            setConditionForm((p) => {
-                              const deptMatched = conditionDepartments.find((d) => d.id === p.departmentId);
-                              const deptName = p.departmentId === "ALL" ? "All" : (deptMatched ? (deptMatched.departmentname || deptMatched.name) : "");
-
-                              let autoName = "";
-                              if (catName && deptName) {
-                                autoName = catName === "All" && deptName === "All" ? "All Categories & Departments" : `${catName} - ${deptName}`;
-                              } else if (catName) {
-                                autoName = catName === "All" ? "All Categories" : catName;
-                              } else if (deptName) {
-                                autoName = deptName === "All" ? "All Departments" : deptName;
-                              }
-
-                              return {
-                                ...p,
-                                categoryId: cId,
-                                gradeName: autoName || p.gradeName,
-                                gradeKey: autoName ? autoName.toUpperCase().replace(/[^A-Z0-9_]/g, "_") : p.gradeKey,
-                              };
-                            });
-                          }}
-                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-medium"
-                        >
-                          <option value="">-- Select Category --</option>
-                          <option value="ALL">All</option>
-                          {conditionCategories.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.categoryName || c.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
-                          Department Selection
-                        </label>
-                        <select
-                          value={conditionForm.departmentId || ""}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const dId = val === "ALL" ? "ALL" : (val ? parseInt(val, 10) : "");
-                            const matched = conditionDepartments.find((d) => d.id === dId);
-                            const deptName = val === "ALL" ? "All" : (matched ? (matched.departmentname || matched.name) : "");
-
-                            setConditionForm((p) => {
-                              const catMatched = conditionCategories.find((c) => c.id === p.categoryId);
-                              const catName = p.categoryId === "ALL" ? "All" : (catMatched ? (catMatched.categoryName || catMatched.name) : "");
-
-                              let autoName = "";
-                              if (catName && deptName) {
-                                autoName = catName === "All" && deptName === "All" ? "All Categories & Departments" : `${catName} - ${deptName}`;
-                              } else if (deptName) {
-                                autoName = deptName === "All" ? "All Departments" : deptName;
-                              } else if (catName) {
-                                autoName = catName === "All" ? "All Categories" : catName;
-                              }
-
-                              return {
-                                ...p,
-                                departmentId: dId,
-                                gradeName: autoName || p.gradeName,
-                                gradeKey: autoName ? autoName.toUpperCase().replace(/[^A-Z0-9_]/g, "_") : p.gradeKey,
-                              };
-                            });
-                          }}
-                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-medium"
-                        >
-                          <option value="">-- Select Department --</option>
-                          <option value="ALL">All</option>
-                          {conditionDepartments.map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.departmentname || d.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                    {/* Row 1: Department Multi-Select Dropdown */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">
+                        Department Selection (Multi-Select + All)
+                      </label>
+                      <DepartmentMultiSelectDropdown
+                        departments={conditionDepartments}
+                        selectedIds={conditionForm.selectedDepartments || ["ALL"]}
+                        onChange={handleDepartmentsChange}
+                      />
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Select one or more departments this rule applies to, or choose "All Departments".
+                      </p>
                     </div>
 
                     {/* Row 2: Display Name & Target Gender */}

@@ -218,28 +218,7 @@ const resolveShiftKey = (shiftMap, gradeKey) => {
   return "SHIFT_I";
 };
 
-const DEFAULT_CONDITIONS = [
-  // MIXING
-  { gradeKey: "MIXING", gradeName: "Mixing", shiftRuleKey: "SHIFT_I", shiftLabel: "Day Shift Only", minDays: 22, lowTierDays: 23, lowTierRate: 15, highTierDays: 24, highTierRate: 20, minComboDays: 12, remarks: "Day Shift Only" },
-  { gradeKey: "MIXING", gradeName: "Mixing", shiftRuleKey: "SHIFT_I_II_AND_I_II_III", shiftLabel: "3 Shifts", minDays: 22, lowTierDays: 23, lowTierRate: 20, highTierDays: 24, highTierRate: 30, minComboDays: 12, remarks: "Must work in II & III Shift for 12 Days in a month" },
-  // OTHERS
-  { gradeKey: "OTHERS", gradeName: "Others", shiftRuleKey: "SHIFT_I", shiftLabel: "Day Shift Only", minDays: 22, lowTierDays: 23, lowTierRate: 25, highTierDays: 24, highTierRate: 30, minComboDays: 12, maleExpOverride: true, maleExpThreshold: 3, remarks: "Day Shift Only (Male >=3yr exp uses this)" },
-  { gradeKey: "OTHERS", gradeName: "Others", shiftRuleKey: "SHIFT_I_II_AND_I_III", shiftLabel: "I+II / I+III / II Shift", minDays: 22, lowTierDays: 23, lowTierRate: 55, highTierDays: 24, highTierRate: 60, minComboDays: 12, remarks: "Two-shift combinations or II Shift" },
-  { gradeKey: "OTHERS", gradeName: "Others", shiftRuleKey: "SHIFT_II", shiftLabel: "II Shift", minDays: 22, lowTierDays: 23, lowTierRate: 55, highTierDays: 24, highTierRate: 60, minComboDays: 12, remarks: "Second Shift" },
-  { gradeKey: "OTHERS", gradeName: "Others", shiftRuleKey: "SHIFT_I_II_III_AND_II_III", shiftLabel: "I+II+III / II+III / III Shift", minDays: 22, lowTierDays: 23, lowTierRate: 70, highTierDays: 24, highTierRate: 80, minComboDays: 12, remarks: "Three shifts / II+III / III Shift" },
-  { gradeKey: "OTHERS", gradeName: "Others", shiftRuleKey: "SHIFT_III", shiftLabel: "III Shift", minDays: 22, lowTierDays: 23, lowTierRate: 70, highTierDays: 24, highTierRate: 80, minComboDays: 12, remarks: "Night Shift" },
-  // HOSTEL
-  { gradeKey: "HOSTEL", gradeName: "Hostel", shiftRuleKey: "SHIFT_I", shiftLabel: "I Shift only", minDays: 22, lowTierDays: 23, lowTierRate: 15, highTierDays: 24, highTierRate: 20, minComboDays: 12, remarks: "Single shift" },
-  { gradeKey: "HOSTEL", gradeName: "Hostel", shiftRuleKey: "SHIFT_I_II_AND_I_II_III", shiftLabel: "Combo Shifts", minDays: 22, lowTierDays: 23, lowTierRate: 20, highTierDays: 24, highTierRate: 30, minComboDays: 12, remarks: "Combination of shifts" },
-  // MAISTRY
-  { gradeKey: "MAISTRY", gradeName: "Maistry", shiftRuleKey: "SHIFT_I_II_III_AND_II_III", shiftLabel: "I, II, III & II, III & III Shift", minDays: 22, lowTierDays: 23, lowTierRate: 45, highTierDays: 24, highTierRate: 50, minComboDays: 12, remarks: "Maistry rotation shifts" },
-  // FITTER
-  { gradeKey: "FITTER", gradeName: "Fitter", shiftRuleKey: "SHIFT_I", shiftLabel: "All Shifts", minDays: 24, lowTierDays: 24, lowTierRate: 30, highTierDays: 25, highTierRate: 35, minComboDays: 12, remarks: "Fitter Grade" },
-  // ELECTRICAL
-  { gradeKey: "ELECTRICAL", gradeName: "Electrical", shiftRuleKey: "SHIFT_I", shiftLabel: "All Shifts", minDays: 24, lowTierDays: 24, lowTierRate: 30, highTierDays: 25, highTierRate: 35, minComboDays: 12, remarks: "Electrical Grade" },
-  // PLANT
-  { gradeKey: "PLANT", gradeName: "Plant", shiftRuleKey: "SHIFT_I", shiftLabel: "All Shifts", minDays: 24, lowTierDays: 24, lowTierRate: 30, highTierDays: 25, highTierRate: 35, minComboDays: 12, remarks: "Plant Grade" },
-];
+const DEFAULT_CONDITIONS = [];
 
 const getEffectiveIncentiveConfig = async (companyId = null) => {
   const config = JSON.parse(JSON.stringify(INCENTIVE_CONFIG));
@@ -335,22 +314,43 @@ const isShiftEligible = (shiftMap, shiftRuleKey) => {
           let comboSatisfied = true;
           let hasAtLeastOneRequiredShift = false;
 
-          if (combo.hasOwnProperty("I")) {
-            hasAtLeastOneRequiredShift = true;
-            if (shiftI < Number(combo.I)) {
-              comboSatisfied = false;
+          // Check if combo contains conditions array (new structure)
+          if (Array.isArray(combo.conditions) && combo.conditions.length > 0) {
+            for (const cond of combo.conditions) {
+              const reqDays = Number(cond.minDays) || 0;
+              const shifts = Array.isArray(cond.shifts) ? cond.shifts : [];
+              if (shifts.length > 0) {
+                hasAtLeastOneRequiredShift = true;
+                let totalShiftDays = 0;
+                if (shifts.includes("I")) totalShiftDays += shiftI;
+                if (shifts.includes("II")) totalShiftDays += shiftII;
+                if (shifts.includes("III")) totalShiftDays += shiftIII;
+
+                if (totalShiftDays < reqDays) {
+                  comboSatisfied = false;
+                  break;
+                }
+              }
             }
-          }
-          if (combo.hasOwnProperty("II")) {
-            hasAtLeastOneRequiredShift = true;
-            if (shiftII < Number(combo.II)) {
-              comboSatisfied = false;
+          } else {
+            // Legacy format check
+            if (combo.hasOwnProperty("I")) {
+              hasAtLeastOneRequiredShift = true;
+              if (shiftI < Number(combo.I)) {
+                comboSatisfied = false;
+              }
             }
-          }
-          if (combo.hasOwnProperty("III")) {
-            hasAtLeastOneRequiredShift = true;
-            if (shiftIII < Number(combo.III)) {
-              comboSatisfied = false;
+            if (combo.hasOwnProperty("II")) {
+              hasAtLeastOneRequiredShift = true;
+              if (shiftII < Number(combo.II)) {
+                comboSatisfied = false;
+              }
+            }
+            if (combo.hasOwnProperty("III")) {
+              hasAtLeastOneRequiredShift = true;
+              if (shiftIII < Number(combo.III)) {
+                comboSatisfied = false;
+              }
             }
           }
 
@@ -400,33 +400,48 @@ const isShiftEligible = (shiftMap, shiftRuleKey) => {
   return (shiftI + shiftII + shiftIII) > 0;
 };
 
-const findMatchingCondition = (employee, categoryName, dbConditions, resolvedShiftKey) => {
+const findMatchingCondition = (employee, categoryName, dbConditions, resolvedShiftKey, shiftMap = null) => {
   const empCatId = employee.categoryId || null;
   const empDeptId = employee.departmentId || null;
   const designationName = employee.designation?.name || "";
   const stdGradeKey = resolveGradeKey(categoryName, designationName);
+  const empGender = String(employee.gender || "").toUpperCase();
+
+  const isEligibleForCond = (c) => {
+    if (c.gender && c.gender !== "ALL" && c.gender !== empGender) return false;
+    if (c.shiftRuleKey && (c.shiftRuleKey.startsWith("[") || c.shiftRuleKey.startsWith("{"))) {
+      return shiftMap ? isShiftEligible(shiftMap, c.shiftRuleKey) : true;
+    }
+    return c.shiftRuleKey === resolvedShiftKey;
+  };
 
   // 1. Match specific category AND specific department AND resolvedShiftKey
   let match = dbConditions.find(
-    (c) => c.categoryId === empCatId && c.departmentId === empDeptId && c.shiftRuleKey === resolvedShiftKey
+    (c) => c.categoryId === empCatId && c.departmentId === empDeptId && isEligibleForCond(c)
   );
   if (match) return match;
 
-  // 2. Match specific category (any department) AND resolvedShiftKey
+  // 2. Match specific category (any/all department) AND resolvedShiftKey
   match = dbConditions.find(
-    (c) => c.categoryId === empCatId && !c.departmentId && c.shiftRuleKey === resolvedShiftKey
+    (c) => c.categoryId === empCatId && !c.departmentId && isEligibleForCond(c)
   );
   if (match) return match;
 
-  // 3. Match specific department (any category) AND resolvedShiftKey
+  // 3. Match specific department (any/all category) AND resolvedShiftKey
   match = dbConditions.find(
-    (c) => !c.categoryId && c.departmentId === empDeptId && c.shiftRuleKey === resolvedShiftKey
+    (c) => !c.categoryId && c.departmentId === empDeptId && isEligibleForCond(c)
   );
   if (match) return match;
 
-  // 4. Match gradeKey AND resolvedShiftKey
+  // 4. Match standard gradeKey AND resolvedShiftKey
   match = dbConditions.find(
-    (c) => !c.categoryId && !c.departmentId && c.gradeKey === stdGradeKey && c.shiftRuleKey === resolvedShiftKey
+    (c) => !c.categoryId && !c.departmentId && c.gradeKey === stdGradeKey && isEligibleForCond(c)
+  );
+  if (match) return match;
+
+  // 5. Match universal rule (All Categories & All Departments) AND resolvedShiftKey
+  match = dbConditions.find(
+    (c) => !c.categoryId && !c.departmentId && isEligibleForCond(c)
   );
   if (match) return match;
 
@@ -494,7 +509,7 @@ const calculateIncentive = (
     }
   }
 
-  const cond = findMatchingCondition(employee, categoryName, dbConditions, resolvedShiftKey);
+  const cond = findMatchingCondition(employee, categoryName, dbConditions, resolvedShiftKey, shiftMap);
 
   let minDays;
   let highTierDays;
@@ -1279,13 +1294,8 @@ exports.getConditions = async (req, res) => {
       order: [["gradeKey", "ASC"], ["id", "ASC"]],
     });
 
-    // Auto-seed if empty
-    if (!conditions || conditions.length === 0) {
-      const toCreate = DEFAULT_CONDITIONS.map((c) => ({
-        ...c,
-        companyId: companyId ? parseInt(companyId, 10) : null,
-      }));
-      conditions = await AttendanceIncentiveCondition.bulkCreate(toCreate);
+    if (!conditions) {
+      conditions = [];
     }
 
     return res.status(200).json({
@@ -1329,12 +1339,15 @@ exports.createCondition = async (req, res) => {
     } = req.body;
 
     const gKey = (gradeKey || gradeName || "CUSTOM").toUpperCase().trim().replace(/[^A-Z0-9_]/g, "_");
-    const sKey = (shiftRuleKey || shiftLabel || "SHIFT_I").trim().replace(/[^A-Za-z0-9_]/g, "_");
+    let sKey = (shiftRuleKey || shiftLabel || "SHIFT_I").trim();
+    if (!sKey.startsWith("[") && !sKey.startsWith("{")) {
+      sKey = sKey.replace(/[^A-Za-z0-9_]/g, "_");
+    }
 
     const newCond = await AttendanceIncentiveCondition.create({
       companyId: companyId ? parseInt(companyId, 10) : null,
-      categoryId: categoryId ? parseInt(categoryId, 10) : null,
-      departmentId: departmentId ? parseInt(departmentId, 10) : null,
+      categoryId: categoryId && categoryId !== "ALL" ? parseInt(categoryId, 10) : null,
+      departmentId: departmentId && departmentId !== "ALL" ? parseInt(departmentId, 10) : null,
       shiftTypeId: shiftTypeId ? parseInt(shiftTypeId, 10) : null,
       gender: gender || "ALL",
       gradeKey: gKey,
@@ -1391,12 +1404,15 @@ exports.updateCondition = async (req, res) => {
     } = req.body;
 
     const gKey = gradeKey ? gradeKey.toUpperCase().trim().replace(/[^A-Z0-9_]/g, "_") : (gradeName ? gradeName.toUpperCase().trim().replace(/[^A-Z0-9_]/g, "_") : undefined);
-    const sKey = shiftRuleKey ? shiftRuleKey.trim().replace(/[^A-Za-z0-9_]/g, "_") : undefined;
+    let sKey = shiftRuleKey ? shiftRuleKey.trim() : undefined;
+    if (sKey && !sKey.startsWith("[") && !sKey.startsWith("{")) {
+      sKey = sKey.replace(/[^A-Za-z0-9_]/g, "_");
+    }
 
     await cond.update({
       ...(companyId !== undefined && { companyId: companyId ? parseInt(companyId, 10) : null }),
-      ...(categoryId !== undefined && { categoryId: categoryId ? parseInt(categoryId, 10) : null }),
-      ...(departmentId !== undefined && { departmentId: departmentId ? parseInt(departmentId, 10) : null }),
+      ...(categoryId !== undefined && { categoryId: categoryId && categoryId !== "ALL" ? parseInt(categoryId, 10) : null }),
+      ...(departmentId !== undefined && { departmentId: departmentId && departmentId !== "ALL" ? parseInt(departmentId, 10) : null }),
       ...(shiftTypeId !== undefined && { shiftTypeId: shiftTypeId ? parseInt(shiftTypeId, 10) : null }),
       ...(gender !== undefined && { gender }),
       ...(gKey && { gradeKey: gKey }),
@@ -1448,16 +1464,10 @@ exports.resetConditions = async (req, res) => {
 
     await AttendanceIncentiveCondition.destroy({ where });
 
-    const toCreate = DEFAULT_CONDITIONS.map((c) => ({
-      ...c,
-      companyId: companyId ? parseInt(companyId, 10) : null,
-    }));
-    const conditions = await AttendanceIncentiveCondition.bulkCreate(toCreate);
-
     return res.status(200).json({
       success: true,
-      conditions,
-      message: "Incentive conditions successfully reset to system defaults.",
+      conditions: [],
+      message: "All incentive conditions cleared successfully.",
     });
   } catch (error) {
     console.error("Error resetting incentive conditions:", error);

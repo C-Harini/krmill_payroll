@@ -2551,14 +2551,6 @@ export default function HostelAttendanceIncentiveManagement() {
                   />
                   <button
                     type="button"
-                    onClick={handleResetConditions}
-                    className="px-3.5 py-2 border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold transition flex items-center gap-1.5"
-                    title="Clear hostel condition rules"
-                  >
-                    <span>🔄</span> Reset
-                  </button>
-                  <button
-                    type="button"
                     onClick={handleOpenAddCondition}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition shadow-sm flex items-center gap-1.5 active:scale-95"
                   >
@@ -2630,12 +2622,16 @@ export default function HostelAttendanceIncentiveManagement() {
                           <tr key={cond.id} className="hover:bg-blue-50/30 transition">
                             <td className="px-5 py-4 text-slate-400 text-xs font-mono">{idx + 1}</td>
                             <td className="px-5 py-4">
-                              <span className="text-sm font-semibold text-slate-800">
+                              <GradePill gradeKey="HOSTEL" />
+                              <span className="block text-xs font-semibold text-slate-800 mt-1">
                                 {cond.gradeName || "Hostel"}
                               </span>
                             </td>
                             <td className="px-5 py-4">
-                              <span className="font-semibold text-slate-800">{cond.shiftLabel || "—"}</span>
+                              <span className="font-semibold text-slate-800">{cond.shiftLabel}</span>
+                              <span className="block text-xs font-mono text-slate-400 mt-0.5 truncate max-w-xs" title={cond.shiftRuleKey}>
+                                {cond.shiftRuleKey}
+                              </span>
                             </td>
                             <td className="px-5 py-4 text-center">
                               <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cond.gender === "MALE"

@@ -3299,13 +3299,12 @@ export default function AttendanceIncentiveManagement() {
                     <thead className="sticky top-0 z-20 shadow-sm">
                       <tr className="bg-gradient-to-r from-slate-700 to-slate-800 text-white text-sm font-semibold">
                         <th className="px-5 py-4 w-12 text-left bg-slate-800 sticky top-0 z-20">#</th>
-                        <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">Grade / Name</th>
+                        <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">Grade</th>
                         <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">Shift Pattern</th>
                         <th className="px-5 py-4 text-center bg-slate-800 sticky top-0 z-20">Gender</th>
                         <th className="px-5 py-4 text-center bg-slate-800 sticky top-0 z-20">Min Days</th>
                         <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">Low Tier Slab</th>
                         <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">High Tier Slab</th>
-                        <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">Override Settings</th>
                         <th className="px-5 py-4 text-center bg-slate-800 sticky top-0 z-20">Actions</th>
                       </tr>
                     </thead>
@@ -3326,19 +3325,12 @@ export default function AttendanceIncentiveManagement() {
                           <tr key={cond.id} className="hover:bg-slate-50/60 transition">
                             <td className="px-5 py-4 text-slate-400 text-xs font-mono">{idx + 1}</td>
                             <td className="px-5 py-4">
-                              <GradePill gradeKey={cond.gradeKey} />
-                              <span className="block text-xs font-semibold text-slate-700 mt-1">
+                              <span className="font-semibold text-slate-800 text-sm">
                                 {cond.gradeName || cond.gradeKey}
                               </span>
-                              <div className="flex flex-wrap items-center gap-1 mt-1.5">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                                  🏢 Dept: {formatConditionDepts(cond, conditionDepartments)}
-                                </span>
-                              </div>
                             </td>
                             <td className="px-5 py-4">
                               <span className="font-semibold text-slate-800">{cond.shiftLabel}</span>
-                              <span className="block text-xs font-mono text-slate-400 mt-0.5">{cond.shiftRuleKey}</span>
                             </td>
                             <td className="px-5 py-4 text-center">
                               <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cond.gender === "MALE"
@@ -3366,19 +3358,6 @@ export default function AttendanceIncentiveManagement() {
                                 <span>→</span>
                                 <span className="font-bold font-mono">₹{parseFloat(cond.highTierRate || 0).toFixed(2)}/d</span>
                               </div>
-                            </td>
-                            <td className="px-5 py-4 text-xs">
-                              {cond.maleExpOverride ? (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-medium">
-                                  Male ≥{cond.maleExpThreshold || 3}yr → Day Rate
-                                </span>
-                              ) : cond.minComboDays ? (
-                                <span className="text-slate-500 font-medium">
-                                  Combo min: <span className="font-semibold text-slate-700">{cond.minComboDays}d</span>
-                                </span>
-                              ) : (
-                                <span className="text-slate-400">—</span>
-                              )}
                             </td>
                             <td className="px-5 py-4 text-center">
                               <div className="flex items-center justify-center gap-2">

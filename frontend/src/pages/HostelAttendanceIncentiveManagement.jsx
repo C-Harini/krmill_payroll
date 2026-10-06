@@ -2551,14 +2551,6 @@ export default function HostelAttendanceIncentiveManagement() {
                   />
                   <button
                     type="button"
-                    onClick={handleResetConditions}
-                    className="px-3.5 py-2 border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold transition flex items-center gap-1.5"
-                    title="Clear hostel condition rules"
-                  >
-                    <span>🔄</span> Reset
-                  </button>
-                  <button
-                    type="button"
                     onClick={handleOpenAddCondition}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition shadow-sm flex items-center gap-1.5 active:scale-95"
                   >
@@ -2607,13 +2599,12 @@ export default function HostelAttendanceIncentiveManagement() {
                     <thead className="sticky top-0 z-20 shadow-sm">
                       <tr className="bg-gradient-to-r from-slate-800 via-slate-800 to-blue-950 text-white text-xs font-semibold uppercase tracking-wider">
                         <th className="px-5 py-4 w-12 text-left bg-slate-800 sticky top-0 z-20">#</th>
-                        <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">Grade / Scope</th>
+                        <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">Grade</th>
                         <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">Shift Pattern</th>
                         <th className="px-5 py-4 text-center bg-slate-800 sticky top-0 z-20">Gender</th>
                         <th className="px-5 py-4 text-center bg-slate-800 sticky top-0 z-20">Min Days</th>
                         <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">Low Tier Slab</th>
                         <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">High Tier Slab</th>
-                        <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">Override Settings</th>
                         <th className="px-5 py-4 text-center bg-slate-800 sticky top-0 z-20">Actions</th>
                       </tr>
                     </thead>
@@ -2631,21 +2622,12 @@ export default function HostelAttendanceIncentiveManagement() {
                           <tr key={cond.id} className="hover:bg-blue-50/30 transition">
                             <td className="px-5 py-4 text-slate-400 text-xs font-mono">{idx + 1}</td>
                             <td className="px-5 py-4">
-                              <GradePill gradeKey="HOSTEL" />
-                              <span className="block text-xs font-semibold text-slate-800 mt-1">
+                              <span className="font-semibold text-slate-800 text-sm">
                                 {cond.gradeName || "Hostel"}
                               </span>
-                              <div className="flex flex-wrap items-center gap-1 mt-1.5">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                                  🏨 All Hostel Employees (Any Dept)
-                                </span>
-                              </div>
                             </td>
                             <td className="px-5 py-4">
                               <span className="font-semibold text-slate-800">{cond.shiftLabel}</span>
-                              <span className="block text-xs font-mono text-slate-400 mt-0.5 truncate max-w-xs" title={cond.shiftRuleKey}>
-                                {cond.shiftRuleKey}
-                              </span>
                             </td>
                             <td className="px-5 py-4 text-center">
                               <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cond.gender === "MALE"
@@ -2673,19 +2655,6 @@ export default function HostelAttendanceIncentiveManagement() {
                                 <span>→</span>
                                 <span className="font-bold font-mono">₹{parseFloat(cond.highTierRate || 0).toFixed(2)}/d</span>
                               </div>
-                            </td>
-                            <td className="px-5 py-4 text-xs">
-                              {cond.maleExpOverride ? (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-medium">
-                                  Male ≥{cond.maleExpThreshold || 3}yr → Day Rate
-                                </span>
-                              ) : cond.minComboDays ? (
-                                <span className="text-slate-500 font-medium">
-                                  Combo min: <span className="font-semibold text-slate-700">{cond.minComboDays}d</span>
-                                </span>
-                              ) : (
-                                <span className="text-slate-400">—</span>
-                              )}
                             </td>
                             <td className="px-5 py-4 text-center">
                               <div className="flex items-center justify-center gap-2">

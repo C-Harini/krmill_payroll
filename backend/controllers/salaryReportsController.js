@@ -261,7 +261,10 @@ const salaryIncludes = (empWhere = {}) => [
   { model: SalaryGenerationDetail, as: "details", required: false },
 ];
 
-const baseOrder = [["employeeId", "ASC"]];
+const baseOrder = [
+  [{ model: Employee, as: "employee" }, "firstName", "ASC"],
+  ["employeeId", "ASC"],
+];
 
 const enrichWithDeptDesig = async (records) => {
   const empIds = [...new Set(records.map((r) => r.employeeId).filter(Boolean))];
@@ -530,6 +533,13 @@ exports.getSalaryReport = async (req, res) => {
       };
     });
 
+    enriched.sort((a, b) => {
+      const nameA = (a.employee?.firstName || "").trim().toLowerCase();
+      const nameB = (b.employee?.firstName || "").trim().toLowerCase();
+      if (nameA !== nameB) return nameA.localeCompare(nameB);
+      return (a.employee?.curEmployeeCode || "").localeCompare(b.employee?.curEmployeeCode || "");
+    });
+
     const grouped = groupByDept(enriched);
 
     const grandTotal =
@@ -678,6 +688,13 @@ exports.downloadSalaryReportExcel = async (req, res) => {
           grade: r.employee?.grade || null,
         },
       };
+    });
+
+    records.sort((a, b) => {
+      const nameA = (a.employee?.firstName || "").trim().toLowerCase();
+      const nameB = (b.employee?.firstName || "").trim().toLowerCase();
+      if (nameA !== nameB) return nameA.localeCompare(nameB);
+      return (a.employee?.curEmployeeCode || "").localeCompare(b.employee?.curEmployeeCode || "");
     });
 
     const name = rows[0]?.company?.name || "Company";
@@ -879,6 +896,7 @@ function addStaffSheet(
     "S. No",
     "Name",
     "T. No",
+    "Dept",
     "Desig",
     "Per Month Salary",
     "W.Days",
@@ -915,9 +933,10 @@ function addStaffSheet(
   ws.getColumn(1).width = 6;
   ws.getColumn(2).width = 24;
   ws.getColumn(3).width = 8;
-  ws.getColumn(4).width = 14;
+  ws.getColumn(4).width = 16;
   ws.getColumn(5).width = 14;
-  for (let i = 6; i <= headers.length; i++) ws.getColumn(i).width = 11;
+  ws.getColumn(6).width = 14;
+  for (let i = 7; i <= headers.length; i++) ws.getColumn(i).width = 11;
 
   let sno = 1;
   records.forEach((r) => {
@@ -966,6 +985,7 @@ function addStaffSheet(
       sno++,
       r.employee?.firstName || "",
       r.employee?.newEmployeeCode ? `${r.employee.curEmployeeCode || ''} / ${r.employee.newEmployeeCode}` : (r.employee?.curEmployeeCode || r.employee?.employeeCode || ""),
+      r.employee?.department?.departmentname || "",
       r.employee?.designation?.name || "",
       salaryVal,
       toNum(r.presentDays),
@@ -998,11 +1018,11 @@ function addStaffSheet(
     const row = ws.addRow(rowData);
     styleDataRow(row, sno % 2 === 0);
     row.eachCell((cell, colNum) => {
-      if (colNum >= 5) cell.alignment = { horizontal: "right" };
+      if (colNum >= 6) cell.alignment = { horizontal: "right" };
     });
 
     // Colour-code EL / WO cells
-    const baseColCount = 26 + (isMgmt ? 1 : 0);
+    const baseColCount = 27 + (isMgmt ? 1 : 0);
     if (showEL) {
       const elCellIdx = baseColCount + 1;
       row.getCell(elCellIdx).fill = {
@@ -1035,7 +1055,7 @@ function addStaffSheet(
 
   const dataEnd = ws.rowCount;
   const totalRow = ws.addRow(["Total", ...Array(headers.length - 1).fill("")]);
-  for (let col = 5; col <= headers.length; col++) {
+  for (let col = 6; col <= headers.length; col++) {
     const letter = colToLetter(col);
     totalRow.getCell(col).value = {
       formula: `SUM(${letter}5:${letter}${dataEnd})`,
@@ -1294,6 +1314,13 @@ exports.downloadSalaryReportPDF = async (req, res) => {
       };
     });
 
+    records.sort((a, b) => {
+      const nameA = (a.employee?.firstName || "").trim().toLowerCase();
+      const nameB = (b.employee?.firstName || "").trim().toLowerCase();
+      if (nameA !== nameB) return nameA.localeCompare(nameB);
+      return (a.employee?.curEmployeeCode || "").localeCompare(b.employee?.curEmployeeCode || "");
+    });
+
     const showEL = reportType === "with_el" || reportType === "without_el";
     const showWO =
       reportType === "with_weekoff" || reportType === "without_weekoff";
@@ -1322,19 +1349,20 @@ exports.downloadSalaryReportPDF = async (req, res) => {
     // Build column definitions dynamically
     const baseCols = [
       { label: "S.No", width: 26 },
-      { label: "Name", width: 105 },
-      { label: "T.No", width: 42 },
-      { label: "Desig/Dept", width: 68 },
-      { label: "Sal/Day", width: 52 },
+      { label: "Name", width: 100 },
+      { label: "T.No", width: 44 },
+      { label: "Dept", width: 68 },
+      { label: "Desig", width: 55 },
+      { label: "Sal/Day", width: 50 },
       { label: "W.Days", width: 38 },
       { label: "NH/FH", width: 34 },
       { label: "EL", width: 26 },
       { label: "AB", width: 26 },
       { label: "WH", width: 26 },
-      { label: "Basic", width: 52 },
-      { label: "HRA", width: 42 },
-      { label: "Spl", width: 48 },
-      { label: "Conv", width: 42 },
+      { label: "Basic", width: 50 },
+      { label: "HRA", width: 40 },
+      { label: "Spl", width: 46 },
+      { label: "Conv", width: 40 },
       { label: "Earnings", width: 55 },
       { label: "PF", width: 40 },
       { label: "ESI", width: 36 },
@@ -1423,150 +1451,127 @@ exports.downloadSalaryReportPDF = async (req, res) => {
 
     drawHeader();
 
-    const grouped = groupByDept(records);
     let sno = 1;
     let grandNet = 0;
 
-    Object.entries(grouped).forEach(([dept, { records: dRec }]) => {
+    records.forEach((r) => {
       if (y > 510) drawHeader(true);
-      doc
-        .fontSize(7.5)
-        .font("Helvetica-Bold")
-        .fillColor("#1F3864")
-        .text(`Department: ${dept}`, 25, y + 2);
-      y += 13;
+      const e = r.earnings || {};
+      const d = r.deductions || {};
+      const earnings =
+        (e.basic || 0) +
+        (e.hra || 0) +
+        (e.spl || 0) +
+        (e.conv || 0) +
+        (e.nhfh || 0) +
+        (e.incentive || 0);
+      const totalDedu =
+        (d.pf || 0) +
+        (d.esi || 0) +
+        (d.adv || 0) +
+        (d.mess || 0) +
+        (d.store || 0) +
+        (d.other || 0) +
+        (d.eb || 0) +
+        (d.loan || 0);
 
-      dRec.forEach((r) => {
-        if (y > 510) drawHeader(true);
-        const e = r.earnings || {};
-        const d = r.deductions || {};
-        const earnings =
-          (e.basic || 0) +
-          (e.hra || 0) +
-          (e.spl || 0) +
-          (e.conv || 0) +
-          (e.nhfh || 0) +
-          (e.incentive || 0);
-        const totalDedu =
-          (d.pf || 0) +
-          (d.esi || 0) +
-          (d.adv || 0) +
-          (d.mess || 0) +
-          (d.store || 0) +
-          (d.other || 0) +
-          (d.eb || 0) +
-          (d.loan || 0);
+      const isDaily =
+        (r.empCategory || "").toLowerCase() === "worker" ||
+        (r.empSalaryType || "").toLowerCase() === "daily" ||
+        (r.employee?.workingType || "").toLowerCase() === "daily";
+      const workedDays = toNum(r.presentDays) + toNum(r.paidLeaveDays);
+      const earnedBasicSpl = toNum(r.basicSalary) + toNum(e.spl || 0);
+      const dailyWageVal =
+        toNum(r.salaryMaster?.grossSalary) ||
+        toNum(r.salaryMaster?.basicSalary) ||
+        toNum(r.employee?.basicSalary) ||
+        (workedDays > 0 ? Math.round(earnedBasicSpl / workedDays) : 0);
+      const monthlySalVal =
+        toNum(r.salaryMaster?.grossSalary) ||
+        toNum(r.salaryMaster?.monthlySalary) ||
+        toNum(r.employee?.basicSalary) ||
+        toNum(r.totalEarnings);
+      const salaryVal = isDaily ? dailyWageVal : monthlySalVal;
 
-        const isDaily =
-          (r.empCategory || "").toLowerCase() === "worker" ||
-          (r.empSalaryType || "").toLowerCase() === "daily" ||
-          (r.employee?.workingType || "").toLowerCase() === "daily";
-        const workedDays = toNum(r.presentDays) + toNum(r.paidLeaveDays);
-        const earnedBasicSpl = toNum(r.basicSalary) + toNum(e.spl || 0);
-        const dailyWageVal =
-          toNum(r.salaryMaster?.grossSalary) ||
-          toNum(r.salaryMaster?.basicSalary) ||
-          toNum(r.employee?.basicSalary) ||
-          (workedDays > 0 ? Math.round(earnedBasicSpl / workedDays) : 0);
-        const monthlySalVal =
-          toNum(r.salaryMaster?.grossSalary) ||
-          toNum(r.salaryMaster?.monthlySalary) ||
-          toNum(r.employee?.basicSalary) ||
-          toNum(r.totalEarnings);
-        const salaryVal = isDaily ? dailyWageVal : monthlySalVal;
-
-        const baseCells = [
-          sno,
-          r.employee?.firstName || "",
-          r.employee?.newEmployeeCode ? `${r.employee.curEmployeeCode || ''} / ${r.employee.newEmployeeCode}` : (r.employee?.curEmployeeCode || r.employee?.employeeCode || ""),
-          r.employee?.designation?.name ||
-            r.employee?.department?.departmentname ||
-            "",
-          salaryVal,
-          toNum(r.presentDays),
-          toNum(r.nhFhDays),
-          toNum(r.paidLeaveDays),
-          toNum(r.absentDays),
-          toNum(r.weekOffDays),
-          e.basic || 0,
-          e.hra || 0,
-          e.spl || 0,
-          e.conv || 0,
-          earnings,
-          d.pf || 0,
-          d.esi || 0,
-          d.adv || 0,
-          d.mess || 0,
-          d.store || 0,
-          (d.other || 0) + (d.loan || 0),
-          d.eb || 0,
-          totalDedu,
-        ];
-        const extraVals = extraCols.map((ec) => {
-          if (ec.type === "el") return toNum(r.paidLeaveDays);
-          if (ec.type === "wo") return toNum(r.weekOffDays);
-          if (ec.type === "adj") return toNum(r.grandTotalDays);
-          return "";
-        });
-        const cells = [...baseCells, ...extraVals, toNum(r.netSalary)];
-
-        const bg = sno % 2 === 0 ? "#F0F4FF" : "#FFFFFF";
-        let x = 25;
-        doc.fontSize(6.5).font("Helvetica");
-        cells.forEach((val, ci) => {
-          const col = cols[ci];
-          const isEl = col?.type === "el";
-          const isWo = col?.type === "wo";
-          const cellBg = isEl
-            ? reportType === "with_el"
-              ? "#D1FAE5"
-              : "#FFF7ED"
-            : isWo
-              ? reportType === "with_weekoff"
-                ? "#EDE9FE"
-                : "#FEF3C7"
-              : bg;
-
-          doc.rect(x, y, col.width, 13).fillAndStroke(cellBg, "#D0D0D0");
-          doc
-            .fillColor(
-              isEl
-                ? reportType === "with_el"
-                  ? "#065F46"
-                  : "#92400E"
-                : isWo
-                  ? reportType === "with_weekoff"
-                    ? "#5B21B6"
-                    : "#92400E"
-                  : "black",
-            )
-            .text(
-              ci <= 3
-                ? String(val)
-                : val !== 0
-                  ? val.toLocaleString("en-IN")
-                  : "-",
-              x + 2,
-              y + 3,
-              { width: col.width - 4, align: ci <= 3 ? "left" : "right" },
-            );
-          x += col.width;
-        });
-        y += 13;
-        sno++;
-        grandNet += toNum(r.netSalary);
+      const baseCells = [
+        sno,
+        r.employee?.firstName || "",
+        r.employee?.newEmployeeCode ? `${r.employee.curEmployeeCode || ''} / ${r.employee.newEmployeeCode}` : (r.employee?.curEmployeeCode || r.employee?.employeeCode || ""),
+        r.employee?.department?.departmentname || "",
+        r.employee?.designation?.name || "",
+        salaryVal,
+        toNum(r.presentDays),
+        toNum(r.nhFhDays),
+        toNum(r.paidLeaveDays),
+        toNum(r.absentDays),
+        toNum(r.weekOffDays),
+        e.basic || 0,
+        e.hra || 0,
+        e.spl || 0,
+        e.conv || 0,
+        earnings,
+        d.pf || 0,
+        d.esi || 0,
+        d.adv || 0,
+        d.mess || 0,
+        d.store || 0,
+        (d.other || 0) + (d.loan || 0),
+        d.eb || 0,
+        totalDedu,
+      ];
+      const extraVals = extraCols.map((ec) => {
+        if (ec.type === "el") return toNum(r.paidLeaveDays);
+        if (ec.type === "wo") return toNum(r.weekOffDays);
+        if (ec.type === "adj") return toNum(r.grandTotalDays);
+        return "";
       });
+      const cells = [...baseCells, ...extraVals, toNum(r.netSalary)];
 
-      const dTotal = dRec.reduce((s, r) => s + toNum(r.netSalary), 0);
-      if (y > 510) drawHeader(true);
-      doc
-        .fontSize(7)
-        .font("Helvetica-Bold")
-        .fillColor("#000")
-        .text(`Dept Total: ₹${dTotal.toLocaleString("en-IN")}`, 25, y + 2, {
-          align: "right",
-        });
-      y += 15;
+      const bg = sno % 2 === 0 ? "#F0F4FF" : "#FFFFFF";
+      let x = 25;
+      doc.fontSize(6.5).font("Helvetica");
+      cells.forEach((val, ci) => {
+        const col = cols[ci];
+        const isEl = col?.type === "el";
+        const isWo = col?.type === "wo";
+        const cellBg = isEl
+          ? reportType === "with_el"
+            ? "#D1FAE5"
+            : "#FFF7ED"
+          : isWo
+            ? reportType === "with_weekoff"
+              ? "#EDE9FE"
+              : "#FEF3C7"
+            : bg;
+
+        doc.rect(x, y, col.width, 13).fillAndStroke(cellBg, "#D0D0D0");
+        doc
+          .fillColor(
+            isEl
+              ? reportType === "with_el"
+                ? "#065F46"
+                : "#92400E"
+              : isWo
+                ? reportType === "with_weekoff"
+                  ? "#5B21B6"
+                  : "#92400E"
+                : "black",
+          )
+          .text(
+            ci <= 4
+              ? String(val)
+              : val !== 0
+                ? val.toLocaleString("en-IN")
+                : "-",
+            x + 2,
+            y + 3,
+            { width: col.width - 4, align: ci <= 4 ? "left" : "right" },
+          );
+        x += col.width;
+      });
+      y += 13;
+      sno++;
+      grandNet += toNum(r.netSalary);
     });
 
     if (y > 510) {

@@ -155,73 +155,70 @@ const resolveShiftKey = (shiftMap, gradeKey) => {
     const hasII = shiftII > 0;
     const hasIII = shiftIII > 0;
 
-    // Highest combo: II>=12 AND III>0
-    if (
-      available.includes("SHIFT_I_II_III_AND_II_III") &&
-      iiOk &&
-      hasIII &&
-      totalDays >= INCENTIVE_CONFIG.MIN_DAYS
-    )
-      return "SHIFT_I_II_III_AND_II_III";
-
-    // Pure II only
-    if (
-      available.includes("SHIFT_II") &&
-      hasII &&
-      !hasI &&
-      !hasIII &&
-      shiftII >= INCENTIVE_CONFIG.MIN_DAYS
-    )
-      return "SHIFT_II";
-
-    // Pure III only
+    // 1. Pure III only (Night Shift only)
     if (
       available.includes("SHIFT_III") &&
       hasIII &&
       !hasI &&
       !hasII &&
       shiftIII >= INCENTIVE_CONFIG.MIN_DAYS
-    )
+    ) {
       return "SHIFT_III";
+    }
 
-    // I+II or I+III combo
+    // 2. Highest combo: I+II+III / II+III / III Shift (Night shift or 3-shift rotation)
+    // Applies when:
+    // - Worked in all 3 shifts (hasI && hasII && hasIII)
+    // - Worked in II + III ((hasII && hasIII) || (iiOk && hasIII))
+    // - Worked predominant Night Shift (shiftIII >= 12 days)
+    if (
+      available.includes("SHIFT_I_II_III_AND_II_III") &&
+      (
+        (hasI && hasII && hasIII) ||
+        (hasII && hasIII) ||
+        iiiOk
+      ) &&
+      totalDays >= INCENTIVE_CONFIG.MIN_DAYS
+    ) {
+      return "SHIFT_I_II_III_AND_II_III";
+    }
+
+    // 3. Pure II only (Second Shift only)
+    if (
+      available.includes("SHIFT_II") &&
+      hasII &&
+      !hasI &&
+      !hasIII &&
+      shiftII >= INCENTIVE_CONFIG.MIN_DAYS
+    ) {
+      return "SHIFT_II";
+    }
+
+    // 4. Two-shift combo: I+II / I+III / II Shift
+    // Applies when:
+    // - Worked I + II
+    // - Worked I + III
+    // - Or worked predominant II shift (shiftII >= 12 days)
     if (
       available.includes("SHIFT_I_II_AND_I_III") &&
-      iOk &&
-      (iiOk || hasIII) &&
-      !(iiOk && hasIII) &&
+      (
+        (hasI && hasII) ||
+        (hasI && hasIII) ||
+        iiOk
+      ) &&
       totalDays >= INCENTIVE_CONFIG.MIN_DAYS
-    )
+    ) {
       return "SHIFT_I_II_AND_I_III";
+    }
 
+    // 5. Default Day Shift Only
     return "SHIFT_I";
   }
 
   return "SHIFT_I";
 };
 
-const DEFAULT_CONDITIONS = [
-  // MIXING
-  { gradeKey: "MIXING", gradeName: "Mixing", shiftRuleKey: "SHIFT_I", shiftLabel: "Day Shift Only", minDays: 22, lowTierDays: 23, lowTierRate: 15, highTierDays: 24, highTierRate: 20, minComboDays: 12, remarks: "Day Shift Only" },
-  { gradeKey: "MIXING", gradeName: "Mixing", shiftRuleKey: "SHIFT_I_II_AND_I_II_III", shiftLabel: "3 Shifts", minDays: 22, lowTierDays: 23, lowTierRate: 20, highTierDays: 24, highTierRate: 30, minComboDays: 12, remarks: "Must work in II & III Shift for 12 Days in a month" },
-  // OTHERS
-  { gradeKey: "OTHERS", gradeName: "Others", shiftRuleKey: "SHIFT_I", shiftLabel: "Day Shift Only", minDays: 22, lowTierDays: 23, lowTierRate: 25, highTierDays: 24, highTierRate: 30, minComboDays: 12, maleExpOverride: true, maleExpThreshold: 3, remarks: "Day Shift Only (Male >=3yr exp uses this)" },
-  { gradeKey: "OTHERS", gradeName: "Others", shiftRuleKey: "SHIFT_I_II_AND_I_III", shiftLabel: "I+II / I+III / II Shift", minDays: 22, lowTierDays: 23, lowTierRate: 55, highTierDays: 24, highTierRate: 60, minComboDays: 12, remarks: "Two-shift combinations or II Shift" },
-  { gradeKey: "OTHERS", gradeName: "Others", shiftRuleKey: "SHIFT_II", shiftLabel: "II Shift", minDays: 22, lowTierDays: 23, lowTierRate: 55, highTierDays: 24, highTierRate: 60, minComboDays: 12, remarks: "Second Shift" },
-  { gradeKey: "OTHERS", gradeName: "Others", shiftRuleKey: "SHIFT_I_II_III_AND_II_III", shiftLabel: "I+II+III / II+III / III Shift", minDays: 22, lowTierDays: 23, lowTierRate: 70, highTierDays: 24, highTierRate: 80, minComboDays: 12, remarks: "Three shifts / II+III / III Shift" },
-  { gradeKey: "OTHERS", gradeName: "Others", shiftRuleKey: "SHIFT_III", shiftLabel: "III Shift", minDays: 22, lowTierDays: 23, lowTierRate: 70, highTierDays: 24, highTierRate: 80, minComboDays: 12, remarks: "Night Shift" },
-  // HOSTEL
-  { gradeKey: "HOSTEL", gradeName: "Hostel", shiftRuleKey: "SHIFT_I", shiftLabel: "I Shift only", minDays: 22, lowTierDays: 23, lowTierRate: 15, highTierDays: 24, highTierRate: 20, minComboDays: 12, remarks: "Single shift" },
-  { gradeKey: "HOSTEL", gradeName: "Hostel", shiftRuleKey: "SHIFT_I_II_AND_I_II_III", shiftLabel: "Combo Shifts", minDays: 22, lowTierDays: 23, lowTierRate: 20, highTierDays: 24, highTierRate: 30, minComboDays: 12, remarks: "Combination of shifts" },
-  // MAISTRY
-  { gradeKey: "MAISTRY", gradeName: "Maistry", shiftRuleKey: "SHIFT_I_II_III_AND_II_III", shiftLabel: "I, II, III & II, III & III Shift", minDays: 22, lowTierDays: 23, lowTierRate: 45, highTierDays: 24, highTierRate: 50, minComboDays: 12, remarks: "Maistry rotation shifts" },
-  // FITTER
-  { gradeKey: "FITTER", gradeName: "Fitter", shiftRuleKey: "SHIFT_I", shiftLabel: "All Shifts", minDays: 24, lowTierDays: 24, lowTierRate: 30, highTierDays: 25, highTierRate: 35, minComboDays: 12, remarks: "Fitter Grade" },
-  // ELECTRICAL
-  { gradeKey: "ELECTRICAL", gradeName: "Electrical", shiftRuleKey: "SHIFT_I", shiftLabel: "All Shifts", minDays: 24, lowTierDays: 24, lowTierRate: 30, highTierDays: 25, highTierRate: 35, minComboDays: 12, remarks: "Electrical Grade" },
-  // PLANT
-  { gradeKey: "PLANT", gradeName: "Plant", shiftRuleKey: "SHIFT_I", shiftLabel: "All Shifts", minDays: 24, lowTierDays: 24, lowTierRate: 30, highTierDays: 25, highTierRate: 35, minComboDays: 12, remarks: "Plant Grade" },
-];
+const DEFAULT_CONDITIONS = [];
 
 const getEffectiveIncentiveConfig = async (companyId = null) => {
   const config = JSON.parse(JSON.stringify(INCENTIVE_CONFIG));
@@ -229,7 +226,7 @@ const getEffectiveIncentiveConfig = async (companyId = null) => {
   try {
     if (AttendanceIncentiveCondition) {
       await AttendanceIncentiveCondition.sync();
-      const where = { status: "Active" };
+      const where = { status: "Active", gradeKey: { [Op.ne]: "HOSTEL" } };
       if (companyId) {
         where[Op.or] = [{ companyId }, { companyId: null }];
       }
@@ -317,22 +314,43 @@ const isShiftEligible = (shiftMap, shiftRuleKey) => {
           let comboSatisfied = true;
           let hasAtLeastOneRequiredShift = false;
 
-          if (combo.hasOwnProperty("I")) {
-            hasAtLeastOneRequiredShift = true;
-            if (shiftI < Number(combo.I)) {
-              comboSatisfied = false;
+          // Check if combo contains conditions array (new structure)
+          if (Array.isArray(combo.conditions) && combo.conditions.length > 0) {
+            for (const cond of combo.conditions) {
+              const reqDays = Number(cond.minDays) || 0;
+              const shifts = Array.isArray(cond.shifts) ? cond.shifts : [];
+              if (shifts.length > 0) {
+                hasAtLeastOneRequiredShift = true;
+                let totalShiftDays = 0;
+                if (shifts.includes("I")) totalShiftDays += shiftI;
+                if (shifts.includes("II")) totalShiftDays += shiftII;
+                if (shifts.includes("III")) totalShiftDays += shiftIII;
+
+                if (totalShiftDays < reqDays) {
+                  comboSatisfied = false;
+                  break;
+                }
+              }
             }
-          }
-          if (combo.hasOwnProperty("II")) {
-            hasAtLeastOneRequiredShift = true;
-            if (shiftII < Number(combo.II)) {
-              comboSatisfied = false;
+          } else {
+            // Legacy format check
+            if (combo.hasOwnProperty("I")) {
+              hasAtLeastOneRequiredShift = true;
+              if (shiftI < Number(combo.I)) {
+                comboSatisfied = false;
+              }
             }
-          }
-          if (combo.hasOwnProperty("III")) {
-            hasAtLeastOneRequiredShift = true;
-            if (shiftIII < Number(combo.III)) {
-              comboSatisfied = false;
+            if (combo.hasOwnProperty("II")) {
+              hasAtLeastOneRequiredShift = true;
+              if (shiftII < Number(combo.II)) {
+                comboSatisfied = false;
+              }
+            }
+            if (combo.hasOwnProperty("III")) {
+              hasAtLeastOneRequiredShift = true;
+              if (shiftIII < Number(combo.III)) {
+                comboSatisfied = false;
+              }
             }
           }
 
@@ -382,33 +400,66 @@ const isShiftEligible = (shiftMap, shiftRuleKey) => {
   return (shiftI + shiftII + shiftIII) > 0;
 };
 
-const findMatchingCondition = (employee, categoryName, dbConditions, resolvedShiftKey) => {
-  const empCatId = employee.categoryId || null;
-  const empDeptId = employee.departmentId || null;
+const findMatchingCondition = (employee, categoryName, dbConditions, resolvedShiftKey, shiftMap = null) => {
+  const empDeptId = employee.departmentId ? Number(employee.departmentId) : null;
   const designationName = employee.designation?.name || "";
   const stdGradeKey = resolveGradeKey(categoryName, designationName);
+  const empGender = String(employee.gender || "").toUpperCase();
 
-  // 1. Match specific category AND specific department AND resolvedShiftKey
-  let match = dbConditions.find(
-    (c) => c.categoryId === empCatId && c.departmentId === empDeptId && c.shiftRuleKey === resolvedShiftKey
+  const isEligibleForCond = (c) => {
+    if (c.gender && c.gender !== "ALL" && c.gender !== empGender) return false;
+    if (c.shiftRuleKey && (c.shiftRuleKey.startsWith("[") || c.shiftRuleKey.startsWith("{"))) {
+      return shiftMap ? isShiftEligible(shiftMap, c.shiftRuleKey) : true;
+    }
+    return c.shiftRuleKey === resolvedShiftKey;
+  };
+
+  const matchesDept = (c) => {
+    if (c.departmentIds) {
+      try {
+        const dIds = typeof c.departmentIds === "string" ? JSON.parse(c.departmentIds) : c.departmentIds;
+        if (Array.isArray(dIds) && dIds.length > 0) {
+          return empDeptId && dIds.map(Number).includes(empDeptId);
+        }
+      } catch (e) {}
+    }
+    if (c.departmentId) {
+      return empDeptId && Number(c.departmentId) === empDeptId;
+    }
+    return false;
+  };
+
+  const isUniversalDept = (c) => {
+    if (c.departmentId) return false;
+    if (c.departmentIds) {
+      try {
+        const dIds = typeof c.departmentIds === "string" ? JSON.parse(c.departmentIds) : c.departmentIds;
+        if (Array.isArray(dIds) && dIds.length > 0) return false;
+      } catch (e) {}
+    }
+    return true;
+  };
+
+  // CRITICAL: Regular Attendance Incentive must strictly NEVER match HOSTEL conditions!
+  const regularConditions = (dbConditions || []).filter(
+    (c) => c.status === "Active" && c.gradeKey !== "HOSTEL"
+  );
+
+  // 1. Match specific department (single or multiple) AND shift eligibility
+  let match = regularConditions.find(
+    (c) => matchesDept(c) && isEligibleForCond(c)
   );
   if (match) return match;
 
-  // 2. Match specific category (any department) AND resolvedShiftKey
-  match = dbConditions.find(
-    (c) => c.categoryId === empCatId && !c.departmentId && c.shiftRuleKey === resolvedShiftKey
+  // 2. Match standard gradeKey (universal across departments) AND shift eligibility
+  match = regularConditions.find(
+    (c) => isUniversalDept(c) && c.gradeKey === stdGradeKey && isEligibleForCond(c)
   );
   if (match) return match;
 
-  // 3. Match specific department (any category) AND resolvedShiftKey
-  match = dbConditions.find(
-    (c) => !c.categoryId && c.departmentId === empDeptId && c.shiftRuleKey === resolvedShiftKey
-  );
-  if (match) return match;
-
-  // 4. Match gradeKey AND resolvedShiftKey
-  match = dbConditions.find(
-    (c) => !c.categoryId && !c.departmentId && c.gradeKey === stdGradeKey && c.shiftRuleKey === resolvedShiftKey
+  // 3. Match universal rule (All Departments) AND shift eligibility
+  match = regularConditions.find(
+    (c) => isUniversalDept(c) && isEligibleForCond(c)
   );
   if (match) return match;
 
@@ -462,8 +513,21 @@ const calculateIncentive = (
   }
 
   const stdGradeKey = resolveGradeKey(categoryName, designationName);
-  const resolvedShiftKey = resolveShiftKey(shiftMap, stdGradeKey);
-  const cond = findMatchingCondition(employee, categoryName, dbConditions, resolvedShiftKey);
+  let resolvedShiftKey = resolveShiftKey(shiftMap, stdGradeKey);
+
+  // Male experience override: Male workers with >= 3 years exp in OTHERS are restricted to Day Shift rate
+  let maleOverrideApplied = false;
+  if (stdGradeKey === "OTHERS") {
+    const isMale = String(employee.gender || "").toUpperCase() === "MALE";
+    const expYears = getExperienceYears(employee.dateOfJoining);
+    const threshold = config.MALE_EXP_THRESHOLD !== undefined ? config.MALE_EXP_THRESHOLD : 3;
+    if (isMale && expYears >= threshold) {
+      resolvedShiftKey = "SHIFT_I";
+      maleOverrideApplied = true;
+    }
+  }
+
+  const cond = findMatchingCondition(employee, categoryName, dbConditions, resolvedShiftKey, shiftMap);
 
   let minDays;
   let highTierDays;
@@ -539,14 +603,11 @@ const calculateIncentive = (
       note: `Not eligible based on worked shifts for rule ${shiftRuleKey}`,
     };
   }
-  let maleOverrideApplied = false;
-
   // Male experience override (OTHERS only)
   if (maleExpOverride) {
     const isMale = String(employee.gender || "").toUpperCase() === "MALE";
     const expYears = getExperienceYears(employee.dateOfJoining);
     if (isMale && expYears >= maleExpThreshold) {
-      // For standard others we might adjust shiftKey, but keep generic rate logic
       maleOverrideApplied = true;
     }
   }
@@ -613,11 +674,17 @@ exports.getAttendanceIncentives = async (req, res) => {
       ],
     });
 
-    if (!employees.length) {
+    // Exclude employees belonging to HOSTEL category - pure for Hostel Attendance Incentive!
+    const regularEmployees = employees.filter((emp) => {
+      const catName = (emp.category?.categoryName || "").toUpperCase();
+      return !catName.includes("HOSTEL");
+    });
+
+    if (!regularEmployees.length) {
       return res.status(200).json({ records: [] });
     }
 
-    const employeeIdList = employees.map((e) => e.id);
+    const employeeIdList = regularEmployees.map((e) => e.id);
 
     const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
     const lastDay = new Date(year, month, 0).getDate();
@@ -643,7 +710,11 @@ exports.getAttendanceIncentives = async (req, res) => {
         attributes: ["employeeId", "days", "slabDays", "otDays", "shiftTypeId", "entryDate", "slot"],
       }),
       AttendanceIncentiveCondition.findAll({
-        where: { companyId, status: "Active" },
+        where: {
+          companyId,
+          status: "Active",
+          gradeKey: { [Op.ne]: "HOSTEL" },
+        },
       }),
       ShiftType.findAll({
         where: { companyId },
@@ -689,7 +760,7 @@ exports.getAttendanceIncentives = async (req, res) => {
 
     const effectiveConfig = await getEffectiveIncentiveConfig(companyId);
 
-    const records = employees.map((emp) => {
+    const records = regularEmployees.map((emp) => {
       const categoryName = emp.category?.categoryName || "";
       const saved = savedByEmp[emp.id];
 
@@ -844,7 +915,11 @@ exports.recalculateIncentive = async (req, res) => {
     const effectiveConfig = await getEffectiveIncentiveConfig(companyId);
 
     const activeDbConditions = await AttendanceIncentiveCondition.findAll({
-      where: { companyId, status: "Active" },
+      where: {
+        companyId,
+        status: "Active",
+        gradeKey: { [Op.ne]: "HOSTEL" },
+      },
     });
 
     const calc = calculateIncentive(
@@ -1234,12 +1309,28 @@ exports.saveDailyEntries = async (req, res) => {
 
 exports.getConditions = async (req, res) => {
   try {
-    const { companyId } = req.query;
+    const { companyId, gradeKey } = req.query;
     await AttendanceIncentiveCondition.sync();
+
+    const isHostel = Boolean(
+      req.baseUrl?.includes("hostel") ||
+      req.originalUrl?.includes("hostel")
+    );
 
     const where = { status: "Active" };
     if (companyId) {
       where[Op.or] = [{ companyId }, { companyId: null }];
+    }
+
+    if (isHostel) {
+      where.gradeKey = "HOSTEL";
+    } else {
+      // Regular attendance incentive conditions must NEVER include HOSTEL conditions!
+      if (gradeKey && gradeKey !== "ALL" && gradeKey !== "NON_HOSTEL" && gradeKey !== "HOSTEL") {
+        where.gradeKey = gradeKey;
+      } else {
+        where.gradeKey = { [Op.ne]: "HOSTEL" };
+      }
     }
 
     let conditions = await AttendanceIncentiveCondition.findAll({
@@ -1251,13 +1342,8 @@ exports.getConditions = async (req, res) => {
       order: [["gradeKey", "ASC"], ["id", "ASC"]],
     });
 
-    // Auto-seed if empty
-    if (!conditions || conditions.length === 0) {
-      const toCreate = DEFAULT_CONDITIONS.map((c) => ({
-        ...c,
-        companyId: companyId ? parseInt(companyId, 10) : null,
-      }));
-      conditions = await AttendanceIncentiveCondition.bulkCreate(toCreate);
+    if (!conditions) {
+      conditions = [];
     }
 
     return res.status(200).json({
@@ -1281,8 +1367,8 @@ exports.createCondition = async (req, res) => {
   try {
     const {
       companyId,
-      categoryId,
       departmentId,
+      departmentIds,
       shiftTypeId,
       gender,
       gradeKey,
@@ -1300,17 +1386,59 @@ exports.createCondition = async (req, res) => {
       remarks,
     } = req.body;
 
-    const gKey = (gradeKey || gradeName || "CUSTOM").toUpperCase().trim().replace(/[^A-Z0-9_]/g, "_");
-    const sKey = (shiftRuleKey || shiftLabel || "SHIFT_I").trim().replace(/[^A-Za-z0-9_]/g, "_");
+    const isHostel = Boolean(
+      req.baseUrl?.includes("hostel") ||
+      req.originalUrl?.includes("hostel")
+    );
+
+    let gKey;
+    if (isHostel) {
+      gKey = "HOSTEL";
+    } else {
+      gKey = (gradeKey || gradeName || "CUSTOM").toUpperCase().trim().replace(/[^A-Z0-9_]/g, "_");
+      // If creating from regular page, ensure it is NEVER saved with gradeKey "HOSTEL"
+      if (gKey === "HOSTEL") {
+        gKey = "ALL_DEPARTMENTS";
+      }
+    }
+
+    let sKey = (shiftRuleKey || shiftLabel || "SHIFT_I").trim();
+    if (!sKey.startsWith("[") && !sKey.startsWith("{")) {
+      sKey = sKey.replace(/[^A-Za-z0-9_]/g, "_");
+    }
+
+    let finalDeptId = null;
+    let finalDeptIds = null;
+
+    if (departmentIds) {
+      const arr = Array.isArray(departmentIds)
+        ? departmentIds
+        : (typeof departmentIds === "string" ? (departmentIds.startsWith("[") ? JSON.parse(departmentIds) : departmentIds.split(",")) : []);
+
+      if (Array.isArray(arr) && !arr.includes("ALL")) {
+        const validIds = arr.map(Number).filter((id) => !isNaN(id) && id > 0);
+        if (validIds.length === 1) {
+          finalDeptId = validIds[0];
+          finalDeptIds = JSON.stringify(validIds);
+        } else if (validIds.length > 1) {
+          finalDeptId = null;
+          finalDeptIds = JSON.stringify(validIds);
+        }
+      }
+    } else if (departmentId && departmentId !== "ALL") {
+      finalDeptId = parseInt(departmentId, 10);
+      finalDeptIds = JSON.stringify([finalDeptId]);
+    }
 
     const newCond = await AttendanceIncentiveCondition.create({
       companyId: companyId ? parseInt(companyId, 10) : null,
-      categoryId: categoryId ? parseInt(categoryId, 10) : null,
-      departmentId: departmentId ? parseInt(departmentId, 10) : null,
+      categoryId: null, // Category option removed
+      departmentId: finalDeptId,
+      departmentIds: finalDeptIds,
       shiftTypeId: shiftTypeId ? parseInt(shiftTypeId, 10) : null,
       gender: gender || "ALL",
       gradeKey: gKey,
-      gradeName: gradeName || gradeKey || "Custom Grade",
+      gradeName: gradeName || (isHostel ? "Hostel" : gradeKey || "Custom Grade"),
       shiftRuleKey: sKey,
       shiftLabel: shiftLabel || shiftRuleKey || "All Shifts",
       minDays: minDays !== undefined && minDays !== "" ? parseInt(minDays, 10) : 22,
@@ -1335,15 +1463,28 @@ exports.createCondition = async (req, res) => {
 exports.updateCondition = async (req, res) => {
   try {
     const { id } = req.params;
+    const isHostel = Boolean(
+      req.baseUrl?.includes("hostel") ||
+      req.originalUrl?.includes("hostel")
+    );
+
     const cond = await AttendanceIncentiveCondition.findByPk(id);
     if (!cond) {
       return res.status(404).json({ success: false, message: "Condition not found." });
     }
 
+    // Strict boundary check: prevent updating hostel condition from regular route and vice-versa
+    if (isHostel && cond.gradeKey !== "HOSTEL") {
+      return res.status(400).json({ success: false, message: "Cannot edit regular incentive condition from Hostel Management." });
+    }
+    if (!isHostel && cond.gradeKey === "HOSTEL") {
+      return res.status(400).json({ success: false, message: "Cannot edit Hostel condition from Regular Attendance Incentive Management." });
+    }
+
     const {
       companyId,
-      categoryId,
       departmentId,
+      departmentIds,
       shiftTypeId,
       gender,
       gradeKey,
@@ -1362,13 +1503,61 @@ exports.updateCondition = async (req, res) => {
       status,
     } = req.body;
 
-    const gKey = gradeKey ? gradeKey.toUpperCase().trim().replace(/[^A-Z0-9_]/g, "_") : (gradeName ? gradeName.toUpperCase().trim().replace(/[^A-Z0-9_]/g, "_") : undefined);
-    const sKey = shiftRuleKey ? shiftRuleKey.trim().replace(/[^A-Za-z0-9_]/g, "_") : undefined;
+    let gKey;
+    if (isHostel) {
+      gKey = "HOSTEL";
+    } else if (gradeKey) {
+      gKey = gradeKey.toUpperCase().trim().replace(/[^A-Z0-9_]/g, "_");
+      if (gKey === "HOSTEL") gKey = "ALL_DEPARTMENTS";
+    } else if (gradeName) {
+      gKey = gradeName.toUpperCase().trim().replace(/[^A-Z0-9_]/g, "_");
+      if (gKey === "HOSTEL") gKey = "ALL_DEPARTMENTS";
+    }
+
+    let sKey = shiftRuleKey ? shiftRuleKey.trim() : undefined;
+    if (sKey && !sKey.startsWith("[") && !sKey.startsWith("{")) {
+      sKey = sKey.replace(/[^A-Za-z0-9_]/g, "_");
+    }
+
+    let finalDeptId;
+    let finalDeptIds;
+
+    if (departmentIds !== undefined) {
+      const arr = Array.isArray(departmentIds)
+        ? departmentIds
+        : (typeof departmentIds === "string" ? (departmentIds.startsWith("[") ? JSON.parse(departmentIds) : departmentIds.split(",")) : []);
+
+      if (Array.isArray(arr) && !arr.includes("ALL")) {
+        const validIds = arr.map(Number).filter((id) => !isNaN(id) && id > 0);
+        if (validIds.length === 1) {
+          finalDeptId = validIds[0];
+          finalDeptIds = JSON.stringify(validIds);
+        } else if (validIds.length > 1) {
+          finalDeptId = null;
+          finalDeptIds = JSON.stringify(validIds);
+        } else {
+          finalDeptId = null;
+          finalDeptIds = null;
+        }
+      } else {
+        finalDeptId = null;
+        finalDeptIds = null;
+      }
+    } else if (departmentId !== undefined) {
+      if (departmentId && departmentId !== "ALL") {
+        finalDeptId = parseInt(departmentId, 10);
+        finalDeptIds = JSON.stringify([finalDeptId]);
+      } else {
+        finalDeptId = null;
+        finalDeptIds = null;
+      }
+    }
 
     await cond.update({
       ...(companyId !== undefined && { companyId: companyId ? parseInt(companyId, 10) : null }),
-      ...(categoryId !== undefined && { categoryId: categoryId ? parseInt(categoryId, 10) : null }),
-      ...(departmentId !== undefined && { departmentId: departmentId ? parseInt(departmentId, 10) : null }),
+      categoryId: null, // Category option removed
+      ...(finalDeptId !== undefined && { departmentId: finalDeptId }),
+      ...(finalDeptIds !== undefined && { departmentIds: finalDeptIds }),
       ...(shiftTypeId !== undefined && { shiftTypeId: shiftTypeId ? parseInt(shiftTypeId, 10) : null }),
       ...(gender !== undefined && { gender }),
       ...(gKey && { gradeKey: gKey }),
@@ -1397,9 +1586,21 @@ exports.updateCondition = async (req, res) => {
 exports.deleteCondition = async (req, res) => {
   try {
     const { id } = req.params;
+    const isHostel = Boolean(
+      req.baseUrl?.includes("hostel") ||
+      req.originalUrl?.includes("hostel")
+    );
+
     const cond = await AttendanceIncentiveCondition.findByPk(id);
     if (!cond) {
       return res.status(404).json({ success: false, message: "Condition not found." });
+    }
+
+    if (isHostel && cond.gradeKey !== "HOSTEL") {
+      return res.status(400).json({ success: false, message: "Cannot delete regular incentive condition from Hostel Management." });
+    }
+    if (!isHostel && cond.gradeKey === "HOSTEL") {
+      return res.status(400).json({ success: false, message: "Cannot delete Hostel condition from Regular Attendance Incentive Management." });
     }
 
     await cond.destroy();
@@ -1413,23 +1614,28 @@ exports.deleteCondition = async (req, res) => {
 exports.resetConditions = async (req, res) => {
   try {
     const { companyId } = req.body;
+    const isHostel = Boolean(
+      req.baseUrl?.includes("hostel") ||
+      req.originalUrl?.includes("hostel")
+    );
+
     const where = {};
     if (companyId) {
       where[Op.or] = [{ companyId }, { companyId: null }];
     }
 
-    await AttendanceIncentiveCondition.destroy({ where });
+    if (isHostel) {
+      where.gradeKey = "HOSTEL";
+    } else {
+      where.gradeKey = { [Op.ne]: "HOSTEL" };
+    }
 
-    const toCreate = DEFAULT_CONDITIONS.map((c) => ({
-      ...c,
-      companyId: companyId ? parseInt(companyId, 10) : null,
-    }));
-    const conditions = await AttendanceIncentiveCondition.bulkCreate(toCreate);
+    await AttendanceIncentiveCondition.destroy({ where });
 
     return res.status(200).json({
       success: true,
-      conditions,
-      message: "Incentive conditions successfully reset to system defaults.",
+      conditions: [],
+      message: isHostel ? "Hostel incentive conditions cleared successfully." : "All regular incentive conditions cleared successfully.",
     });
   } catch (error) {
     console.error("Error resetting incentive conditions:", error);

@@ -74,6 +74,322 @@ const GradePill = ({ gradeKey }) => {
   );
 };
 
+const ShiftMultiSelectDropdown = ({ selectedShifts = [], onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const SHIFT_OPTIONS = [
+    { key: "I", label: "Shift I" },
+    { key: "II", label: "Shift II" },
+    { key: "III", label: "Shift III" },
+  ];
+
+  const toggleShift = (key) => {
+    let updated;
+    if (selectedShifts.includes(key)) {
+      updated = selectedShifts.filter((s) => s !== key);
+    } else {
+      updated = [...selectedShifts, key].sort((a, b) => {
+        const order = { I: 1, II: 2, III: 3 };
+        return (order[a] || 0) - (order[b] || 0);
+      });
+    }
+    onChange(updated);
+  };
+
+  const displayText =
+    selectedShifts.length > 0
+      ? selectedShifts.map((s) => `Shift ${s}`).join(", ")
+      : "-- Select Shift(s) --";
+
+  return (
+    <div className="relative inline-block w-full" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-xs font-semibold rounded-lg border transition ${selectedShifts.length > 0
+            ? "bg-white border-blue-300 text-blue-900 shadow-sm"
+            : "bg-white border-amber-300 text-amber-600"
+          } focus:outline-none focus:ring-2 focus:ring-blue-500`}
+      >
+        <div className="flex items-center gap-1.5 truncate">
+          <span className="text-slate-400">🕒</span>
+          <span className="truncate">{displayText}</span>
+        </div>
+        <svg
+          className={`w-3.5 h-3.5 text-slate-500 flex-shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-xl py-1 animate-in fade-in zoom-in-95 duration-100">
+          <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 flex items-center justify-between">
+            <span>Select Shift(s)</span>
+            <span className="text-[10px] text-blue-600 font-normal">Multiple selectable</span>
+          </div>
+          <div className="py-1">
+            {SHIFT_OPTIONS.map((opt) => {
+              const isChecked = selectedShifts.includes(opt.key);
+              return (
+                <label
+                  key={opt.key}
+                  className="flex items-center gap-2.5 px-3 py-2 text-xs hover:bg-blue-50 cursor-pointer select-none transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => toggleShift(opt.key)}
+                    className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                  />
+                  <span className={`font-medium ${isChecked ? "text-blue-700 font-bold" : "text-slate-700"}`}>
+                    {opt.label}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          <div className="px-2 pt-1 pb-1 border-t border-slate-100 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold px-2 py-0.5 rounded hover:bg-blue-50"
+            >
+              Done ✓
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const DepartmentMultiSelectDropdown = ({ departments = [], selectedIds = ["ALL"], onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+        setSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const isAll = !selectedIds || selectedIds.includes("ALL") || selectedIds.length === 0 || (departments.length > 0 && selectedIds.length === departments.length);
+
+  const filtered = departments.filter((d) => {
+    const name = d.departmentname || d.name || "";
+    return name.toLowerCase().includes(search.toLowerCase());
+  });
+
+  const toggleAll = () => {
+    if (isAll) {
+      onChange([]);
+    } else {
+      onChange(["ALL"]);
+    }
+  };
+
+  const toggleDept = (id) => {
+    if (isAll) {
+      onChange([id]);
+      return;
+    }
+
+    let updated;
+    if (selectedIds.includes(id)) {
+      updated = selectedIds.filter((x) => x !== id);
+    } else {
+      updated = [...selectedIds, id];
+    }
+
+    if (departments.length > 0 && updated.length === departments.length) {
+      onChange(["ALL"]);
+    } else {
+      onChange(updated);
+    }
+  };
+
+  let displayText = "All Departments";
+  if (!isAll) {
+    const names = selectedIds
+      .map((id) => {
+        const found = departments.find((d) => d.id === id);
+        return found ? (found.departmentname || found.name) : `ID ${id}`;
+      })
+      .filter(Boolean);
+
+    if (names.length === 0) {
+      displayText = "-- Select Department(s) --";
+    } else if (names.length <= 2) {
+      displayText = names.join(", ");
+    } else {
+      displayText = `${names.slice(0, 2).join(", ")} (+${names.length - 2} more)`;
+    }
+  }
+
+  return (
+    <div className="relative inline-block w-full" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-slate-200 bg-slate-50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
+      >
+        <div className="flex items-center gap-2 truncate">
+          <span className="text-slate-500">🏢</span>
+          <span className={`truncate ${isAll ? "font-semibold text-blue-700" : "text-slate-800 font-semibold"}`}>
+            {displayText}
+          </span>
+          {isAll && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">
+              ALL
+            </span>
+          )}
+          {!isAll && selectedIds.length > 0 && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800">
+              {selectedIds.length} Selected
+            </span>
+          )}
+        </div>
+        <svg
+          className={`w-4 h-4 text-slate-400 flex-shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl py-2 animate-in fade-in zoom-in-95 duration-100 max-h-72 flex flex-col">
+          <div className="px-3 pb-2 border-b border-slate-100">
+            <input
+              type="text"
+              placeholder="Search departments…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white"
+              autoFocus
+            />
+          </div>
+
+          <div className="py-1 border-b border-slate-100 bg-slate-50/50">
+            <label
+              className="flex items-center justify-between px-3 py-1.5 text-xs hover:bg-blue-50 cursor-pointer select-none transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={isAll}
+                  onChange={toggleAll}
+                  className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                />
+                <span className={`font-bold ${isAll ? "text-blue-700" : "text-slate-700"}`}>
+                  All Departments
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-400 font-semibold">
+                {departments.length} total
+              </span>
+            </label>
+          </div>
+
+          <div className="overflow-y-auto flex-1 py-1">
+            {filtered.map((dept) => {
+              const isChecked = isAll || selectedIds.includes(dept.id);
+              return (
+                <label
+                  key={dept.id}
+                  className="flex items-center gap-2.5 px-3 py-1.5 text-xs hover:bg-blue-50 cursor-pointer select-none transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => toggleDept(dept.id)}
+                    className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                  />
+                  <span className={`font-medium ${isChecked ? "text-blue-900 font-semibold" : "text-slate-700"}`}>
+                    {dept.departmentname || dept.name}
+                  </span>
+                </label>
+              );
+            })}
+            {filtered.length === 0 && (
+              <p className="text-center text-slate-400 text-xs py-3">
+                No matching departments
+              </p>
+            )}
+          </div>
+          <div className="px-3 pt-2 pb-1 border-t border-slate-100 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => onChange(["ALL"])}
+              className="text-[11px] text-slate-500 hover:text-slate-800 font-medium"
+            >
+              Reset to All
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold px-2 py-0.5 rounded hover:bg-blue-50"
+            >
+              Done ✓
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const formatConditionDepts = (cond, departments = []) => {
+  if (cond.departmentIds) {
+    try {
+      const parsed = typeof cond.departmentIds === "string" ? JSON.parse(cond.departmentIds) : cond.departmentIds;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        if (departments.length > 0 && parsed.length === departments.length) {
+          return "All Departments";
+        }
+        const names = parsed
+          .map((id) => {
+            const found = departments.find((d) => d.id === id);
+            return found ? (found.departmentname || found.name) : `ID ${id}`;
+          })
+          .filter(Boolean);
+        return names.join(", ");
+      }
+    } catch (e) { }
+  }
+  if (cond.department?.departmentname) {
+    return cond.department.departmentname;
+  }
+  if (cond.departmentId) {
+    const found = departments.find((d) => d.id === cond.departmentId);
+    return found ? (found.departmentname || found.name) : `ID ${cond.departmentId}`;
+  }
+  return "All Departments";
+};
+
 const ShiftBreakdown = ({ breakdown }) => {
   if (!breakdown || !Object.keys(breakdown).length)
     return <span className="text-gray-400 text-xs">No data</span>;
@@ -636,8 +952,9 @@ export default function AttendanceIncentiveManagement() {
     maleExpThreshold: 3,
   });
   const [conditionForm, setConditionForm] = useState({
-    gradeKey: "MIXING",
-    gradeName: "Mixing",
+    selectedDepartments: ["ALL"],
+    gradeKey: "ALL_DEPARTMENTS",
+    gradeName: "All Departments",
     shiftRuleKey: "SHIFT_I",
     shiftLabel: "Day Shift Only",
     minDays: 22,
@@ -676,19 +993,66 @@ export default function AttendanceIncentiveManagement() {
 
   const parseShiftRuleKeyToCombos = (ruleKey, minComboDays) => {
     if (!ruleKey) {
-      return [{ id: String(Math.random()), I: { enabled: false, minDays: "" }, II: { enabled: false, minDays: "" }, III: { enabled: false, minDays: "" } }];
+      return [{
+        id: String(Math.random()),
+        conditions: [{ id: String(Math.random()), shifts: ["I"], minDays: "12" }],
+      }];
     }
 
     if (ruleKey.startsWith("[") || ruleKey.startsWith("{")) {
       try {
         const parsed = JSON.parse(ruleKey);
         if (Array.isArray(parsed)) {
-          return parsed.map((combo) => ({
-            id: String(Math.random()),
-            I: { enabled: combo.hasOwnProperty("I"), minDays: combo.hasOwnProperty("I") ? String(combo.I) : "" },
-            II: { enabled: combo.hasOwnProperty("II"), minDays: combo.hasOwnProperty("II") ? String(combo.II) : "" },
-            III: { enabled: combo.hasOwnProperty("III"), minDays: combo.hasOwnProperty("III") ? String(combo.III) : "" },
-          }));
+          return parsed.map((combo) => {
+            // If already in new conditions array structure:
+            if (Array.isArray(combo.conditions) && combo.conditions.length > 0) {
+              return {
+                id: String(Math.random()),
+                conditions: combo.conditions.map((c) => ({
+                  id: String(Math.random()),
+                  shifts: Array.isArray(c.shifts) && c.shifts.length > 0 ? c.shifts : ["I"],
+                  minDays: c.minDays !== undefined && c.minDays !== null ? String(c.minDays) : "12",
+                })),
+              };
+            }
+
+            // Legacy format check (properties "I", "II", "III"):
+            const conds = [];
+            if (combo.hasOwnProperty("I")) {
+              conds.push({
+                id: String(Math.random()),
+                shifts: ["I"],
+                minDays: String(combo.I || "12"),
+              });
+            }
+            if (combo.hasOwnProperty("II")) {
+              conds.push({
+                id: String(Math.random()),
+                shifts: ["II"],
+                minDays: String(combo.II || "12"),
+              });
+            }
+            if (combo.hasOwnProperty("III")) {
+              conds.push({
+                id: String(Math.random()),
+                shifts: ["III"],
+                minDays: String(combo.III || "12"),
+              });
+            }
+
+            if (conds.length === 0) {
+              conds.push({
+                id: String(Math.random()),
+                shifts: ["I"],
+                minDays: minComboDays ? String(minComboDays) : "12",
+              });
+            }
+
+            return {
+              id: String(Math.random()),
+              conditions: conds,
+            };
+          });
         }
       } catch (e) {
         console.error("Error parsing ruleKey JSON:", e);
@@ -696,35 +1060,38 @@ export default function AttendanceIncentiveManagement() {
     }
 
     const fallbackMin = minComboDays ? String(minComboDays) : "12";
-    const combo = {
-      id: String(Math.random()),
-      I: { enabled: false, minDays: "" },
-      II: { enabled: false, minDays: "" },
-      III: { enabled: false, minDays: "" },
-    };
+    const upper = (ruleKey || "").toUpperCase();
 
-    const upper = ruleKey.toUpperCase();
     if (upper.includes("ALL_SHIFTS") || upper.includes("ANY")) {
-      combo.I = { enabled: true, minDays: fallbackMin };
-      combo.II = { enabled: true, minDays: fallbackMin };
-      combo.III = { enabled: true, minDays: fallbackMin };
-    } else {
-      if (upper.includes("SHIFT_I") || upper.includes("_I_") || upper.startsWith("I_")) {
-        combo.I = { enabled: true, minDays: fallbackMin };
-      }
-      if (upper.includes("SHIFT_II") || upper.includes("_II") || upper.includes("II_")) {
-        combo.II = { enabled: true, minDays: fallbackMin };
-      }
-      if (upper.includes("SHIFT_III") || upper.includes("_III")) {
-        combo.III = { enabled: true, minDays: fallbackMin };
-      }
+      return [{
+        id: String(Math.random()),
+        conditions: [{
+          id: String(Math.random()),
+          shifts: ["I", "II", "III"],
+          minDays: fallbackMin,
+        }],
+      }];
     }
 
-    if (!combo.I.enabled && !combo.II.enabled && !combo.III.enabled) {
-      combo.I = { enabled: true, minDays: "" };
+    const selectedShifts = [];
+    if (upper.includes("SHIFT_I") || upper.includes("_I_") || upper.startsWith("I_")) {
+      selectedShifts.push("I");
+    }
+    if (upper.includes("SHIFT_II") || upper.includes("_II") || upper.includes("II_")) {
+      selectedShifts.push("II");
+    }
+    if (upper.includes("SHIFT_III") || upper.includes("_III")) {
+      selectedShifts.push("III");
     }
 
-    return [combo];
+    return [{
+      id: String(Math.random()),
+      conditions: [{
+        id: String(Math.random()),
+        shifts: selectedShifts.length > 0 ? selectedShifts : ["I"],
+        minDays: fallbackMin,
+      }],
+    }];
   };
 
   const serializeCombosToRuleKeyAndLabel = (combos) => {
@@ -732,28 +1099,37 @@ export default function AttendanceIncentiveManagement() {
     const labelParts = [];
 
     for (const c of combos) {
-      const activeCombo = {};
-      const comboLabelParts = [];
+      const activeConditions = [];
+      const conditionLabels = [];
 
-      if (c.I.enabled) {
-        const min = c.I.minDays ? parseInt(c.I.minDays, 10) : 1;
-        activeCombo["I"] = min;
-        comboLabelParts.push(`I >= ${min}d`);
-      }
-      if (c.II.enabled) {
-        const min = c.II.minDays ? parseInt(c.II.minDays, 10) : 1;
-        activeCombo["II"] = min;
-        comboLabelParts.push(`II >= ${min}d`);
-      }
-      if (c.III.enabled) {
-        const min = c.III.minDays ? parseInt(c.III.minDays, 10) : 1;
-        activeCombo["III"] = min;
-        comboLabelParts.push(`III >= ${min}d`);
+      for (const cond of (c.conditions || [])) {
+        if (cond.shifts && cond.shifts.length > 0) {
+          const min = cond.minDays !== "" && !isNaN(cond.minDays) ? parseInt(cond.minDays, 10) : 1;
+          activeConditions.push({
+            shifts: cond.shifts,
+            minDays: min,
+          });
+          const shiftStr = cond.shifts.map((s) => `Shift ${s}`).join(" + ");
+          conditionLabels.push(`${shiftStr} >= ${min}d`);
+        }
       }
 
-      if (Object.keys(activeCombo).length > 0) {
-        activeCombos.push(activeCombo);
-        labelParts.push(`(${comboLabelParts.join(" & ")})`);
+      if (activeConditions.length > 0) {
+        const comboObj = {
+          conditions: activeConditions,
+        };
+        // Backwards compatibility for single shifts
+        for (const cond of activeConditions) {
+          if (cond.shifts.length === 1) {
+            comboObj[cond.shifts[0]] = cond.minDays;
+          }
+        }
+        activeCombos.push(comboObj);
+        labelParts.push(
+          conditionLabels.length > 1
+            ? `(${conditionLabels.join(" & ")})`
+            : conditionLabels[0]
+        );
       }
     }
 
@@ -767,10 +1143,14 @@ export default function AttendanceIncentiveManagement() {
     setConditionCombos((prev) => [
       ...prev,
       {
-        id: String(Math.random()),
-        I: { enabled: false, minDays: "" },
-        II: { enabled: false, minDays: "" },
-        III: { enabled: false, minDays: "" },
+        id: String(Date.now()) + Math.random().toString(36).substr(2, 4),
+        conditions: [
+          {
+            id: String(Date.now()) + Math.random().toString(36).substr(2, 4),
+            shifts: ["I"],
+            minDays: "12",
+          },
+        ],
       },
     ]);
   };
@@ -779,16 +1159,20 @@ export default function AttendanceIncentiveManagement() {
     setConditionCombos((prev) => prev.filter((c) => c.id !== id));
   };
 
-  const handleToggleComboShift = (comboId, shiftType, isChecked) => {
+  const handleAddShiftCondition = (comboId) => {
     setConditionCombos((prev) =>
       prev.map((c) => {
         if (c.id === comboId) {
           return {
             ...c,
-            [shiftType]: {
-              enabled: isChecked,
-              minDays: isChecked ? "12" : "",
-            },
+            conditions: [
+              ...(c.conditions || []),
+              {
+                id: String(Date.now()) + Math.random().toString(36).substr(2, 4),
+                shifts: ["II"],
+                minDays: "12",
+              },
+            ],
           };
         }
         return c;
@@ -796,16 +1180,46 @@ export default function AttendanceIncentiveManagement() {
     );
   };
 
-  const handleComboShiftMinDaysChange = (comboId, shiftType, value) => {
+  const handleRemoveShiftCondition = (comboId, conditionId) => {
+    setConditionCombos((prev) =>
+      prev.map((c) => {
+        if (c.id === comboId) {
+          if ((c.conditions || []).length <= 1) return c;
+          return {
+            ...c,
+            conditions: c.conditions.filter((cond) => cond.id !== conditionId),
+          };
+        }
+        return c;
+      })
+    );
+  };
+
+  const handleUpdateConditionShifts = (comboId, conditionId, newShifts) => {
     setConditionCombos((prev) =>
       prev.map((c) => {
         if (c.id === comboId) {
           return {
             ...c,
-            [shiftType]: {
-              ...c[shiftType],
-              minDays: value,
-            },
+            conditions: (c.conditions || []).map((cond) =>
+              cond.id === conditionId ? { ...cond, shifts: newShifts } : cond
+            ),
+          };
+        }
+        return c;
+      })
+    );
+  };
+
+  const handleUpdateConditionMinDays = (comboId, conditionId, value) => {
+    setConditionCombos((prev) =>
+      prev.map((c) => {
+        if (c.id === comboId) {
+          return {
+            ...c,
+            conditions: (c.conditions || []).map((cond) =>
+              cond.id === conditionId ? { ...cond, minDays: value } : cond
+            ),
           };
         }
         return c;
@@ -816,14 +1230,13 @@ export default function AttendanceIncentiveManagement() {
   const handleOpenAddCondition = () => {
     setEditingCondition(null);
     setConditionForm({
-      categoryId: "",
-      departmentId: "",
+      selectedDepartments: ["ALL"],
       shiftTypeId: "",
       gender: "ALL",
-      gradeKey: "MIXING",
-      gradeName: "Mixing",
+      gradeKey: "ALL_DEPARTMENTS",
+      gradeName: "All Departments",
       shiftRuleKey: "SHIFT_I",
-      shiftLabel: "Day Shift Only",
+      shiftLabel: "Shift I Only",
       minDays: 22,
       lowTierDays: 23,
       lowTierRate: 15,
@@ -834,20 +1247,39 @@ export default function AttendanceIncentiveManagement() {
       maleExpThreshold: 3,
       remarks: "",
     });
-    setConditionCombos([{
-      id: "default",
-      I: { enabled: true, minDays: "12" },
-      II: { enabled: false, minDays: "" },
-      III: { enabled: false, minDays: "" },
-    }]);
+    setConditionCombos([
+      {
+        id: "default",
+        conditions: [
+          {
+            id: "default-1",
+            shifts: ["I"],
+            minDays: "12",
+          },
+        ],
+      },
+    ]);
     setShowConditionModal(true);
   };
 
   const handleOpenEditCondition = (cond) => {
     setEditingCondition(cond);
+    let selectedDepts = ["ALL"];
+    if (cond.departmentIds) {
+      try {
+        const parsed = typeof cond.departmentIds === "string" ? JSON.parse(cond.departmentIds) : cond.departmentIds;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          selectedDepts = parsed;
+        }
+      } catch (e) { }
+    } else if (cond.departmentId) {
+      selectedDepts = [cond.departmentId];
+    } else {
+      selectedDepts = ["ALL"];
+    }
+
     setConditionForm({
-      categoryId: cond.categoryId || "",
-      departmentId: cond.departmentId || "",
+      selectedDepartments: selectedDepts,
       shiftTypeId: cond.shiftTypeId || "",
       gender: cond.gender || "ALL",
       gradeKey: cond.gradeKey,
@@ -868,10 +1300,56 @@ export default function AttendanceIncentiveManagement() {
     setShowConditionModal(true);
   };
 
+  const handleDepartmentsChange = (newDepts) => {
+    setConditionForm((p) => {
+      const isAll = !newDepts || newDepts.includes("ALL") || newDepts.length === 0 || (conditionDepartments.length > 0 && newDepts.length === conditionDepartments.length);
+      let autoName = "All Departments";
+      if (!isAll) {
+        const names = newDepts
+          .map((id) => {
+            const found = conditionDepartments.find((d) => d.id === id);
+            return found ? (found.departmentname || found.name) : null;
+          })
+          .filter(Boolean);
+        autoName = names.length > 0 ? names.join(", ") : "All Departments";
+      }
+      return {
+        ...p,
+        selectedDepartments: newDepts,
+        gradeName: autoName,
+        gradeKey: autoName.toUpperCase().replace(/[^A-Z0-9_]/g, "_"),
+      };
+    });
+  };
+
   const handleSaveConditionSubmit = async (e) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+
+    if (!conditionCombos || conditionCombos.length === 0) {
+      setError("Please configure at least one active shift combination rule.");
+      return;
+    }
+
+    for (let i = 0; i < conditionCombos.length; i++) {
+      const combo = conditionCombos[i];
+      if (!combo.conditions || combo.conditions.length === 0) {
+        setError(`Combo #${i + 1}: Please add at least one shift condition.`);
+        return;
+      }
+      for (let j = 0; j < combo.conditions.length; j++) {
+        const cond = combo.conditions[j];
+        if (!cond.shifts || cond.shifts.length === 0) {
+          setError(`Combo #${i + 1}, Condition #${j + 1}: Please select at least one shift (Shift I, II, or III).`);
+          return;
+        }
+        if (!cond.minDays || Number(cond.minDays) < 1) {
+          setError(`Combo #${i + 1}, Condition #${j + 1}: Please enter minimum required days (at least 1 day).`);
+          return;
+        }
+      }
+    }
 
     const { shiftRuleKey, shiftLabel } = serializeCombosToRuleKeyAndLabel(conditionCombos);
     if (!shiftRuleKey || shiftRuleKey === "[]") {
@@ -879,14 +1357,29 @@ export default function AttendanceIncentiveManagement() {
       return;
     }
 
-    if (!conditionForm.categoryId && !conditionForm.departmentId) {
-      setError("Please select at least a Category or a Department.");
-      return;
+    const selectedDepts = conditionForm.selectedDepartments || ["ALL"];
+    const isAll =
+      selectedDepts.includes("ALL") ||
+      selectedDepts.length === 0 ||
+      (conditionDepartments.length > 0 && selectedDepts.length === conditionDepartments.length);
+
+    const deptVal = !isAll && selectedDepts.length === 1 ? parseInt(selectedDepts[0], 10) : null;
+    const deptIdsVal = !isAll && selectedDepts.length > 0 ? selectedDepts.map(Number) : null;
+
+    let finalGradeName = conditionForm.gradeName?.trim() || (isAll ? "All Departments" : "Custom Departments");
+    let finalGradeKey = conditionForm.gradeKey?.trim() || finalGradeName.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+    if (finalGradeKey === "HOSTEL") {
+      finalGradeKey = "ALL_DEPARTMENTS";
     }
 
     try {
       const payload = {
         ...conditionForm,
+        categoryId: null, // Category option removed
+        departmentId: deptVal,
+        departmentIds: deptIdsVal,
+        gradeName: finalGradeName,
+        gradeKey: finalGradeKey,
         shiftRuleKey,
         shiftLabel,
         companyId: filters.companyId || null,
@@ -986,7 +1479,10 @@ export default function AttendanceIncentiveManagement() {
     apiRequest(`/categories?companyId=${filters.companyId}`)
       .then((d) => {
         const list = Array.isArray(d) ? d : d.data || [];
-        const filtered = list.filter((c) => !(c.categoryName || c.name || "").toUpperCase().includes("STAFF"));
+        const filtered = list.filter((c) => {
+          const cat = (c.categoryName || c.name || "").toUpperCase();
+          return !cat.includes("STAFF") && !cat.includes("HOSTEL");
+        });
         setCategories(filtered);
       })
       .catch((e) => setError(e.message));
@@ -1005,11 +1501,13 @@ export default function AttendanceIncentiveManagement() {
     if (filters.categoryId) q.set("categoryId", filters.categoryId);
     apiRequest(`/employees?${q}`)
       .then((d) => {
-        const list = (Array.isArray(d) ? d : d.employees || []).map((e) => ({
-          id: e.id,
-          employeeCode: e.employeeCode,
-          employeeName: e.firstName,
-        }));
+        const list = (Array.isArray(d) ? d : d.employees || [])
+          .filter((e) => !((e.category?.categoryName || "").toUpperCase().includes("HOSTEL")))
+          .map((e) => ({
+            id: e.id,
+            employeeCode: e.employeeCode,
+            employeeName: e.firstName,
+          }));
         setAllEmployees(list);
       })
       .catch((e) => setError(e.message))
@@ -2801,13 +3299,12 @@ export default function AttendanceIncentiveManagement() {
                     <thead className="sticky top-0 z-20 shadow-sm">
                       <tr className="bg-gradient-to-r from-slate-700 to-slate-800 text-white text-sm font-semibold">
                         <th className="px-5 py-4 w-12 text-left bg-slate-800 sticky top-0 z-20">#</th>
-                        <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">Grade / Name</th>
+                        <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">Grade</th>
                         <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">Shift Pattern</th>
                         <th className="px-5 py-4 text-center bg-slate-800 sticky top-0 z-20">Gender</th>
                         <th className="px-5 py-4 text-center bg-slate-800 sticky top-0 z-20">Min Days</th>
                         <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">Low Tier Slab</th>
                         <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">High Tier Slab</th>
-                        <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">Override Settings</th>
                         <th className="px-5 py-4 text-center bg-slate-800 sticky top-0 z-20">Actions</th>
                       </tr>
                     </thead>
@@ -2815,10 +3312,12 @@ export default function AttendanceIncentiveManagement() {
                       {conditions
                         .filter((c) => {
                           const matchesGrade = conditionFilterGrade === "ALL" || c.gradeKey === conditionFilterGrade;
+                          const deptText = formatConditionDepts(c, conditionDepartments);
                           const matchesSearch =
                             !conditionSearch ||
                             (c.gradeName || c.gradeKey || "").toLowerCase().includes(conditionSearch.toLowerCase()) ||
                             (c.shiftLabel || c.shiftRuleKey || "").toLowerCase().includes(conditionSearch.toLowerCase()) ||
+                            deptText.toLowerCase().includes(conditionSearch.toLowerCase()) ||
                             (c.remarks || "").toLowerCase().includes(conditionSearch.toLowerCase());
                           return matchesGrade && matchesSearch;
                         })
@@ -2826,14 +3325,12 @@ export default function AttendanceIncentiveManagement() {
                           <tr key={cond.id} className="hover:bg-slate-50/60 transition">
                             <td className="px-5 py-4 text-slate-400 text-xs font-mono">{idx + 1}</td>
                             <td className="px-5 py-4">
-                              <GradePill gradeKey={cond.gradeKey} />
-                              <span className="block text-xs font-semibold text-slate-700 mt-1">
+                              <span className="font-semibold text-slate-800 text-sm">
                                 {cond.gradeName || cond.gradeKey}
                               </span>
                             </td>
                             <td className="px-5 py-4">
                               <span className="font-semibold text-slate-800">{cond.shiftLabel}</span>
-                              <span className="block text-xs font-mono text-slate-400 mt-0.5">{cond.shiftRuleKey}</span>
                             </td>
                             <td className="px-5 py-4 text-center">
                               <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cond.gender === "MALE"
@@ -2861,19 +3358,6 @@ export default function AttendanceIncentiveManagement() {
                                 <span>→</span>
                                 <span className="font-bold font-mono">₹{parseFloat(cond.highTierRate || 0).toFixed(2)}/d</span>
                               </div>
-                            </td>
-                            <td className="px-5 py-4 text-xs">
-                              {cond.maleExpOverride ? (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-medium">
-                                  Male ≥{cond.maleExpThreshold || 3}yr → Day Rate
-                                </span>
-                              ) : cond.minComboDays ? (
-                                <span className="text-slate-500 font-medium">
-                                  Combo min: <span className="font-semibold text-slate-700">{cond.minComboDays}d</span>
-                                </span>
-                              ) : (
-                                <span className="text-slate-400">—</span>
-                              )}
                             </td>
                             <td className="px-5 py-4 text-center">
                               <div className="flex items-center justify-center gap-2">
@@ -2938,67 +3422,19 @@ export default function AttendanceIncentiveManagement() {
                   )}
 
                   <form onSubmit={handleSaveConditionSubmit} className="space-y-4">
-                    {/* Row 1: Category & Department Dropdowns */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
-                          Category Selection
-                        </label>
-                        <select
-                          value={conditionForm.categoryId || ""}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const cId = val ? parseInt(val, 10) : "";
-                            const matched = conditionCategories.find((c) => c.id === cId);
-                            const name = matched ? (matched.categoryName || matched.name) : "";
-
-                            setConditionForm((p) => ({
-                              ...p,
-                              categoryId: cId,
-                              gradeName: name ? name : p.gradeName,
-                              gradeKey: name ? name.toUpperCase().replace(/[^A-Z0-9_]/g, "_") : p.gradeKey,
-                            }));
-                          }}
-                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-medium"
-                        >
-                          <option value="">-- Select Category --</option>
-                          {conditionCategories.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.categoryName || c.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
-                          Department Selection
-                        </label>
-                        <select
-                          value={conditionForm.departmentId || ""}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const dId = val ? parseInt(val, 10) : "";
-                            const matched = conditionDepartments.find((d) => d.id === dId);
-                            const name = matched ? (matched.departmentname || matched.name) : "";
-
-                            setConditionForm((p) => ({
-                              ...p,
-                              departmentId: dId,
-                              gradeName: !p.gradeName || p.gradeName === "Mixing" ? name : p.gradeName,
-                              gradeKey: !p.gradeKey || p.gradeKey === "MIXING" ? name.toUpperCase().replace(/[^A-Z0-9_]/g, "_") : p.gradeKey,
-                            }));
-                          }}
-                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-medium"
-                        >
-                          <option value="">-- Select Department --</option>
-                          {conditionDepartments.map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.departmentname || d.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                    {/* Row 1: Department Multi-Select Dropdown */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">
+                        Department Selection (Multi-Select + All)
+                      </label>
+                      <DepartmentMultiSelectDropdown
+                        departments={conditionDepartments}
+                        selectedIds={conditionForm.selectedDepartments || ["ALL"]}
+                        onChange={handleDepartmentsChange}
+                      />
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Select one or more departments this rule applies to, or choose "All Departments".
+                      </p>
                     </div>
 
                     {/* Row 2: Display Name & Target Gender */}
@@ -3039,98 +3475,133 @@ export default function AttendanceIncentiveManagement() {
 
                     {/* Row 3: Shift Selection & Custom Combo */}
                     <div className="space-y-3">
-                      <div className="block text-xs font-semibold text-slate-600 flex items-center justify-between">
-                        <span>Active Shift Combinations (Satisfied if ANY combo matches)</span>
+                      <div className="flex items-center justify-between pb-1 border-b border-slate-200">
+                        <div>
+                          <span className="text-xs font-bold text-slate-700">
+                            Active Shift Combinations (Satisfied if ANY combo matches)
+                          </span>
+                          <p className="text-[11px] text-slate-500">
+                            Configure alternative shift combinations. Inside each combo, additional conditions are combined together.
+                          </p>
+                        </div>
                         <button
                           type="button"
                           onClick={handleAddConditionCombo}
-                          className="text-xs text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1 bg-blue-50 px-2 py-1 rounded"
+                          className="text-xs text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg shadow-sm transition"
                         >
-                          ➕ Add Shift Combo
+                          <span>➕</span>
+                          <span>Add Shift Combo</span>
                         </button>
                       </div>
-                      <div className="space-y-3">
+
+                      <div className="space-y-4">
                         {conditionCombos.map((combo, idx) => (
-                          <div key={combo.id} className="bg-slate-50 border border-slate-200 rounded-xl p-4 relative">
-                            <div className="flex items-center justify-between mb-3 border-b border-slate-200/50 pb-2">
-                              <span className="text-xs font-bold text-slate-500">Combo #{idx + 1}</span>
-                              {conditionCombos.length > 1 && (
+                          <div key={combo.id} className="space-y-2">
+                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 relative shadow-sm">
+                              {/* Combo Header */}
+                              <div className="flex items-center justify-between mb-3 border-b border-slate-200/80 pb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800">
+                                    Combo #{idx + 1}
+                                  </span>
+                                  <span className="text-[11px] text-slate-500 font-medium">
+                                    ({combo.conditions?.length || 0} {combo.conditions?.length === 1 ? "condition" : "conditions"})
+                                  </span>
+                                </div>
+                                {conditionCombos.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveConditionCombo(combo.id)}
+                                    className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded font-semibold transition flex items-center gap-1"
+                                  >
+                                    <span>🗑</span>
+                                    <span>Remove Combo</span>
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Shift Conditions under this combo */}
+                              <div className="space-y-2.5">
+                                {combo.conditions?.map((cond, cIdx) => (
+                                  <div
+                                    key={cond.id}
+                                    className="flex flex-wrap sm:flex-nowrap items-center gap-3 bg-white p-2.5 rounded-lg border border-slate-200 shadow-sm"
+                                  >
+                                    <div className="flex items-center gap-1 text-xs font-bold text-slate-500 min-w-[85px]">
+                                      <span>Condition {cIdx + 1}</span>
+                                    </div>
+
+                                    {/* Dropdown list box with Shift I, Shift II, Shift III (multi-selectable) */}
+                                    <div className="flex-1 min-w-[200px]">
+                                      <ShiftMultiSelectDropdown
+                                        selectedShifts={cond.shifts || []}
+                                        onChange={(newShifts) =>
+                                          handleUpdateConditionShifts(combo.id, cond.id, newShifts)
+                                        }
+                                      />
+                                    </div>
+
+                                    {/* Number box for min days */}
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-xs text-slate-600 font-medium whitespace-nowrap">
+                                        Min Days:
+                                      </span>
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        max="31"
+                                        placeholder="Days"
+                                        value={cond.minDays}
+                                        onChange={(e) =>
+                                          handleUpdateConditionMinDays(combo.id, cond.id, e.target.value)
+                                        }
+                                        className="w-20 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-800 text-center"
+                                      />
+                                    </div>
+
+                                    {/* Remove condition button (if > 1) */}
+                                    {combo.conditions.length > 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveShiftCondition(combo.id, cond.id)}
+                                        className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition"
+                                        title="Remove this shift condition"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Add Shift Condition button (these come under addition) */}
+                              <div className="pt-2.5 flex items-center justify-between border-t border-slate-200/60 mt-3">
                                 <button
                                   type="button"
-                                  onClick={() => handleRemoveConditionCombo(combo.id)}
-                                  className="text-xs text-red-600 hover:text-red-700 font-semibold"
+                                  onClick={() => handleAddShiftCondition(combo.id)}
+                                  className="text-xs text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-sm"
                                 >
-                                  🗑&nbsp;Remove
+                                  <span>➕</span>
+                                  <span>Add Shift Condition</span>
                                 </button>
-                              )}
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                              {/* Day (I) */}
-                              <div className="flex items-center gap-3">
-                                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none">
-                                  <input
-                                    type="checkbox"
-                                    checked={combo.I.enabled}
-                                    onChange={(e) => handleToggleComboShift(combo.id, "I", e.target.checked)}
-                                    className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
-                                  />
-                                  <span>Day (I)</span>
-                                </label>
-                                {combo.I.enabled && (
-                                  <input
-                                    type="number"
-                                    placeholder="Min Days"
-                                    value={combo.I.minDays}
-                                    onChange={(e) => handleComboShiftMinDaysChange(combo.id, "I", e.target.value)}
-                                    className="w-20 border border-slate-200 rounded px-2.5 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold"
-                                  />
-                                )}
-                              </div>
-
-                              {/* Evening (II) */}
-                              <div className="flex items-center gap-3">
-                                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none">
-                                  <input
-                                    type="checkbox"
-                                    checked={combo.II.enabled}
-                                    onChange={(e) => handleToggleComboShift(combo.id, "II", e.target.checked)}
-                                    className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
-                                  />
-                                  <span>Evening (II)</span>
-                                </label>
-                                {combo.II.enabled && (
-                                  <input
-                                    type="number"
-                                    placeholder="Min Days"
-                                    value={combo.II.minDays}
-                                    onChange={(e) => handleComboShiftMinDaysChange(combo.id, "II", e.target.value)}
-                                    className="w-20 border border-slate-200 rounded px-2.5 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold"
-                                  />
-                                )}
-                              </div>
-
-                              {/* Night (III) */}
-                              <div className="flex items-center gap-3">
-                                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none">
-                                  <input
-                                    type="checkbox"
-                                    checked={combo.III.enabled}
-                                    onChange={(e) => handleToggleComboShift(combo.id, "III", e.target.checked)}
-                                    className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
-                                  />
-                                  <span>Night (III)</span>
-                                </label>
-                                {combo.III.enabled && (
-                                  <input
-                                    type="number"
-                                    placeholder="Min Days"
-                                    value={combo.III.minDays}
-                                    onChange={(e) => handleComboShiftMinDaysChange(combo.id, "III", e.target.value)}
-                                    className="w-20 border border-slate-200 rounded px-2.5 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold"
-                                  />
-                                )}
+                                <span className="text-[11px] text-slate-400">
+                                  Conditions within this combo are combined together (Addition)
+                                </span>
                               </div>
                             </div>
+
+                            {/* OR divider between combos */}
+                            {idx < conditionCombos.length - 1 && (
+                              <div className="flex items-center justify-center py-1">
+                                <div className="border-t border-dashed border-slate-300 flex-1"></div>
+                                <span className="mx-3 px-3 py-0.5 text-[10px] font-extrabold text-slate-500 uppercase tracking-widest bg-slate-200/70 rounded-full border border-slate-300">
+                                  OR
+                                </span>
+                                <div className="border-t border-dashed border-slate-300 flex-1"></div>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -3252,7 +3723,7 @@ export default function AttendanceIncentiveManagement() {
                         type="text"
                         value={conditionForm.remarks}
                         onChange={(e) => setConditionForm((p) => ({ ...p, remarks: e.target.value }))}
-                        placeholder="e.g. Day Shift Only or Combo shift rules"
+                        placeholder="e.g. Shift I Only or Combo shift rules"
                         className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50"
                       />
                     </div>

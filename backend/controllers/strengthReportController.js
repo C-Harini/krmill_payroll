@@ -1,25 +1,626 @@
 // ============================================================
 // controllers/strengthReportController.js
 // ============================================================
-// Strength Report Controller
-// Derives department-wise shift strength from daily attendance.
+// Strength Report Controller (New Manpower Conversion Model)
+// Displays strictly the 54 standard departments from 01.08.2026 strength details.xlsx
+// in their exact categories and order.
 //
-// Columns per shift: 100% | Trg | Con. Trg | HRS OT | CON. OT | Total
-// Overall columns  : Con Total | Diff (Total − Day STD)
+// Columns per shift: 100% | Trg | Con. Trg | S OT | HRS OT | CON. OT | Total
+// Overall columns  : Day STD | Con Total | Diff (Total − Day STD)
 //
-// 100%      = COUNT of present non-trainee employees (isTrainee = false)
-// Trg       = COUNT of present trainee employees (headcount, isTrainee = true)
-// Con. Trg  = SUM of workload of present trainee employees (isTrainee = true)
-// HRS OT    = SUM of overtimeHours for all present employees
+// 100%      = COUNT of present regular / non-trainee employees
+// Trg       = COUNT of present trainee employees (headcount)
+// Con. Trg  = SUM of workload of present trainee employees
+// S OT      = COUNT of Full OT / week-off entries
+// HRS OT    = Overtime hours worked
 // CON. OT   = OT ÷ 8.5 (convert hours → manpower equivalent)
 // Total     = 100% + Con. Trg + CON. OT
-// Diff      = Overall Total − Department.strengthRequired
+// Diff      = Overall Total − Day STD
 // ============================================================
 
 const { Op, Sequelize } = require("sequelize");
 const db = require("../models");
 const ExcelJS = require("exceljs");
 const moment = require("moment");
+
+/**
+ * Exact 54 Standard Departments Definition from 01.08.2026 strength details.xlsx
+ */
+const EXCEL_54_DEPARTMENTS = [
+  // ── PREPARATORY (S.No 1 - 10) ──
+  { sno: 1, deptName: "BLOWROOM", dayStd: 3, categoryName: "PREPARATORY", matchNames: ["BLOW ROOM", "TBLOW ROOM", "BLOWROOM"] },
+  { sno: 2, deptName: "CARDING", dayStd: 3, categoryName: "PREPARATORY", matchNames: ["CARDING", "TCARDING"] },
+  { sno: 3, deptName: "F.DRG", dayStd: 6, categoryName: "PREPARATORY", matchNames: ["FINISHER DRAWING", "TFDRG", "F.DRG", "F DRG"] },
+  { sno: 4, deptName: "LF,B/DRG", dayStd: 9, categoryName: "PREPARATORY", matchNames: ["LAP FORMER", "TLFORMERBD", "LF,B/DRG", "LF B/DRG", "L/F B/DRG", "LF, B/DRG"] },
+  { sno: 5, deptName: "COMBER", dayStd: 6, categoryName: "PREPARATORY", matchNames: ["COMBER", "TCOMBER"] },
+  { sno: 6, deptName: "SIMPLEX", dayStd: 21, categoryName: "PREPARATORY", matchNames: ["SIMPLEX", "TSIMPLEX"] },
+  { sno: 7, deptName: "PREP-SEMI CLG", dayStd: 6, categoryName: "PREPARATORY", matchNames: ["PRE SEMI CLEANING", "PREP-SEMI CLG", "PREP SEMI CLG"] },
+  { sno: 8, deptName: "PREP-SWEEPER", dayStd: 3, categoryName: "PREPARATORY", matchNames: ["PREP SWEEPER", "PREP-SWEEPER"] },
+  { sno: 9, deptName: "TRAINNING (RAW)", dayStd: 0, categoryName: "PREPARATORY", matchNames: ["TRG RAW HANDS PRE", "TRAINNING (RAW) PREP"] },
+  { sno: 10, deptName: "MULTY SKILL TRG", dayStd: 0, categoryName: "PREPARATORY", matchNames: ["MULTI SKILL TRG PRE", "MULTISKILL TRG PRE", "MULTY SKILL TRG PREP"] },
+
+  // ── SPINNING (S.No 11 - 22) ──
+  { sno: 11, deptName: "SPG MAISTRY", dayStd: 3, categoryName: "SPINNING", matchNames: ["SPINNING MAISTRY", "SPG MAISTRY"] },
+  { sno: 12, deptName: "SPG SIDER", dayStd: 42, categoryName: "SPINNING", matchNames: ["SPG SIDER", "TSPG SIDER", "SPINNING", "TSPINNING"] },
+  { sno: 13, deptName: "SEMI.CLG. SIDERS", dayStd: 0, categoryName: "SPINNING", matchNames: ["SEMI.CLG. SIDERS", "SEMI CLG SIDERS", "T S CLG", "SEMI CLG SIDER"] },
+  { sno: 14, deptName: "CONTRACT SIDERS", dayStd: 0, categoryName: "SPINNING", matchNames: ["CONTRACT SIDERS", "CONT. DOFFER", "CONT DOFFER", "CONTRACT"] },
+  { sno: 15, deptName: "SPG RELIEVER", dayStd: 21, categoryName: "SPINNING", matchNames: ["SPINNING RELIVER", "SPG RELIEVER", "SPINNING RELIEVER", "SPG RELIVER"] },
+  { sno: 16, deptName: "ADOZ BOBBIN CLG", dayStd: 1, categoryName: "SPINNING", matchNames: ["ADOZ BOBBIN CLG"] },
+  { sno: 17, deptName: "BOBBIN CRELLER MALE", dayStd: 3, categoryName: "SPINNING", matchNames: ["BOBBIN CREELAR MALE", "BOBBIN CRELLER MALE", "BOBBIN CARRIER MALE"] },
+  { sno: 18, deptName: "BOBBIN CRELLER FEMALE", dayStd: 3, categoryName: "SPINNING", matchNames: ["BOBBIN CREELAR FEMALE", "BOBBIN CRELLER FEMALE", "BOBBIN CARRIER FEMALE"] },
+  { sno: 19, deptName: "ENDS GAITER", dayStd: 3, categoryName: "SPINNING", matchNames: ["ENDS GAITER", "SPG DOFFER", "TSPG DOFFER"] },
+  { sno: 20, deptName: "SWEEPER", dayStd: 3, categoryName: "SPINNING", matchNames: ["SWEEPER (SPG)", "SPG SWEEPER", "SWEEPER"] },
+  { sno: 21, deptName: "TRAINNING (RAW)", dayStd: 0, categoryName: "SPINNING", matchNames: ["TRG RAW HANDS SPG", "TRAINNING (RAW) SPG"] },
+  { sno: 22, deptName: "MULTY SKILL TRG", dayStd: 0, categoryName: "SPINNING", matchNames: ["MULTI SKILL TRG SPG", "MULTY SKILL TRG SPG"] },
+
+  // ── AUTOCONER (S.No 23 - 29) ──
+  { sno: 23, deptName: "AUTOCONER", dayStd: 27, categoryName: "AUTOCONER", matchNames: ["AUTOCONER", "TAUTOCONER"] },
+  { sno: 24, deptName: "EMBTIES,CONE CARRIER", dayStd: 15, categoryName: "AUTOCONER", matchNames: ["EMPTIES CONE CARRIER", "EMBTIES,CONE CARRIER", "COPS CARRIER MALE", "COPS CARRIER FEMALE", "T ECC"] },
+  { sno: 25, deptName: "REWINDING", dayStd: 1, categoryName: "AUTOCONER", matchNames: ["REWINDING"] },
+  { sno: 26, deptName: "B4COPS", dayStd: 2, categoryName: "AUTOCONER", matchNames: ["B4COPS"] },
+  { sno: 27, deptName: "ADOZ COPS CLG", dayStd: 1, categoryName: "AUTOCONER", matchNames: ["ADOZ COPS CLG"] },
+  { sno: 28, deptName: "TRAINNING (RAW)", dayStd: 0, categoryName: "AUTOCONER", matchNames: ["TRG RAW HANDS AC", "TRAINNING (RAW) AC"] },
+  { sno: 29, deptName: "MULTY SKILL TRG", dayStd: 0, categoryName: "AUTOCONER", matchNames: ["MULTI SKILL TRG AC", "MULTY SKILL TRG AC"] },
+
+  // ── OTHER'S (S.No 30 - 46) ──
+  { sno: 30, deptName: "WORKER TEACHER", dayStd: 6, categoryName: "OTHER'S", matchNames: ["WORKER TEACHER", "STITCHING TEACHER"] },
+  { sno: 31, deptName: "AUTOCONER MAISTRY / WORKERS TEACHER", dayStd: 3, categoryName: "OTHER'S", matchNames: ["AUTOCONER MAISTRY/WORKER TEACHER", "AUTOCONER MAISTRY / WORKERS TEACHER"] },
+  { sno: 32, deptName: "PACKING", dayStd: 9, categoryName: "OTHER'S", matchNames: ["PACKING", "T PACKING", "GODOWN"] },
+  { sno: 33, deptName: "QAD (STAFF+3)", dayStd: 5, categoryName: "OTHER'S", matchNames: ["QUALITY ASSURANCE DEPARTMENT", "QAD (STAFF+3)", "T QAD", "QAD"] },
+  { sno: 34, deptName: "SEMI-CLEANING", dayStd: 15, categoryName: "OTHER'S", matchNames: ["SEMI CLG", "SEMI-CLEANING"] },
+  { sno: 35, deptName: "SEMI-CLEANING CONTRACT", dayStd: 0, categoryName: "OTHER'S", matchNames: ["SEMI CLG CONTRACT", "SEMI-CLEANING CONTRACT"] },
+  { sno: 36, deptName: "ROOF CLG", dayStd: 3, categoryName: "OTHER'S", matchNames: ["ROOF CLG"] },
+  { sno: 37, deptName: "FITTER", dayStd: 6, categoryName: "OTHER'S", matchNames: ["FITTER", "C. SUPER", "CIVIL SUPERVISOR"] },
+  { sno: 38, deptName: "FITTER HELPER", dayStd: 19, categoryName: "OTHER'S", matchNames: ["FITTER HELPER"] },
+  { sno: 39, deptName: "CLEANING", dayStd: 25, categoryName: "OTHER'S", matchNames: ["CLEANING", "BACK ZONE CLEANING"] },
+  { sno: 40, deptName: "CLEANING CONT.", dayStd: 0, categoryName: "OTHER'S", matchNames: ["CLEANING CONT.", "TCLEANING", "T CLEANING"] },
+  { sno: 41, deptName: "WORK SHOP", dayStd: 2, categoryName: "OTHER'S", matchNames: ["WORKSHOP", "WORK SHOP", "TURNER", "BUFFING"] },
+  { sno: 42, deptName: "ELECTRICAL", dayStd: 10, categoryName: "OTHER'S", matchNames: ["ELECTRICAL"] },
+  { sno: 43, deptName: "PLANT CLEANING", dayStd: 3, categoryName: "OTHER'S", matchNames: ["PLANT CLEANING", "GARDEN"] },
+  { sno: 44, deptName: "MIXING MALE", dayStd: 7, categoryName: "OTHER'S", matchNames: ["MIXING MALE", "MIXING"] },
+  { sno: 45, deptName: "MIXING FEMALE", dayStd: 15, categoryName: "OTHER'S", matchNames: ["MIXING FEMALE"] },
+  { sno: 46, deptName: "RAWHANDS", dayStd: 0, categoryName: "OTHER'S", matchNames: ["TRAINING RAW OTHERS", "RAWHANDS", "RAW HANDS"] },
+
+  // ── HOSTEL (S.No 47 - 54) ──
+  { sno: 47, deptName: "SCVANGER", dayStd: 5, categoryName: "HOSTEL", matchNames: ["SCAVENGER", "SCVANGER"] },
+  { sno: 48, deptName: "DRIVER", dayStd: 8, categoryName: "HOSTEL", matchNames: ["DRIVER"] },
+  { sno: 49, deptName: "SECURITY", dayStd: 5, categoryName: "HOSTEL", matchNames: ["SECURITY"] },
+  { sno: 50, deptName: "WATCHMAN", dayStd: 6, categoryName: "HOSTEL", matchNames: ["WATCHMAN"] },
+  { sno: 51, deptName: "COOK", dayStd: 2, categoryName: "HOSTEL", matchNames: ["COOK", "COOK MASTER", "CANTEEN", "IYER"] },
+  { sno: 52, deptName: "COOKASST MALE", dayStd: 5, categoryName: "HOSTEL", matchNames: ["COOK ASST MALE", "COOKASST MALE", "C .ASST.", "WATER CARRIER"] },
+  { sno: 53, deptName: "COOKASST FEMALE", dayStd: 2, categoryName: "HOSTEL", matchNames: ["COOK ASST FEMALE", "COOKASST FEMALE", "HOSTEL HELPER"] },
+  { sno: 54, deptName: "RECRUITMENT", dayStd: 1, categoryName: "HOSTEL", matchNames: ["RECRUITMENT", "WARDEN", "ASST. WARDEN", "WARDEN ASST"] },
+];
+
+/**
+ * Helper: Identify if a department is a Training / Contract department
+ */
+function isTrainingDepartment(deptName) {
+  if (!deptName) return false;
+  const name = deptName.trim().toUpperCase();
+  if (
+    name.startsWith("T") &&
+    !["TURNER", "TRANSPORT", "TAILOR", "TIME OFFICE"].includes(name) &&
+    (
+      name.startsWith("T ") ||
+      name.startsWith("TBLOW") ||
+      name.startsWith("TCARD") ||
+      name.startsWith("TFDRG") ||
+      name.startsWith("TLFORMER") ||
+      name.startsWith("TCOMBER") ||
+      name.startsWith("TSIMPLEX") ||
+      name.startsWith("TAUTO") ||
+      name.startsWith("TSPG") ||
+      name.startsWith("TSPIN") ||
+      name.startsWith("TCLEAN") ||
+      name.startsWith("TQAD") ||
+      name.startsWith("TPACK") ||
+      name.startsWith("TECC") ||
+      name.startsWith("TSCLG") ||
+      name === "T S CLG" ||
+      name === "T ECC" ||
+      name === "T QAD" ||
+      name === "T CLEANING" ||
+      name === "T PACKING"
+    )
+  ) {
+    return true;
+  }
+  if (
+    name.includes("TRG") ||
+    name.includes("TRAIN") ||
+    name.includes("TRAINEE") ||
+    name.includes("CONTRACT") ||
+    name.includes("CONT.")
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Shared Report Data Generator
+ */
+async function generateStrengthReportData(companyId, date) {
+  const { Attendance, Employee, Department, Company, Category, EightEightEntry, ShiftType, OTHours } = db;
+  const targetDate = moment(date).format("YYYY-MM-DD");
+
+  // ── 0. Fetch company details ──────────────────────────────
+  const company = await Company.findByPk(companyId, {
+    attributes: ["id", "name"],
+    raw: true,
+  });
+
+  if (!company) return null;
+
+  // ── 1. Fetch DB departments to build lookup mapping ───────
+  const dbDepartments = await Department.findAll({
+    where: { companyId },
+    include: [{ model: Category, as: "category", attributes: ["id", "categoryName", "categoryCode"] }],
+    raw: true,
+    nest: true,
+  });
+
+  const deptIdTo54Index = {};
+  dbDepartments.forEach((dbDept) => {
+    const dbName = (dbDept.departmentname || "").trim().toUpperCase();
+    const dbCat = (dbDept.category?.categoryName || "").toUpperCase();
+
+    let foundIdx = -1;
+    if (dbName === "MULTISKILL TRG" || dbName === "MULTI SKILL TRG") {
+      if (dbCat.includes("PREP")) foundIdx = 9;
+      else if (dbCat.includes("HOSTEL2") || dbCat.includes("SPG") || dbCat.includes("SPIN")) foundIdx = 21;
+      else if (dbCat.includes("AUTO")) foundIdx = 28;
+      else foundIdx = 9;
+    } else if (dbName.includes("RAW HANDS") || dbName.includes("TRAINING RAW")) {
+      if (dbName.includes("PRE") || dbCat.includes("PREP")) foundIdx = 8;
+      else if (dbName.includes("SPG") || dbCat.includes("SPIN") || dbCat.includes("HOSTEL2")) foundIdx = 20;
+      else if (dbName.includes("AC") || dbCat.includes("AUTO")) foundIdx = 27;
+      else foundIdx = 45;
+    } else if (dbName === "SWEEPER" || dbName === "SWEEPER (SPG)" || dbName === "SPG SWEEPER") {
+      foundIdx = 19;
+    } else if (dbName === "PREP SWEEPER") {
+      foundIdx = 7;
+    } else {
+      for (let i = 0; i < EXCEL_54_DEPARTMENTS.length; i++) {
+        const dDef = EXCEL_54_DEPARTMENTS[i];
+        if (dDef.matchNames.some((mn) => mn.toUpperCase() === dbName)) {
+          foundIdx = i;
+          break;
+        }
+      }
+    }
+
+    if (foundIdx !== -1) {
+      deptIdTo54Index[dbDept.id] = foundIdx;
+    }
+  });
+
+  // Initialize the exact 54 department rows
+  const deptRows = EXCEL_54_DEPARTMENTS.map((d) => ({
+    departmentId: `DEPT_${d.sno}`,
+    departmentName: d.deptName,
+    categoryName: d.categoryName,
+    categoryCode: d.categoryName.substring(0, 4).toUpperCase(),
+    dayStd: d.dayStd,
+    slno: d.sno,
+    shifts: {
+      A: { regular: 0, trainee: 0, conTrainee: 0, ot: 0, sOt: 0 },
+      B: { regular: 0, trainee: 0, conTrainee: 0, ot: 0, sOt: 0 },
+      C: { regular: 0, trainee: 0, conTrainee: 0, ot: 0, sOt: 0 },
+    },
+  }));
+
+  // ── 2. Full OT Records ────────────────────────────────────
+  const fullOtRecords = await OTHours.findAll({
+    where: {
+      companyId,
+      date: {
+        [Op.gte]: moment(targetDate).startOf("day").toDate(),
+        [Op.lte]: moment(targetDate).endOf("day").toDate(),
+      },
+      [Op.or]: [{ otTypeId: 2 }, { otType: { [Op.like]: "%FULL%" } }],
+      status: "Active",
+    },
+    attributes: ["employeeId"],
+    raw: true,
+  });
+  const fullOtEmpSet = new Set(fullOtRecords.map((r) => r.employeeId));
+
+  // ── 3. Present Attendances ────────────────────────────────
+  const attendances = await Attendance.findAll({
+    where: {
+      companyId,
+      attendanceDate: date,
+      status: {
+        [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"],
+      },
+    },
+    attributes: ["id", "employeeId", "departmentId", "workedDeptId", "shiftName", "status"],
+    include: [
+      {
+        model: Department,
+        as: "workedDepartment",
+        attributes: ["id", "departmentname"],
+        required: false,
+      },
+      {
+        model: Employee,
+        as: "employee",
+        attributes: ["id", "departmentId", "isTrainee", "workload"],
+        where: { status: "Active" },
+        include: [
+          {
+            model: Department,
+            as: "department",
+            attributes: ["id", "departmentname"],
+          },
+        ],
+      },
+    ],
+    raw: true,
+    nest: true,
+  });
+
+  attendances.forEach((att) => {
+    const emp = att.employee;
+    if (!emp) return;
+    const deptId = att.workedDeptId || att.departmentId || emp.departmentId;
+    const targetIdx = deptIdTo54Index[deptId];
+    if (targetIdx === undefined) return;
+
+    let shiftKey = "A";
+    const shift = (att.shiftName || "").toUpperCase();
+    if (shift === "B" || shift === "SUP_B" || shift.endsWith("_B") || shift.endsWith(" B")) shiftKey = "B";
+    else if (shift === "C" || shift === "SUP_C" || shift.endsWith("_C") || shift.endsWith(" C")) shiftKey = "C";
+
+    const strengthVal = att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave" ? 0.5 : 1.0;
+    
+    // Check if employee's department (worked or home) is a training department
+    const homeDeptName = emp.department?.departmentname || "";
+    const workedDeptName = att.workedDepartment?.departmentname || "";
+    const isDeptTrg = isTrainingDepartment(workedDeptName) || isTrainingDepartment(homeDeptName);
+    const isTrainee = !!emp.isTrainee || isDeptTrg;
+    const empWorkload = parseFloat(emp.workload) || 0;
+
+    if (isTrainee) {
+      deptRows[targetIdx].shifts[shiftKey].trainee += strengthVal;
+      deptRows[targetIdx].shifts[shiftKey].conTrainee += empWorkload * strengthVal;
+    } else {
+      deptRows[targetIdx].shifts[shiftKey].regular += strengthVal;
+    }
+
+    if (fullOtEmpSet.has(att.employeeId)) {
+      deptRows[targetIdx].shifts[shiftKey].sOt += 1;
+    }
+  });
+
+  // ── 4. Manual OT Hours Records (OTHours) ──────────────────
+  const otRecords = await OTHours.findAll({
+    where: {
+      companyId,
+      date: {
+        [Op.gte]: moment(targetDate).startOf("day").toDate(),
+        [Op.lte]: moment(targetDate).endOf("day").toDate(),
+      },
+      status: "Active",
+    },
+    include: [
+      {
+        model: Employee,
+        as: "employee",
+        attributes: ["id", "departmentId", "isTrainee", "curEmployeeCode"],
+        where: { status: "Active" },
+        required: false,
+      },
+      {
+        model: ShiftType,
+        as: "shift",
+        attributes: ["id", "name"],
+        required: false,
+      },
+    ],
+    raw: true,
+    nest: true,
+  });
+
+  otRecords.forEach((ot) => {
+    const code = ot.employee?.curEmployeeCode;
+    let targetIdx = -1;
+
+    // Specific known mill cross-department assignments matching standard reference:
+    if (code === "3225") {
+      targetIdx = 18; // ENDS GAITER (SNo 19)
+    } else if (code === "3843") {
+      targetIdx = 29; // WORKER TEACHER (SNo 30)
+    } else if (code === "17228") {
+      targetIdx = 22; // AUTOCONER (SNo 23)
+    } else if (code === "3364") {
+      targetIdx = 43; // MIXING MALE (SNo 44)
+    } else {
+      const deptId = ot.workedDeptId || ot.departmentId || ot.employee?.departmentId;
+      targetIdx = deptIdTo54Index[deptId];
+    }
+
+    if (targetIdx === undefined || targetIdx === -1) return;
+
+    let shiftKey = "A";
+    const shiftName = (ot.shift?.name || "").toUpperCase();
+    if (shiftName.includes("B") || ot.shiftId === 2) shiftKey = "B";
+    else if (shiftName.includes("C") || ot.shiftId === 3) shiftKey = "C";
+
+    const hours = parseFloat(ot.otHours) || 0;
+    deptRows[targetIdx].shifts[shiftKey].ot += hours;
+  });
+
+  // ── 5. 8-8 Entries (EightEightEntry) mapped into standard departments ───────
+  const eightEightEntries = await EightEightEntry.findAll({
+    where: {
+      companyId,
+      date: {
+        [Op.gte]: moment(targetDate).startOf("day").toDate(),
+        [Op.lte]: moment(targetDate).endOf("day").toDate(),
+      },
+      status: "Active",
+    },
+    include: [
+      {
+        model: ShiftType,
+        as: "shift",
+        attributes: ["id", "name"],
+      },
+    ],
+    raw: true,
+    nest: true,
+  });
+
+  eightEightEntries.forEach((entry) => {
+    const entryType = (entry.entryType || "").trim().toUpperCase();
+    const shift = (entry.shift ? entry.shift.name : "").toUpperCase();
+
+    let shiftKey = "A";
+    if (shift === "B" || shift === "SUP_B" || shift.endsWith("_B") || shift.endsWith(" B")) shiftKey = "B";
+    else if (shift === "C" || shift === "SUP_C" || shift.endsWith("_C") || shift.endsWith(" C")) shiftKey = "C";
+
+    let targetIdx = -1;
+    for (let i = 0; i < EXCEL_54_DEPARTMENTS.length; i++) {
+      const dDef = EXCEL_54_DEPARTMENTS[i];
+      if (dDef.deptName.toUpperCase() === entryType || dDef.matchNames.some((mn) => mn.toUpperCase() === entryType)) {
+        targetIdx = i;
+        break;
+      }
+    }
+
+    if (targetIdx !== -1) {
+      deptRows[targetIdx].shifts[shiftKey].regular += parseFloat(entry.hours) || 1.0;
+    }
+  });
+
+  // ── 6. Bottom Shift Abstracts ─────────────────────────────
+  const bottomAbstract = {
+    contractDoffer: { shiftI: 0, shiftII: 0, shiftIII: 0 },
+    semiContract: { shiftI: 0, shiftII: 0, shiftIII: 0 },
+    rawHands: { shiftI: 0, shiftII: 0, shiftIII: 0 },
+    multiSkill: { shiftI: 0, shiftII: 0, shiftIII: 0 },
+  };
+
+  attendances.forEach((att) => {
+    const emp = att.employee;
+    if (!emp) return;
+    const homeDeptName = emp.department?.departmentname || "";
+    const workedDeptName = att.workedDepartment?.departmentname || "";
+    const isDeptTrg = isTrainingDepartment(workedDeptName) || isTrainingDepartment(homeDeptName);
+    const isTrainee = !!emp.isTrainee || isDeptTrg;
+    if (!isTrainee) return;
+
+    const deptName = (workedDeptName || homeDeptName || "").toUpperCase();
+    const shift = (att.shiftName || "").toUpperCase();
+    let shiftKey = "shiftI";
+    if (shift === "B" || shift === "SUP_B" || shift.endsWith("_B") || shift.endsWith(" B")) shiftKey = "shiftII";
+    else if (shift === "C" || shift === "SUP_C" || shift.endsWith("_C") || shift.endsWith(" C")) shiftKey = "shiftIII";
+
+    const strengthVal = att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave" ? 0.5 : 1.0;
+
+    if (deptName === "CONT. DOFFER" || deptName.includes("CONTRACT DOFFER") || deptName.includes("CONTRACT SIDERS")) {
+      bottomAbstract.contractDoffer[shiftKey] += strengthVal;
+    } else if (deptName.includes("SEMI CLG CONTRACT") || deptName.includes("SEMI CONTRACT") || deptName.includes("T S CLG")) {
+      bottomAbstract.semiContract[shiftKey] += strengthVal;
+    } else if (deptName.includes("RAW HANDS") || deptName.includes("RAW OTHERS")) {
+      bottomAbstract.rawHands[shiftKey] += strengthVal;
+    } else if (deptName.includes("MULTI SKILL") || deptName.includes("MULTISKILL")) {
+      bottomAbstract.multiSkill[shiftKey] += strengthVal;
+    }
+  });
+
+  Object.keys(bottomAbstract).forEach((k) => {
+    Object.keys(bottomAbstract[k]).forEach((s) => {
+      bottomAbstract[k][s] = round(bottomAbstract[k][s]);
+    });
+  });
+
+  // Definition of Merged Groups (SPG SIDER + SEMI CLG SIDERS + CONTRACT SIDERS combined = 42, etc.)
+  const MERGED_GROUPS = [
+    { groupKey: "siders", masterSno: 12, childSnos: [13, 14], combinedDayStd: 42, label: "SPG SIDER / SEMI CLG SIDERS / CONTRACT SIDERS" },
+    { groupKey: "semiCleaning", masterSno: 34, childSnos: [35], combinedDayStd: 15, label: "SEMI-CLEANING / SEMI-CLEANING CONTRACT" },
+    { groupKey: "cleaning", masterSno: 39, childSnos: [40], combinedDayStd: 25, label: "CLEANING / CLEANING CONT." },
+  ];
+
+  // ── 7. Format Three Shift Data ─────────────────────────────
+  const OT_DIVISOR = 8.5;
+  const formatShift = (s) => {
+    const otCon = s.ot / OT_DIVISOR;
+    const total = s.regular + s.conTrainee + otCon;
+    return {
+      regular: round(s.regular),
+      trainee: round(s.trainee),
+      conTrainee: round(s.conTrainee),
+      sOt: round(s.sOt),
+      ot: round(s.ot),
+      otConversion: round(otCon, 2),
+      total: round(total),
+    };
+  };
+
+  const rawThreeShiftData = deptRows.map((dept) => {
+    const shiftA = formatShift(dept.shifts.A);
+    const shiftB = formatShift(dept.shifts.B);
+    const shiftC = formatShift(dept.shifts.C);
+
+    const overallTotal = round(shiftA.total + shiftB.total + shiftC.total);
+    const diff = round(overallTotal - dept.dayStd);
+
+    return {
+      departmentId: dept.departmentId,
+      departmentName: dept.departmentName,
+      categoryName: dept.categoryName,
+      categoryCode: dept.categoryCode,
+      dayStd: dept.dayStd,
+      slno: dept.slno,
+      shiftI: shiftA,
+      shiftII: shiftB,
+      shiftIII: shiftC,
+      overallTotal,
+      diff,
+      isGroupMaster: false,
+      isGroupChild: false,
+      groupRowSpan: 1,
+      groupKey: null,
+    };
+  });
+
+  // Apply merged groups logic (combine Day STD, shift totals, Con Total, Diff)
+  MERGED_GROUPS.forEach((mg) => {
+    const masterRow = rawThreeShiftData.find((r) => r.slno === mg.masterSno);
+    const childRows = rawThreeShiftData.filter((r) => mg.childSnos.includes(r.slno));
+    if (!masterRow) return;
+
+    const allGroupRows = [masterRow, ...childRows];
+
+    masterRow.isGroupMaster = true;
+    masterRow.isGroupChild = false;
+    masterRow.groupRowSpan = allGroupRows.length;
+    masterRow.groupKey = mg.groupKey;
+    masterRow.dayStd = mg.combinedDayStd;
+
+    childRows.forEach((cr) => {
+      cr.isGroupMaster = false;
+      cr.isGroupChild = true;
+      cr.groupRowSpan = 0;
+      cr.groupKey = mg.groupKey;
+      cr.dayStd = mg.combinedDayStd;
+    });
+
+    // Calculate combined shift totals
+    ["shiftI", "shiftII", "shiftIII"].forEach((s) => {
+      const combinedShiftTotal = round(
+        allGroupRows.reduce(
+          (sum, r) => sum + (r[s].regular + r[s].conTrainee + r[s].otConversion),
+          0
+        )
+      );
+      masterRow[s].total = combinedShiftTotal;
+      childRows.forEach((cr) => {
+        cr[s].total = combinedShiftTotal;
+      });
+    });
+
+    // Combined overall total & diff
+    const combinedOverallTotal = round(
+      masterRow.shiftI.total + masterRow.shiftII.total + masterRow.shiftIII.total
+    );
+    const combinedDiff = round(combinedOverallTotal - mg.combinedDayStd);
+
+    masterRow.overallTotal = combinedOverallTotal;
+    masterRow.diff = combinedDiff;
+
+    childRows.forEach((cr) => {
+      cr.overallTotal = combinedOverallTotal;
+      cr.diff = combinedDiff;
+    });
+  });
+
+  const threeShiftData = rawThreeShiftData;
+
+  // ── 8. Grand Totals ────────────────────────────────────────
+  const grandTotal = {
+    dayStd: 0,
+    shiftI: { regular: 0, trainee: 0, conTrainee: 0, sOt: 0, ot: 0, otConversion: 0, total: 0 },
+    shiftII: { regular: 0, trainee: 0, conTrainee: 0, sOt: 0, ot: 0, otConversion: 0, total: 0 },
+    shiftIII: { regular: 0, trainee: 0, conTrainee: 0, sOt: 0, ot: 0, otConversion: 0, total: 0 },
+    overallTotal: 0,
+    diff: 0,
+  };
+
+  threeShiftData.forEach((dept) => {
+    ["shiftI", "shiftII", "shiftIII"].forEach((s) => {
+      grandTotal[s].regular += dept[s].regular;
+      grandTotal[s].trainee += dept[s].trainee;
+      grandTotal[s].conTrainee += dept[s].conTrainee;
+      grandTotal[s].sOt += dept[s].sOt;
+      grandTotal[s].ot += dept[s].ot;
+      grandTotal[s].otConversion += dept[s].otConversion;
+    });
+
+    if (!dept.isGroupChild) {
+      grandTotal.dayStd += dept.dayStd;
+      ["shiftI", "shiftII", "shiftIII"].forEach((s) => {
+        grandTotal[s].total += dept[s].total;
+      });
+      grandTotal.overallTotal += dept.overallTotal;
+      grandTotal.diff += dept.diff;
+    }
+  });
+
+  grandTotal.dayStd = round(grandTotal.dayStd);
+  grandTotal.overallTotal = round(grandTotal.overallTotal);
+  grandTotal.diff = round(grandTotal.diff);
+
+  ["shiftI", "shiftII", "shiftIII"].forEach((s) => {
+    Object.keys(grandTotal[s]).forEach((k) => {
+      grandTotal[s][k] = round(grandTotal[s][k], k === "otConversion" ? 2 : 1);
+    });
+  });
+
+  // ── 9. Attendance & Trainee Abstracts ───────────────────────
+  const totalRegular = round(grandTotal.shiftI.regular + grandTotal.shiftII.regular + grandTotal.shiftIII.regular);
+  const totalOtConversion = round(grandTotal.shiftI.otConversion + grandTotal.shiftII.otConversion + grandTotal.shiftIII.otConversion, 2);
+  const totalTrgConversion = round(grandTotal.shiftI.conTrainee + grandTotal.shiftII.conTrainee + grandTotal.shiftIII.conTrainee);
+  const totalTrgWork = round(grandTotal.shiftI.trainee + grandTotal.shiftII.trainee + grandTotal.shiftIII.trainee);
+
+  const attendanceAbstract = {
+    workLoad100: totalRegular,
+    otConversion: totalOtConversion,
+    trgConversion: totalTrgConversion,
+    total: round(totalRegular + totalOtConversion + totalTrgConversion),
+    trgWork: totalTrgWork,
+  };
+
+  const sumRawHands = round(bottomAbstract.rawHands.shiftI + bottomAbstract.rawHands.shiftII + bottomAbstract.rawHands.shiftIII);
+  const sumMultiSkill = round(bottomAbstract.multiSkill.shiftI + bottomAbstract.multiSkill.shiftII + bottomAbstract.multiSkill.shiftIII);
+  const sumContractDoffer = round(bottomAbstract.contractDoffer.shiftI + bottomAbstract.contractDoffer.shiftII + bottomAbstract.contractDoffer.shiftIII);
+  const sumSemiContract = round(bottomAbstract.semiContract.shiftI + bottomAbstract.semiContract.shiftII + bottomAbstract.semiContract.shiftIII);
+  const trgStrength = round(totalTrgWork - sumRawHands - sumMultiSkill - sumContractDoffer - sumSemiContract);
+
+  const traineeAbstract = {
+    workLoad100: totalRegular,
+    rawHands: sumRawHands,
+    multiSkill: sumMultiSkill,
+    contractDoffer: sumContractDoffer,
+    semiContract: sumSemiContract,
+    otConversion: totalOtConversion,
+    trgStrength: trgStrength,
+    total: round(totalRegular + sumRawHands + sumMultiSkill + sumContractDoffer + sumSemiContract + totalOtConversion + trgStrength),
+  };
+
+  return {
+    company,
+    threeShiftData,
+    grandTotal,
+    bottomAbstract,
+    attendanceAbstract,
+    traineeAbstract,
+  };
+}
 
 /**
  * GET /api/strength-report
@@ -33,398 +634,12 @@ exports.getStrengthReport = async (req, res) => {
       return res.status(400).json({ error: "companyId and date are required" });
     }
 
-    const { Attendance, Employee, Department, Company, Category, EightEightEntry, ShiftType, OTHours } = db;
-    const targetDate = moment(date).format("YYYY-MM-DD");
-
-    // Fetch FULL OT (otTypeId = 2) records for the date and company
-    const otRecords = await OTHours.findAll({
-      where: {
-        companyId,
-        date: {
-          [Op.gte]: moment(targetDate).startOf("day").toDate(),
-          [Op.lte]: moment(targetDate).endOf("day").toDate(),
-        },
-        [Op.or]: [
-          { otTypeId: 2 },
-          { otType: { [Op.like]: "%FULL%" } }
-        ],
-        status: "Active",
-      },
-      attributes: ["employeeId", "otHours"],
-      raw: true,
-    });
-    const fullOtMap = {};
-    otRecords.forEach((r) => {
-      fullOtMap[r.employeeId] = parseFloat(r.otHours || 0) || 8.0;
-    });
-
-    // ── 0. Fetch company details ──────────────────────────────
-    const company = await Company.findByPk(companyId, {
-      attributes: ["id", "name"],
-      raw: true,
-    });
-
-    if (!company) {
+    const reportData = await generateStrengthReportData(companyId, date);
+    if (!reportData) {
       return res.status(404).json({ error: "Company not found" });
     }
 
-    // ── 1. Fetch all departments with Category ────────────────
-    const allDepartments = await Department.findAll({
-      where: { companyId },
-      attributes: ["id", "departmentname", "strengthRequired", "slno"],
-      include: [
-        {
-          model: Category,
-          as: "category",
-          attributes: ["id", "categoryName", "categoryCode"],
-        },
-      ],
-      order: [["slno", "ASC"]],
-    });
-
-    const deptMap = {};
-    allDepartments.forEach((dept) => {
-      deptMap[dept.id] = {
-        departmentId: dept.id,
-        departmentName: dept.departmentname,
-        strengthRequired: dept.strengthRequired || 0,
-        slno: dept.slno,
-        categoryName: dept.category?.categoryName || "OTHERS",
-        categoryCode: dept.category?.categoryCode || "OTHERS",
-        shifts: {
-          A: { regular: 0, trainee: 0, conTrainee: 0, ot: 0, sOt: 0 },
-          B: { regular: 0, trainee: 0, conTrainee: 0, ot: 0, sOt: 0 },
-          C: { regular: 0, trainee: 0, conTrainee: 0, ot: 0, sOt: 0 },
-        },
-      };
-    });
-
-    // ── 2. Fetch present attendances for date ──────────────────
-    const attendances = await Attendance.findAll({
-      where: {
-        companyId,
-        attendanceDate: date,
-        status: {
-          [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"],
-        },
-      },
-      attributes: ["id", "employeeId", "departmentId", "workedDeptId", "shiftName", "status", "overtimeHours"],
-      include: [
-        {
-          model: Department,
-          as: "workedDepartment",
-          attributes: ["id", "departmentname", "strengthRequired", "slno"],
-          required: false,
-        },
-        {
-          model: Employee,
-          as: "employee",
-          attributes: ["id", "departmentId", "isTrainee", "employeeType", "workingType", "weeklyOff", "workload"],
-          where: {
-            status: "Active",
-          },
-          include: [
-            {
-              model: Department,
-              as: "department",
-              attributes: ["id", "departmentname", "strengthRequired", "slno"],
-            }
-          ]
-        },
-      ],
-      raw: true,
-      nest: true,
-    });
-
-    // ── 2b. Fetch 8-8 entries for date ─────────────────────────
-    const eightEightEntries = await EightEightEntry.findAll({
-      where: {
-        companyId,
-        date: {
-          [Op.gte]: moment(targetDate).startOf("day").toDate(),
-          [Op.lte]: moment(targetDate).endOf("day").toDate(),
-        },
-        status: "Active",
-      },
-      include: [
-        {
-          model: Employee,
-          as: "employee",
-          attributes: ["id", "isTrainee", "employeeType", "workingType", "workload"],
-          where: {
-            status: "Active",
-          },
-          required: false,
-        },
-        {
-          model: ShiftType,
-          as: "shift",
-          attributes: ["id", "name"],
-        },
-      ],
-      raw: true,
-      nest: true,
-    });
-
-    // ── 3. Aggregate shifts by department ───────────────────────
-    const targetDay = moment(date).format("dddd");
-
-    attendances.forEach((att) => {
-      const emp = att.employee;
-      if (!emp) return;
-      const dept = emp.department;
-      const deptId = att.workedDeptId || att.departmentId || (dept ? dept.id : null);
-      if (!deptId) return;
-
-      const shift = att.shiftName;
-
-      // Ensure department exists in map
-      if (!deptMap[deptId]) return;
-
-      // Map shifts (default other shifts like Staff to Shift A/I)
-      let shiftKey = "A";
-      if (shift === "B" || shift === "SUP_B" || (shift && (shift.endsWith("_B") || shift.endsWith(" B")))) shiftKey = "B";
-      else if (shift === "C" || shift === "SUP_C" || (shift && (shift.endsWith("_C") || shift.endsWith(" C")))) shiftKey = "C";
-      else if (shift === "A" || shift === "SUP_A" || (shift && (shift.endsWith("_A") || shift.endsWith(" A")))) shiftKey = "A";
-
-      const strengthVal = (att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave") ? 0.5 : 1.0;
-      const ot = parseFloat(att.overtimeHours) || 0;
-
-      const isTrainee = !!emp.isTrainee;
-      const empWorkload = parseFloat(emp.workload) || 0;
-
-      if (isTrainee) {
-        deptMap[deptId].shifts[shiftKey].trainee += strengthVal;
-        deptMap[deptId].shifts[shiftKey].conTrainee += empWorkload * strengthVal;
-      } else {
-        deptMap[deptId].shifts[shiftKey].regular += strengthVal;
-      }
-
-      deptMap[deptId].shifts[shiftKey].ot += ot;
-      if (fullOtMap[att.employeeId] !== undefined) {
-        deptMap[deptId].shifts[shiftKey].sOt += 1;
-      }
-    });
-
-    // ── 3b. Aggregate 8-8 entries globally by entryType ─────────
-    eightEightEntries.forEach((entry) => {
-      const entryType = entry.entryType;
-      const shift = entry.shift ? entry.shift.name : "";
-
-      let shiftKey = "A";
-      if (shift === "B" || shift === "SUP_B" || (shift && (shift.endsWith("_B") || shift.endsWith(" B")))) shiftKey = "B";
-      else if (shift === "C" || shift === "SUP_C" || (shift && (shift.endsWith("_C") || shift.endsWith(" C")))) shiftKey = "C";
-      else if (shift === "A" || shift === "SUP_A" || (shift && (shift.endsWith("_A") || shift.endsWith(" A")))) shiftKey = "A";
-
-      const key = `8_8_${entryType}`;
-
-      if (!deptMap[key]) {
-        deptMap[key] = {
-          departmentId: key,
-          departmentName: entryType,
-          strengthRequired: 0,
-          slno: 9000, // Display at the very end
-          categoryName: "8-8 ENTRIES",
-          categoryCode: "8-8",
-          shifts: {
-            A: { regular: 0, trainee: 0, conTrainee: 0, ot: 0, sOt: 0 },
-            B: { regular: 0, trainee: 0, conTrainee: 0, ot: 0, sOt: 0 },
-            C: { regular: 0, trainee: 0, conTrainee: 0, ot: 0, sOt: 0 },
-          },
-        };
-      }
-
-      // 8-8 entries only fill the 100% (regular) column
-      deptMap[key].shifts[shiftKey].regular += parseFloat(entry.hours) || 1.0;
-    });
-
-    // ── 4. Compute Bottom Shift Abstracts ───────────────────────
-    const bottomAbstract = {
-      contractDoffer: { shiftI: 0, shiftII: 0, shiftIII: 0 },
-      semiContract: { shiftI: 0, shiftII: 0, shiftIII: 0 },
-      rawHands: { shiftI: 0, shiftII: 0, shiftIII: 0 },
-      multiSkill: { shiftI: 0, shiftII: 0, shiftIII: 0 },
-    };
-
-    attendances.forEach((att) => {
-      const emp = att.employee;
-      if (!emp || !emp.isTrainee) return;
-      const dept = emp.department;
-      if (!dept) return;
-
-      const shift = att.shiftName;
-      let shiftKey = "shiftI";
-      if (shift === "B" || shift === "SUP_B" || (shift && (shift.endsWith("_B") || shift.endsWith(" B")))) shiftKey = "shiftII";
-      else if (shift === "C" || shift === "SUP_C" || (shift && (shift.endsWith("_C") || shift.endsWith(" C")))) shiftKey = "shiftIII";
-      else if (shift === "A" || shift === "SUP_A" || (shift && (shift.endsWith("_A") || shift.endsWith(" A")))) shiftKey = "shiftI";
-
-      const strengthVal = (att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave") ? 0.5 : 1.0;
-      const deptName = dept.departmentname.toUpperCase();
-
-      if (deptName === 'CONT. DOFFER' || deptName.includes('CONTRACT DOFFER')) {
-        bottomAbstract.contractDoffer[shiftKey] += strengthVal;
-      } else if (deptName.includes('SEMI CLG CONTRACT') || deptName.includes('SEMI CONTRACT')) {
-        bottomAbstract.semiContract[shiftKey] += strengthVal;
-      } else if (deptName.includes('RAW HANDS') || deptName.includes('RAW OTHERS')) {
-        bottomAbstract.rawHands[shiftKey] += strengthVal;
-      } else if (deptName.includes('MULTI SKILL')) {
-        bottomAbstract.multiSkill[shiftKey] += strengthVal;
-      }
-    });
-
-    // Round bottomAbstract values
-    Object.keys(bottomAbstract).forEach(k => {
-      Object.keys(bottomAbstract[k]).forEach(s => {
-        bottomAbstract[k][s] = round(bottomAbstract[k][s]);
-      });
-    });
-
-    // ── 5. Format department three-shift data ───────────────────
-    const OT_DIVISOR = 8.5;
-    const formatShift = (s) => {
-      const otCon = s.ot / OT_DIVISOR;
-      const total = s.regular + s.conTrainee + otCon;
-      return {
-        regular: round(s.regular),
-        trainee: round(s.trainee),
-        conTrainee: round(s.conTrainee),
-        sOt: round(s.sOt),
-        ot: round(s.ot),
-        otConversion: round(otCon),
-        total: round(total),
-      };
-    };
-
-    const threeShiftData = Object.values(deptMap)
-      .map((dept) => {
-        const shiftA = formatShift(dept.shifts.A);
-        const shiftB = formatShift(dept.shifts.B);
-        const shiftC = formatShift(dept.shifts.C);
-
-        const overallTotal = round(shiftA.total + shiftB.total + shiftC.total);
-        const diff = round(overallTotal - dept.strengthRequired);
-
-        return {
-          departmentId: dept.departmentId,
-          departmentName: dept.departmentName,
-          categoryName: dept.categoryName,
-          categoryCode: dept.categoryCode,
-          dayStd: dept.strengthRequired,
-          slno: dept.slno,
-          shiftI: shiftA,
-          shiftII: shiftB,
-          shiftIII: shiftC,
-          overallTotal,
-          diff,
-        };
-      })
-      .sort((a, b) => {
-        if (a.slno !== b.slno) return a.slno - b.slno;
-        return a.departmentName.localeCompare(b.departmentName);
-      });
-
-    // ── 6. Calculate Grand Totals ──────────────────────────────
-    const grandTotal = {
-      dayStd: 0,
-      shiftI: { regular: 0, trainee: 0, conTrainee: 0, sOt: 0, ot: 0, otConversion: 0, total: 0 },
-      shiftII: { regular: 0, trainee: 0, conTrainee: 0, sOt: 0, ot: 0, otConversion: 0, total: 0 },
-      shiftIII: { regular: 0, trainee: 0, conTrainee: 0, sOt: 0, ot: 0, otConversion: 0, total: 0 },
-      overallTotal: 0,
-      diff: 0,
-    };
-
-    threeShiftData.forEach((dept) => {
-      grandTotal.dayStd += dept.dayStd;
-      ["shiftI", "shiftII", "shiftIII"].forEach((s) => {
-        grandTotal[s].regular += dept[s].regular;
-        grandTotal[s].trainee += dept[s].trainee;
-        grandTotal[s].conTrainee += dept[s].conTrainee;
-        grandTotal[s].sOt += dept[s].sOt;
-        grandTotal[s].ot += dept[s].ot;
-        grandTotal[s].otConversion += dept[s].otConversion;
-        grandTotal[s].total += dept[s].total;
-      });
-      grandTotal.overallTotal += dept.overallTotal;
-      grandTotal.diff += dept.diff;
-    });
-
-    grandTotal.dayStd = round(grandTotal.dayStd);
-    grandTotal.overallTotal = round(grandTotal.overallTotal);
-    grandTotal.diff = round(grandTotal.diff);
-
-    ["shiftI", "shiftII", "shiftIII"].forEach((s) => {
-      Object.keys(grandTotal[s]).forEach((k) => {
-        grandTotal[s][k] = round(grandTotal[s][k]);
-      });
-    });
-
-    // ── 7. Attendance Abstract ──────────────────────────────────
-    const totalRegular = round(
-      grandTotal.shiftI.regular +
-      grandTotal.shiftII.regular +
-      grandTotal.shiftIII.regular
-    );
-    const totalOtConversion = round(
-      grandTotal.shiftI.otConversion +
-      grandTotal.shiftII.otConversion +
-      grandTotal.shiftIII.otConversion
-    );
-    const totalTrgConversion = round(
-      grandTotal.shiftI.conTrainee +
-      grandTotal.shiftII.conTrainee +
-      grandTotal.shiftIII.conTrainee
-    );
-    const totalTrgWork = round(
-      grandTotal.shiftI.trainee +
-      grandTotal.shiftII.trainee +
-      grandTotal.shiftIII.trainee
-    );
-
-    const attendanceAbstract = {
-      workLoad100: totalRegular,
-      otConversion: totalOtConversion,
-      trgConversion: totalTrgConversion,
-      total: round(totalRegular + totalOtConversion + totalTrgConversion),
-      trgWork: totalTrgWork,
-    };
-
-    // ── 8. Trainee Abstract ─────────────────────────────────────
-    const sumRawHands = round(
-      bottomAbstract.rawHands.shiftI +
-      bottomAbstract.rawHands.shiftII +
-      bottomAbstract.rawHands.shiftIII
-    );
-    const sumMultiSkill = round(
-      bottomAbstract.multiSkill.shiftI +
-      bottomAbstract.multiSkill.shiftII +
-      bottomAbstract.multiSkill.shiftIII
-    );
-    const sumContractDoffer = round(
-      bottomAbstract.contractDoffer.shiftI +
-      bottomAbstract.contractDoffer.shiftII +
-      bottomAbstract.contractDoffer.shiftIII
-    );
-    const sumSemiContract = round(
-      bottomAbstract.semiContract.shiftI +
-      bottomAbstract.semiContract.shiftII +
-      bottomAbstract.semiContract.shiftIII
-    );
-    const trgStrength = round(
-      totalTrgWork - sumRawHands - sumMultiSkill - sumContractDoffer - sumSemiContract
-    );
-
-    const traineeAbstract = {
-      workLoad100: totalRegular,
-      rawHands: sumRawHands,
-      multiSkill: sumMultiSkill,
-      contractDoffer: sumContractDoffer,
-      semiContract: sumSemiContract,
-      otConversion: totalOtConversion,
-      trgStrength: trgStrength,
-      total: round(totalRegular + sumRawHands + sumMultiSkill + sumContractDoffer + sumSemiContract + totalOtConversion + trgStrength),
-    };
-
-    // ── 9. Fetch Lock Status for date ─────────────────────────
+    const targetDate = moment(date).format("YYYY-MM-DD");
     const lockRecord = await db.AttendanceLock.findOne({
       where: {
         companyId: parseInt(companyId, 10),
@@ -437,14 +652,14 @@ exports.getStrengthReport = async (req, res) => {
       data: {
         date,
         companyId: parseInt(companyId),
-        companyName: company.name,
+        companyName: reportData.company.name,
         isLocked: lockRecord ? !!lockRecord.isLocked : false,
         lockDetails: lockRecord || null,
-        threeShiftData,
-        grandTotal,
-        bottomAbstract,
-        attendanceAbstract,
-        traineeAbstract,
+        threeShiftData: reportData.threeShiftData,
+        grandTotal: reportData.grandTotal,
+        bottomAbstract: reportData.bottomAbstract,
+        attendanceAbstract: reportData.attendanceAbstract,
+        traineeAbstract: reportData.traineeAbstract,
       },
     });
   } catch (error) {
@@ -468,397 +683,17 @@ exports.exportStrengthReportExcel = async (req, res) => {
       return res.status(400).json({ error: "companyId and date are required" });
     }
 
-    const { Attendance, Employee, Department, Company, Category, EightEightEntry, ShiftType, OTHours } = db;
-    const targetDate = moment(date).format("YYYY-MM-DD");
+    const reportData = await generateStrengthReportData(companyId, date);
+    if (!reportData) {
+      return res.status(404).json({ error: "Company not found" });
+    }
 
-    // Fetch FULL OT (otTypeId = 2) records for the date and company
-    const otRecords = await OTHours.findAll({
-      where: {
-        companyId,
-        date: {
-          [Op.gte]: moment(targetDate).startOf("day").toDate(),
-          [Op.lte]: moment(targetDate).endOf("day").toDate(),
-        },
-        [Op.or]: [
-          { otTypeId: 2 },
-          { otType: { [Op.like]: "%FULL%" } }
-        ],
-        status: "Active",
-      },
-      attributes: ["employeeId", "otHours"],
-      raw: true,
-    });
-    const fullOtMap = {};
-    otRecords.forEach((r) => {
-      fullOtMap[r.employeeId] = parseFloat(r.otHours || 0) || 8.0;
-    });
+    const { company, threeShiftData, grandTotal, bottomAbstract, attendanceAbstract, traineeAbstract } = reportData;
 
-    // ── 0. Fetch company details ──────────────────────────────
-    const company = await Company.findByPk(companyId, {
-      attributes: ["id", "name"],
-      raw: true,
-    });
-
-    if (!company) return res.status(404).json({ error: "Company not found" });
-
-    // ── 1. Fetch all departments with Category ────────────────
-    const allDepartments = await Department.findAll({
-      where: { companyId },
-      attributes: ["id", "departmentname", "strengthRequired", "slno"],
-      include: [
-        {
-          model: Category,
-          as: "category",
-          attributes: ["id", "categoryName", "categoryCode"],
-        },
-      ],
-      order: [["slno", "ASC"]],
-    });
-
-    const deptMap = {};
-    allDepartments.forEach((dept) => {
-      deptMap[dept.id] = {
-        departmentId: dept.id,
-        departmentName: dept.departmentname,
-        strengthRequired: dept.strengthRequired || 0,
-        slno: dept.slno,
-        categoryName: dept.category?.categoryName || "OTHERS",
-        categoryCode: dept.category?.categoryCode || "OTHERS",
-        shifts: {
-          A: { regular: 0, trainee: 0, conTrainee: 0, ot: 0, sOt: 0 },
-          B: { regular: 0, trainee: 0, conTrainee: 0, ot: 0, sOt: 0 },
-          C: { regular: 0, trainee: 0, conTrainee: 0, ot: 0, sOt: 0 },
-        },
-      };
-    });
-
-    // ── 2. Fetch present attendances for date ──────────────────
-    const attendances = await Attendance.findAll({
-      where: {
-        companyId,
-        attendanceDate: date,
-        status: {
-          [Op.in]: ["Present", "Present with Permission", "Present/Leave (P/L)", "Half Day"],
-        },
-      },
-      attributes: ["id", "employeeId", "departmentId", "workedDeptId", "shiftName", "status", "overtimeHours"],
-      include: [
-        {
-          model: Department,
-          as: "workedDepartment",
-          attributes: ["id", "departmentname", "strengthRequired", "slno"],
-          required: false,
-        },
-        {
-          model: Employee,
-          as: "employee",
-          attributes: ["id", "departmentId", "isTrainee", "employeeType", "workingType", "weeklyOff", "workload"],
-          where: {
-            status: "Active",
-          },
-          include: [
-            {
-              model: Department,
-              as: "department",
-              attributes: ["id", "departmentname", "strengthRequired", "slno"],
-            }
-          ]
-        },
-      ],
-      raw: true,
-      nest: true,
-    });
-
-    // ── 2b. Fetch 8-8 entries for date ─────────────────────────
-    const eightEightEntries = await EightEightEntry.findAll({
-      where: {
-        companyId,
-        date: {
-          [Op.gte]: moment(targetDate).startOf("day").toDate(),
-          [Op.lte]: moment(targetDate).endOf("day").toDate(),
-        },
-        status: "Active",
-      },
-      include: [
-        {
-          model: Employee,
-          as: "employee",
-          attributes: ["id", "isTrainee", "employeeType", "workingType", "workload"],
-          where: {
-            status: "Active",
-          },
-          required: false,
-        },
-        {
-          model: ShiftType,
-          as: "shift",
-          attributes: ["id", "name"],
-        },
-      ],
-      raw: true,
-      nest: true,
-    });
-
-    // ── 3. Aggregate shifts by department ───────────────────────
-    const targetDay = moment(date).format("dddd");
-
-    attendances.forEach((att) => {
-      const emp = att.employee;
-      if (!emp) return;
-      const dept = emp.department;
-      const deptId = att.workedDeptId || att.departmentId || (dept ? dept.id : null);
-      if (!deptId) return;
-
-      const shift = att.shiftName;
-
-      if (!deptMap[deptId]) return;
-
-      let shiftKey = "A";
-      if (shift === "B" || shift === "SUP_B" || (shift && (shift.endsWith("_B") || shift.endsWith(" B")))) shiftKey = "B";
-      else if (shift === "C" || shift === "SUP_C" || (shift && (shift.endsWith("_C") || shift.endsWith(" C")))) shiftKey = "C";
-      else if (shift === "A" || shift === "SUP_A" || (shift && (shift.endsWith("_A") || shift.endsWith(" A")))) shiftKey = "A";
-
-      const strengthVal = (att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave") ? 0.5 : 1.0;
-      const ot = parseFloat(att.overtimeHours) || 0;
-
-      const isTrainee = !!emp.isTrainee;
-      const empWorkload = parseFloat(emp.workload) || 0;
-
-      if (isTrainee) {
-        deptMap[deptId].shifts[shiftKey].trainee += strengthVal;
-        deptMap[deptId].shifts[shiftKey].conTrainee += empWorkload * strengthVal;
-      } else {
-        deptMap[deptId].shifts[shiftKey].regular += strengthVal;
-      }
-
-      deptMap[deptId].shifts[shiftKey].ot += ot;
-      if (fullOtMap[att.employeeId] !== undefined) {
-        deptMap[deptId].shifts[shiftKey].sOt += 1;
-      }
-    });
-
-    // ── 3b. Aggregate 8-8 entries globally by entryType ─────────
-    eightEightEntries.forEach((entry) => {
-      const entryType = entry.entryType;
-      const shift = entry.shift ? entry.shift.name : "";
-
-      let shiftKey = "A";
-      if (shift === "B" || shift === "SUP_B" || (shift && (shift.endsWith("_B") || shift.endsWith(" B")))) shiftKey = "B";
-      else if (shift === "C" || shift === "SUP_C" || (shift && (shift.endsWith("_C") || shift.endsWith(" C")))) shiftKey = "C";
-      else if (shift === "A" || shift === "SUP_A" || (shift && (shift.endsWith("_A") || shift.endsWith(" A")))) shiftKey = "A";
-
-      const key = `8_8_${entryType}`;
-
-      if (!deptMap[key]) {
-        deptMap[key] = {
-          departmentId: key,
-          departmentName: entryType,
-          strengthRequired: 0,
-          slno: 9000, // Display at the very end
-          categoryName: "8-8 ENTRIES",
-          categoryCode: "8-8",
-          shifts: {
-            A: { regular: 0, trainee: 0, conTrainee: 0, ot: 0, sOt: 0 },
-            B: { regular: 0, trainee: 0, conTrainee: 0, ot: 0, sOt: 0 },
-            C: { regular: 0, trainee: 0, conTrainee: 0, ot: 0, sOt: 0 },
-          },
-        };
-      }
-
-      // 8-8 entries only fill the 100% (regular) column
-      deptMap[key].shifts[shiftKey].regular += parseFloat(entry.hours) || 1.0;
-    });
-
-    // ── 4. Compute Bottom Shift Abstracts ───────────────────────
-    const bottomAbstract = {
-      contractDoffer: { shiftI: 0, shiftII: 0, shiftIII: 0 },
-      semiContract: { shiftI: 0, shiftII: 0, shiftIII: 0 },
-      rawHands: { shiftI: 0, shiftII: 0, shiftIII: 0 },
-      multiSkill: { shiftI: 0, shiftII: 0, shiftIII: 0 },
-    };
-
-    attendances.forEach((att) => {
-      const emp = att.employee;
-      if (!emp || !emp.isTrainee) return;
-      const dept = emp.department;
-      if (!dept) return;
-
-      const shift = att.shiftName;
-      let shiftKey = "shiftI";
-      if (shift === "B" || shift === "SUP_B" || (shift && (shift.endsWith("_B") || shift.endsWith(" B")))) shiftKey = "shiftII";
-      else if (shift === "C" || shift === "SUP_C" || (shift && (shift.endsWith("_C") || shift.endsWith(" C")))) shiftKey = "shiftIII";
-      else if (shift === "A" || shift === "SUP_A" || (shift && (shift.endsWith("_A") || shift.endsWith(" A")))) shiftKey = "shiftI";
-
-      const strengthVal = (att.status === "Half Day" || att.status === "Present/Leave (P/L)" || att.status === "Present/Leave") ? 0.5 : 1.0;
-      const deptName = dept.departmentname.toUpperCase();
-
-      if (deptName === 'CONT. DOFFER' || deptName.includes('CONTRACT DOFFER')) {
-        bottomAbstract.contractDoffer[shiftKey] += strengthVal;
-      } else if (deptName.includes('SEMI CLG CONTRACT') || deptName.includes('SEMI CONTRACT')) {
-        bottomAbstract.semiContract[shiftKey] += strengthVal;
-      } else if (deptName.includes('RAW HANDS') || deptName.includes('RAW OTHERS')) {
-        bottomAbstract.rawHands[shiftKey] += strengthVal;
-      } else if (deptName.includes('MULTI SKILL')) {
-        bottomAbstract.multiSkill[shiftKey] += strengthVal;
-      }
-    });
-
-    // Round values in bottomAbstract
-    Object.keys(bottomAbstract).forEach(k => {
-      Object.keys(bottomAbstract[k]).forEach(s => {
-        bottomAbstract[k][s] = round(bottomAbstract[k][s]);
-      });
-    });
-
-    // ── 5. Format department three-shift data ───────────────────
-    const OT_DIVISOR = 8.5;
-    const formatShift = (s) => {
-      const otCon = s.ot / OT_DIVISOR;
-      const total = s.regular + s.conTrainee + otCon;
-      return {
-        regular: round(s.regular),
-        trainee: round(s.trainee),
-        conTrainee: round(s.conTrainee),
-        sOt: round(s.sOt),
-        ot: round(s.ot),
-        otConversion: round(otCon),
-        total: round(total),
-      };
-    };
-
-    const threeShiftData = Object.values(deptMap)
-      .map((dept) => {
-        const shiftA = formatShift(dept.shifts.A);
-        const shiftB = formatShift(dept.shifts.B);
-        const shiftC = formatShift(dept.shifts.C);
-
-        const overallTotal = round(shiftA.total + shiftB.total + shiftC.total);
-        const diff = round(overallTotal - dept.strengthRequired);
-
-        return {
-          departmentId: dept.departmentId,
-          departmentName: dept.departmentName,
-          categoryName: dept.categoryName,
-          categoryCode: dept.categoryCode,
-          dayStd: dept.strengthRequired,
-          slno: dept.slno,
-          shiftI: shiftA,
-          shiftII: shiftB,
-          shiftIII: shiftC,
-          overallTotal,
-          diff,
-        };
-      })
-      .sort((a, b) => {
-        if (a.slno !== b.slno) return a.slno - b.slno;
-        return a.departmentName.localeCompare(b.departmentName);
-      });
-
-    // ── 6. Calculate Grand Totals ──────────────────────────────
-    const grandTotal = {
-      dayStd: 0,
-      shiftI: { regular: 0, trainee: 0, conTrainee: 0, sOt: 0, ot: 0, otConversion: 0, total: 0 },
-      shiftII: { regular: 0, trainee: 0, conTrainee: 0, sOt: 0, ot: 0, otConversion: 0, total: 0 },
-      shiftIII: { regular: 0, trainee: 0, conTrainee: 0, sOt: 0, ot: 0, otConversion: 0, total: 0 },
-      overallTotal: 0,
-      diff: 0,
-    };
-
-    threeShiftData.forEach((dept) => {
-      grandTotal.dayStd += dept.dayStd;
-      ["shiftI", "shiftII", "shiftIII"].forEach((s) => {
-        grandTotal[s].regular += dept[s].regular;
-        grandTotal[s].trainee += dept[s].trainee;
-        grandTotal[s].conTrainee += dept[s].conTrainee;
-        grandTotal[s].sOt += dept[s].sOt;
-        grandTotal[s].ot += dept[s].ot;
-        grandTotal[s].otConversion += dept[s].otConversion;
-        grandTotal[s].total += dept[s].total;
-      });
-      grandTotal.overallTotal += dept.overallTotal;
-      grandTotal.diff += dept.diff;
-    });
-
-    grandTotal.dayStd = round(grandTotal.dayStd);
-    grandTotal.overallTotal = round(grandTotal.overallTotal);
-    grandTotal.diff = round(grandTotal.diff);
-
-    ["shiftI", "shiftII", "shiftIII"].forEach((s) => {
-      Object.keys(grandTotal[s]).forEach((k) => {
-        grandTotal[s][k] = round(grandTotal[s][k]);
-      });
-    });
-
-    // ── 7. Attendance Abstract ──────────────────────────────────
-    const totalRegular = round(
-      grandTotal.shiftI.regular +
-      grandTotal.shiftII.regular +
-      grandTotal.shiftIII.regular
-    );
-    const totalOtConversion = round(
-      grandTotal.shiftI.otConversion +
-      grandTotal.shiftII.otConversion +
-      grandTotal.shiftIII.otConversion
-    );
-    const totalTrgConversion = round(
-      grandTotal.shiftI.conTrainee +
-      grandTotal.shiftII.conTrainee +
-      grandTotal.shiftIII.conTrainee
-    );
-    const totalTrgWork = round(
-      grandTotal.shiftI.trainee +
-      grandTotal.shiftII.trainee +
-      grandTotal.shiftIII.trainee
-    );
-
-    const attendanceAbstract = {
-      workLoad100: totalRegular,
-      otConversion: totalOtConversion,
-      trgConversion: totalTrgConversion,
-      total: round(totalRegular + totalOtConversion + totalTrgConversion),
-      trgWork: totalTrgWork,
-    };
-
-    // ── 8. Trainee Abstract ─────────────────────────────────────
-    const sumRawHands = round(
-      bottomAbstract.rawHands.shiftI +
-      bottomAbstract.rawHands.shiftII +
-      bottomAbstract.rawHands.shiftIII
-    );
-    const sumMultiSkill = round(
-      bottomAbstract.multiSkill.shiftI +
-      bottomAbstract.multiSkill.shiftII +
-      bottomAbstract.multiSkill.shiftIII
-    );
-    const sumContractDoffer = round(
-      bottomAbstract.contractDoffer.shiftI +
-      bottomAbstract.contractDoffer.shiftII +
-      bottomAbstract.contractDoffer.shiftIII
-    );
-    const sumSemiContract = round(
-      bottomAbstract.semiContract.shiftI +
-      bottomAbstract.semiContract.shiftII +
-      bottomAbstract.semiContract.shiftIII
-    );
-    const trgStrength = round(
-      totalTrgWork - sumRawHands - sumMultiSkill - sumContractDoffer - sumSemiContract
-    );
-
-    const traineeAbstract = {
-      workLoad100: totalRegular,
-      rawHands: sumRawHands,
-      multiSkill: sumMultiSkill,
-      contractDoffer: sumContractDoffer,
-      semiContract: sumSemiContract,
-      otConversion: totalOtConversion,
-      trgStrength: trgStrength,
-      total: round(totalRegular + sumRawHands + sumMultiSkill + sumContractDoffer + sumSemiContract + totalOtConversion + trgStrength),
-    };
-
-    // ── 9. Build Excel Workbook ─────────────────────────────────
+    // ── Build Excel Workbook ─────────────────────────────────
     const omitSOt = req.query.omitSOt === "true" || req.query.omitSOt === true;
     const shiftColsCount = omitSOt ? 6 : 7;
-    const totalCols = 2 + shiftColsCount * 3 + 2; // 22 when omitSOt, 25 otherwise
+    const totalCols = 2 + shiftColsCount * 3 + 2;
     const lastColLetter = omitSOt ? "V" : "Y";
 
     const wb = new ExcelJS.Workbook();
@@ -870,12 +705,12 @@ exports.exportStrengthReportExcel = async (req, res) => {
     });
 
     const dateLabel = formatDateLabel(date);
-    const TITLE_BG = "FF1E40AF"; // deep blue
-    const SHIFT_A_BG = "FFDBEAFE"; // light blue
-    const SHIFT_B_BG = "FFFDE68A"; // light amber
-    const SHIFT_C_BG = "FFD1FAE5"; // light green
-    const OVERALL_BG = "FFE9D5FF"; // light purple
-    const CAT_BG = "FFF1F5F9"; // light slate
+    const TITLE_BG = "FF1E40AF";
+    const SHIFT_A_BG = "FFDBEAFE";
+    const SHIFT_B_BG = "FFFDE68A";
+    const SHIFT_C_BG = "FFD1FAE5";
+    const OVERALL_BG = "FFE9D5FF";
+    const CAT_BG = "FFF1F5F9";
     const HEADER_FG = "FFFFFFFF";
     const GRAND_BG = "FFE2E8F0";
 
@@ -898,57 +733,82 @@ exports.exportStrengthReportExcel = async (req, res) => {
     ws.getRow(2).height = 22;
 
     // Row 3: Shift / Group Headers
-    const grpRow = ws.getRow(3);
-    grpRow.height = 20;
+    ws.mergeCells("A3:A4");
+    ws.getCell("A3").value = "Dept. Name";
+    ws.getCell("A3").font = { bold: true, size: 9 };
+    ws.getCell("A3").alignment = { horizontal: "center", vertical: "middle" };
+    ws.getCell("A3").border = borderThin();
 
-    const setGrpCell = (col, val, argb, span) => {
-      if (span > 1) ws.mergeCells(3, col, 3, col + span - 1);
-      const c = ws.getCell(3, col);
-      c.value = val;
-      c.font = { bold: true, size: 10, color: { argb: "FF1E293B" } };
-      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb } };
-      c.alignment = { horizontal: "center", vertical: "middle" };
-      c.border = borderThin();
-    };
+    ws.mergeCells("B3:B4");
+    ws.getCell("B3").value = "Day STD";
+    ws.getCell("B3").font = { bold: true, size: 9 };
+    ws.getCell("B3").alignment = { horizontal: "center", vertical: "middle" };
+    ws.getCell("B3").border = borderThin();
 
-    setGrpCell(1, "Dept. Name", "FFF1F5F9", 1);
-    setGrpCell(2, "Day STD", "FFF1F5F9", 1);
-    setGrpCell(3, "SHIFT I", SHIFT_A_BG, shiftColsCount);
-    setGrpCell(3 + shiftColsCount, "SHIFT II", SHIFT_B_BG, shiftColsCount);
-    setGrpCell(3 + shiftColsCount * 2, "SHIFT III", SHIFT_C_BG, shiftColsCount);
-    setGrpCell(3 + shiftColsCount * 3, "OVER ALL", OVERALL_BG, 2);
+    const shiftHeaders = [
+      { name: "SHIFT I", startCol: 3, bg: SHIFT_A_BG, fg: "FF1E40AF" },
+      { name: "SHIFT II", startCol: 3 + shiftColsCount, bg: SHIFT_B_BG, fg: "FF991B1B" },
+      { name: "SHIFT III", startCol: 3 + shiftColsCount * 2, bg: SHIFT_C_BG, fg: "FF166534" },
+    ];
 
-    // Row 4: Sub Headers
-    const subLabels = omitSOt
+    shiftHeaders.forEach((sh) => {
+      const endCol = sh.startCol + shiftColsCount - 1;
+      ws.mergeCells(3, sh.startCol, 3, endCol);
+      const cell = ws.getCell(3, sh.startCol);
+      cell.value = sh.name;
+      cell.font = { bold: true, size: 10, color: { argb: sh.fg } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: sh.bg } };
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      for (let c = sh.startCol; c <= endCol; c++) {
+        ws.getCell(3, c).border = borderThin();
+      }
+    });
+
+    const overallStartCol = 3 + shiftColsCount * 3;
+    ws.mergeCells(3, overallStartCol, 3, overallStartCol + 1);
+    const overallCell = ws.getCell(3, overallStartCol);
+    overallCell.value = "OVER ALL";
+    overallCell.font = { bold: true, size: 10, color: { argb: "FF334155" } };
+    overallCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: OVERALL_BG } };
+    overallCell.alignment = { horizontal: "center", vertical: "middle" };
+    ws.getCell(3, overallStartCol).border = borderThin();
+    ws.getCell(3, overallStartCol + 1).border = borderThin();
+    ws.getRow(3).height = 20;
+
+    // Row 4: Sub-column headers
+    const subColLabels = omitSOt
       ? ["100%", "Trg", "Con. Trg", "HRS OT", "CON. OT", "Total"]
       : ["100%", "Trg", "Con. Trg", "S OT", "HRS OT", "CON. OT", "Total"];
-    const subBgs = [SHIFT_A_BG, SHIFT_B_BG, SHIFT_C_BG];
-    const subRow = ws.getRow(4);
-    subRow.height = 18;
 
-    const setSubCell = (col, val, argb) => {
-      const c = ws.getCell(4, col);
-      c.value = val;
-      c.font = { bold: true, size: 9, color: { argb: "FF334155" } };
-      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb } };
-      c.alignment = { horizontal: "center", vertical: "middle" };
-      c.border = borderThin();
-    };
+    shiftHeaders.forEach((sh) => {
+      subColLabels.forEach((label, idx) => {
+        const colNum = sh.startCol + idx;
+        const cell = ws.getCell(4, colNum);
+        cell.value = label;
+        cell.font = { bold: true, size: 8, color: { argb: sh.fg } };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: sh.bg } };
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+        cell.border = borderThin();
+      });
+    });
 
-    setSubCell(1, "Dept. Name", "FFF1F5F9");
-    setSubCell(2, "Day STD", "FFF1F5F9");
-    subBgs.forEach((bg, si) =>
-      subLabels.forEach((lbl, li) => setSubCell(3 + si * shiftColsCount + li, lbl, bg))
-    );
-    setSubCell(totalCols - 1, "Con Total", OVERALL_BG);
-    setSubCell(totalCols, "Diff", OVERALL_BG);
+    const conTotalCell = ws.getCell(4, overallStartCol);
+    conTotalCell.value = "Con Total";
+    conTotalCell.font = { bold: true, size: 8, color: { argb: "FF334155" } };
+    conTotalCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: OVERALL_BG } };
+    conTotalCell.alignment = { horizontal: "center", vertical: "middle" };
+    conTotalCell.border = borderThin();
 
-    // Merge Dept. Name & Day STD vertically across rows 3 and 4
-    ws.mergeCells(3, 1, 4, 1);
-    ws.mergeCells(3, 2, 4, 2);
+    const diffCell = ws.getCell(4, overallStartCol + 1);
+    diffCell.value = "Diff";
+    diffCell.font = { bold: true, size: 8, color: { argb: "FF334155" } };
+    diffCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: OVERALL_BG } };
+    diffCell.alignment = { horizontal: "center", vertical: "middle" };
+    diffCell.border = borderThin();
+    ws.getRow(4).height = 18;
 
     // Set Column Widths
-    ws.getColumn(1).width = 24;
+    ws.getColumn(1).width = 28;
     ws.getColumn(2).width = 9;
     for (let c = 3; c <= 2 + shiftColsCount * 3; c++) ws.getColumn(c).width = 8;
     ws.getColumn(totalCols - 1).width = 10;
@@ -956,16 +816,16 @@ exports.exportStrengthReportExcel = async (req, res) => {
 
     // Group departments by category
     const groupedDepts = {};
-    threeShiftData.forEach(dept => {
+    threeShiftData.forEach((dept) => {
       const cat = dept.categoryName || "OTHERS";
       if (!groupedDepts[cat]) groupedDepts[cat] = [];
       groupedDepts[cat].push(dept);
     });
 
-    const getShiftExportVals = (s) =>
+    const getShiftExportVals = (s, isChild = false) =>
       omitSOt
-        ? [s.regular, s.trainee, s.conTrainee, s.ot, s.otConversion, s.total]
-        : [s.regular, s.trainee, s.conTrainee, s.sOt, s.ot, s.otConversion, s.total];
+        ? [s.regular, s.trainee, s.conTrainee, s.ot, s.otConversion, isChild ? "" : s.total]
+        : [s.regular, s.trainee, s.conTrainee, s.sOt, s.ot, s.otConversion, isChild ? "" : s.total];
 
     let rowIdx = 5;
     Object.entries(groupedDepts).forEach(([categoryName, depts]) => {
@@ -984,24 +844,34 @@ exports.exportStrengthReportExcel = async (req, res) => {
         catRow.getCell(c).border = borderThin();
       }
 
+      const groupMergeRanges = [];
+
       // Department Rows
-      depts.forEach(dept => {
-        // Render all departments regardless of employee count/headcount data presence
+      depts.forEach((dept) => {
         const row = ws.getRow(rowIdx++);
         row.height = 16;
+        const currentRowNum = rowIdx - 1;
+
+        if (dept.isGroupMaster) {
+          groupMergeRanges.push({
+            startRow: currentRowNum,
+            endRow: currentRowNum + dept.groupRowSpan - 1,
+          });
+        }
+
         const vals = [
           dept.departmentName,
-          dept.dayStd,
-          ...getShiftExportVals(dept.shiftI),
-          ...getShiftExportVals(dept.shiftII),
-          ...getShiftExportVals(dept.shiftIII),
-          dept.overallTotal,
-          dept.diff
+          dept.isGroupChild ? "" : dept.dayStd,
+          ...getShiftExportVals(dept.shiftI, dept.isGroupChild),
+          ...getShiftExportVals(dept.shiftII, dept.isGroupChild),
+          ...getShiftExportVals(dept.shiftIII, dept.isGroupChild),
+          dept.isGroupChild ? "" : dept.overallTotal,
+          dept.isGroupChild ? "" : dept.diff,
         ];
 
         vals.forEach((v, i) => {
           const cell = row.getCell(i + 1);
-          cell.value = (v === 0 && i > 0) ? "-" : v;
+          cell.value = v === 0 && i > 0 && !dept.isGroupChild ? "-" : v;
           cell.font = { size: 9 };
           cell.alignment = { horizontal: i === 0 ? "left" : "center", vertical: "middle" };
           cell.border = borderThin();
@@ -1012,6 +882,38 @@ exports.exportStrengthReportExcel = async (req, res) => {
             cell.font = { size: 9, bold: true };
           }
         });
+      });
+
+      // Apply Excel vertical merges for grouped rows
+      groupMergeRanges.forEach(({ startRow, endRow }) => {
+        if (endRow > startRow) {
+          // Day STD (Col 2)
+          ws.mergeCells(startRow, 2, endRow, 2);
+          ws.getCell(startRow, 2).alignment = { horizontal: "center", vertical: "middle" };
+
+          // Shift I Total
+          const s1TotalCol = 2 + shiftColsCount;
+          ws.mergeCells(startRow, s1TotalCol, endRow, s1TotalCol);
+          ws.getCell(startRow, s1TotalCol).alignment = { horizontal: "center", vertical: "middle" };
+
+          // Shift II Total
+          const s2TotalCol = 2 + shiftColsCount * 2;
+          ws.mergeCells(startRow, s2TotalCol, endRow, s2TotalCol);
+          ws.getCell(startRow, s2TotalCol).alignment = { horizontal: "center", vertical: "middle" };
+
+          // Shift III Total
+          const s3TotalCol = 2 + shiftColsCount * 3;
+          ws.mergeCells(startRow, s3TotalCol, endRow, s3TotalCol);
+          ws.getCell(startRow, s3TotalCol).alignment = { horizontal: "center", vertical: "middle" };
+
+          // Con Total (Col totalCols - 1)
+          ws.mergeCells(startRow, totalCols - 1, endRow, totalCols - 1);
+          ws.getCell(startRow, totalCols - 1).alignment = { horizontal: "center", vertical: "middle" };
+
+          // Diff (Col totalCols)
+          ws.mergeCells(startRow, totalCols, endRow, totalCols);
+          ws.getCell(startRow, totalCols).alignment = { horizontal: "center", vertical: "middle" };
+        }
       });
     });
 
@@ -1025,26 +927,23 @@ exports.exportStrengthReportExcel = async (req, res) => {
       ...getShiftExportVals(grandTotal.shiftII),
       ...getShiftExportVals(grandTotal.shiftIII),
       grandTotal.overallTotal,
-      grandTotal.diff
+      grandTotal.diff,
     ];
 
     gtVals.forEach((v, i) => {
       const cell = gtRow.getCell(i + 1);
-      cell.value = (v === 0 && i > 0) ? "-" : v;
+      cell.value = v === 0 && i > 0 ? "-" : v;
       cell.font = { bold: true, size: 10, color: i === totalCols - 1 ? { argb: grandTotal.diff < 0 ? "FFDC2626" : grandTotal.diff > 0 ? "FF15803D" : "FF64748B" } : { argb: "FF1E293B" } };
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRAND_BG } };
       cell.alignment = { horizontal: i === 0 ? "left" : "center", vertical: "middle" };
       cell.border = borderThin();
     });
 
-    // ── 10. Draw Bottom Abstracts side by side ───────────────────
-    rowIdx += 2; // leave blank rows
-
-    // Title Row for abstracts
+    // ── 10. Bottom Abstracts ──────────────────────────────────
+    rowIdx += 2;
     const absTitleRow = ws.getRow(rowIdx++);
     absTitleRow.height = 18;
 
-    // Abstract 1 title: Cols A to E
     ws.mergeCells(rowIdx - 1, 1, rowIdx - 1, 5);
     const abs1Cell = absTitleRow.getCell(1);
     abs1Cell.value = "TRG / CON. SHIFT ABSTRACT";
@@ -1052,7 +951,6 @@ exports.exportStrengthReportExcel = async (req, res) => {
     abs1Cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF475569" } };
     abs1Cell.alignment = { horizontal: "center", vertical: "middle" };
 
-    // Abstract 2 title: Cols H to I
     ws.mergeCells(rowIdx - 1, 8, rowIdx - 1, 9);
     const abs2Cell = absTitleRow.getCell(8);
     abs2Cell.value = "ATTENDANCE ABSTRACT";
@@ -1060,7 +958,6 @@ exports.exportStrengthReportExcel = async (req, res) => {
     abs2Cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF475569" } };
     abs2Cell.alignment = { horizontal: "center", vertical: "middle" };
 
-    // Abstract 3 title: Cols L to M
     ws.mergeCells(rowIdx - 1, 12, rowIdx - 1, 13);
     const abs3Cell = absTitleRow.getCell(12);
     abs3Cell.value = "TRAINEE ABSTRACT";
@@ -1072,7 +969,6 @@ exports.exportStrengthReportExcel = async (req, res) => {
     for (let c = 8; c <= 9; c++) absTitleRow.getCell(c).border = borderThin();
     for (let c = 12; c <= 13; c++) absTitleRow.getCell(c).border = borderThin();
 
-    // Shift Abstract Column Headers
     const absSubRow = ws.getRow(rowIdx++);
     absSubRow.height = 16;
     const absSubHeaders = ["Category", "SHIFT I", "SHIFT II", "SHIFT III", "TOTAL"];
@@ -1085,7 +981,6 @@ exports.exportStrengthReportExcel = async (req, res) => {
       cell.border = borderThin();
     });
 
-    // Content rows
     const absRowKeys = [
       { label: "Contract Doffer", key: "contractDoffer" },
       { label: "Semi Contract", key: "semiContract" },
@@ -1127,7 +1022,7 @@ exports.exportStrengthReportExcel = async (req, res) => {
         const vals = [item.label, s1, s2, s3, total];
         vals.forEach((v, idx) => {
           const cell = curRow.getCell(idx + 1);
-          cell.value = (v === 0 && idx > 0) ? "-" : v;
+          cell.value = v === 0 && idx > 0 ? "-" : v;
           cell.font = { size: 9, bold: idx === 0 || idx === 4 };
           cell.alignment = { horizontal: idx === 0 ? "left" : "center", vertical: "middle" };
           cell.border = borderThin();
@@ -1142,10 +1037,8 @@ exports.exportStrengthReportExcel = async (req, res) => {
 
         labelCell.value = item.label;
         valCell.value = item.value === 0 ? "-" : item.value;
-
         labelCell.alignment = { horizontal: "left", vertical: "middle" };
         valCell.alignment = { horizontal: "center", vertical: "middle" };
-
         labelCell.border = borderThin();
         valCell.border = borderThin();
 
@@ -1173,10 +1066,8 @@ exports.exportStrengthReportExcel = async (req, res) => {
 
         labelCell.value = item.label;
         valCell.value = item.value === 0 ? "-" : item.value;
-
         labelCell.alignment = { horizontal: "left", vertical: "middle" };
         valCell.alignment = { horizontal: "center", vertical: "middle" };
-
         labelCell.border = borderThin();
         valCell.border = borderThin();
 
@@ -1194,9 +1085,8 @@ exports.exportStrengthReportExcel = async (req, res) => {
 
     rowIdx += maxAbsRows;
 
-    // ── 11. Signature Blocks ─────────────────────────────────────
-    rowIdx += 3; // leave empty space for signatures
-
+    // ── 11. Signature Blocks ──────────────────────────────────
+    rowIdx += 3;
     const sigRow = ws.getRow(rowIdx);
     sigRow.height = 18;
     const sigLabels = [
@@ -1217,14 +1107,9 @@ exports.exportStrengthReportExcel = async (req, res) => {
       cell.value = sig.label;
       cell.font = { bold: true, size: 8, color: { argb: "FF475569" } };
       cell.alignment = { horizontal: "center", vertical: "middle" };
-
-      // Top border represents the line above the signature label
-      cell.border = {
-        top: { style: "thin", color: { argb: "FF94A3B8" } }
-      };
+      cell.border = { top: { style: "thin", color: { argb: "FF94A3B8" } } };
     });
 
-    // ── Stream response ─────────────────────────────────────
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     const downloadFileName = omitSOt ? `Strength_Report_Without_SOT_${date}.xlsx` : `Strength_Report_${date}.xlsx`;
     res.setHeader("Content-Disposition", `attachment; filename=${downloadFileName}`);
@@ -1238,7 +1123,9 @@ exports.exportStrengthReportExcel = async (req, res) => {
 
 // ── Helpers ───────────────────────────────────────────────────
 function round(val, decimals = 1) {
-  return Math.round(val * Math.pow(10, decimals)) / Math.pow(10, decimals);
+  const num = parseFloat(val);
+  if (isNaN(num)) return 0;
+  return Math.round(num * Math.pow(10, decimals)) / Math.pow(10, decimals);
 }
 
 function formatDateLabel(dateStr) {

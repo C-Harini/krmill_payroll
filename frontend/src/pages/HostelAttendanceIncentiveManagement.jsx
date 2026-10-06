@@ -143,8 +143,8 @@ const ShiftMultiSelectDropdown = ({ selectedShifts = [], onChange }) => {
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
         className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-xs font-semibold rounded-lg border transition ${selectedShifts.length > 0
-            ? "bg-white border-blue-300 text-blue-900 shadow-sm"
-            : "bg-white border-amber-300 text-amber-600"
+          ? "bg-white border-blue-300 text-blue-900 shadow-sm"
+          : "bg-white border-amber-300 text-amber-600"
           } focus:outline-none focus:ring-2 focus:ring-blue-500`}
       >
         <div className="flex items-center gap-1.5 truncate">
@@ -638,21 +638,21 @@ export default function HostelAttendanceIncentiveManagement() {
             }
 
             const conds = [];
-            if (combo.hasOwnProperty("I")) {
+            if (Object.prototype.hasOwnProperty.call(combo, "I")) {
               conds.push({
                 id: String(Math.random()),
                 shifts: ["I"],
                 minDays: String(combo.I || "12"),
               });
             }
-            if (combo.hasOwnProperty("II")) {
+            if (Object.prototype.hasOwnProperty.call(combo, "II")) {
               conds.push({
                 id: String(Math.random()),
                 shifts: ["II"],
                 minDays: String(combo.II || "12"),
               });
             }
-            if (combo.hasOwnProperty("III")) {
+            if (Object.prototype.hasOwnProperty.call(combo, "III")) {
               conds.push({
                 id: String(Math.random()),
                 shifts: ["III"],
@@ -988,21 +988,6 @@ export default function HostelAttendanceIncentiveManagement() {
     }
   };
 
-  const handleResetConditions = async () => {
-    if (!window.confirm("Reset all hostel incentive condition rules? Any custom hostel rules will be cleared.")) return;
-    setError(null);
-    setSuccess(null);
-    try {
-      await apiRequest("/hostel-attendance-incentives/conditions/reset", {
-        method: "POST",
-        body: JSON.stringify({ companyId: filters.companyId || null }),
-      });
-      setSuccess("Hostel incentive conditions reset successfully.");
-      fetchConditions();
-    } catch (err) {
-      setError(err.message);
-    }
-  };
 
   // ---------------- DAY ADJUSTMENT & RECALCULATION ----------------
   const handleAdjust = (empId, newAdjustedDays) => {
@@ -1147,7 +1132,6 @@ export default function HostelAttendanceIncentiveManagement() {
   const total88Pay = records.reduce((s, r) => s + (r.eightEightPay || 0), 0);
   const totalRegularPay = records.reduce((s, r) => s + (r.regularIncentive || 0), 0);
   const eligible = records.filter((r) => (r.incentive || 0) > 0).length;
-  const notEligible = records.length - eligible;
   const hasAdjustments = Object.keys(adjustments).length > 0;
 
   const categoryBreakdown = records.reduce((acc, r) => {
@@ -1426,7 +1410,6 @@ export default function HostelAttendanceIncentiveManagement() {
     // Summary Statistics Cards
     const sumIncentive = dataToExport.reduce((s, r) => s + (parseFloat(r.incentive) || 0), 0);
     const sumEligible = dataToExport.filter((r) => (parseFloat(r.incentive) || 0) > 0).length;
-    const sumIneligible = dataToExport.length - sumEligible;
     const sum88Days = dataToExport.reduce((s, r) => s + (r.eightEightDays || 0), 0);
     const sum88Pay = dataToExport.reduce((s, r) => s + (r.eightEightPay || 0), 0);
     const sumRegPay = dataToExport.reduce((s, r) => s + (r.regularIncentive || 0), 0);
@@ -1581,7 +1564,7 @@ export default function HostelAttendanceIncentiveManagement() {
         halign: "right",
       },
       margin: { left: 14, right: 14, bottom: 15 },
-      didDrawPage: (data) => {
+      didDrawPage: () => {
         doc.setFontSize(8);
         doc.setTextColor(148, 163, 184);
         doc.text(`Page ${doc.internal.getNumberOfPages()}`, pageW / 2, pageH - 8, { align: "center" });
@@ -2622,12 +2605,12 @@ export default function HostelAttendanceIncentiveManagement() {
                           <tr key={cond.id} className="hover:bg-blue-50/30 transition">
                             <td className="px-5 py-4 text-slate-400 text-xs font-mono">{idx + 1}</td>
                             <td className="px-5 py-4">
-                              <span className="font-semibold text-slate-800 text-sm">
+                              <span className="text-sm font-semibold text-slate-800">
                                 {cond.gradeName || "Hostel"}
                               </span>
                             </td>
                             <td className="px-5 py-4">
-                              <span className="font-semibold text-slate-800">{cond.shiftLabel}</span>
+                              <span className="font-semibold text-slate-800">{cond.shiftLabel || "—"}</span>
                             </td>
                             <td className="px-5 py-4 text-center">
                               <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cond.gender === "MALE"
@@ -2680,381 +2663,384 @@ export default function HostelAttendanceIncentiveManagement() {
                                 </button>
                               </div>
                             </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
+                          </tr >
+                        ))
+                      }
+                    </tbody >
+                  </table >
+                </div >
               )}
-            </div>
+            </div >
 
             {/* Condition Modal (Add / Edit) exclusively for Hostel */}
-            {showConditionModal && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
-                <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 animate-in fade-in zoom-in-95 duration-200 my-8 max-h-[85vh] overflow-y-auto border border-blue-100">
-                  <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-slate-800 text-lg">
-                          {editingCondition ? "✏️ Edit Hostel Incentive Rule" : "➕ Add Hostel Incentive Rule"}
-                        </h3>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-blue-100 text-blue-700 border border-blue-200 uppercase tracking-wider">
-                          Hostel Only
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Exclusively for hostel category employees. Automatically applies across all departments.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowConditionModal(false)}
-                      className="text-slate-400 hover:text-slate-600 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-slate-100"
-                    >
-                      ✕
-                    </button>
-                  </div>
-
-                  {error && (
-                    <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-start gap-2">
-                      <span className="text-red-400 mt-0.5">✕</span>
-                      <span>{error}</span>
-                    </div>
-                  )}
-
-                  <form onSubmit={handleSaveConditionSubmit} className="space-y-4">
-                    {/* Scope Banner: Universal for all departments */}
-                    <div className="p-3.5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl flex items-center gap-3 shadow-xs">
-                      <div className="w-9 h-9 rounded-lg bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 text-lg flex-shrink-0">
-                        🏨
-                      </div>
+            {
+              showConditionModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+                  <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 animate-in fade-in zoom-in-95 duration-200 my-8 max-h-[85vh] overflow-y-auto border border-blue-100">
+                    <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-blue-900">
-                            Universal Hostel Scope
-                          </span>
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-blue-200 text-blue-800 uppercase tracking-wide">
-                            All Departments
+                          <h3 className="font-bold text-slate-800 text-lg">
+                            {editingCondition ? "✏️ Edit Hostel Incentive Rule" : "➕ Add Hostel Incentive Rule"}
+                          </h3>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-blue-100 text-blue-700 border border-blue-200 uppercase tracking-wider">
+                            Hostel Only
                           </span>
                         </div>
-                        <p className="text-[11px] text-blue-700 mt-0.5 leading-relaxed">
-                          This rule automatically applies to all workers in the <strong>Hostel</strong> category, regardless of which department they work in.
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Exclusively for hostel category employees. Automatically applies across all departments.
                         </p>
                       </div>
-                    </div>
-
-                    {/* Row: Display Name & Target Gender */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
-                          Rule / Grade Display Name <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={conditionForm.gradeName}
-                          onChange={(e) => setConditionForm((p) => ({
-                            ...p,
-                            gradeName: e.target.value,
-                          }))}
-                          placeholder="e.g. Hostel - Day Shift Rule"
-                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-medium"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
-                          Target Gender
-                        </label>
-                        <select
-                          value={conditionForm.gender || "ALL"}
-                          onChange={(e) => setConditionForm((p) => ({ ...p, gender: e.target.value }))}
-                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-medium"
-                        >
-                          <option value="ALL">All Genders</option>
-                          <option value="MALE">Male Only</option>
-                          <option value="FEMALE">Female Only</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Row 3: Shift Selection & Custom Combo */}
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between pb-1 border-b border-slate-200">
-                        <div>
-                          <span className="text-xs font-bold text-slate-700">
-                            Active Shift Combinations (Satisfied if ANY combo matches)
-                          </span>
-                          <p className="text-[11px] text-slate-500">
-                            Configure alternative shift combinations. Inside each combo, conditions are combined together.
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleAddConditionCombo}
-                          className="text-xs text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg shadow-sm transition"
-                        >
-                          <span>➕</span>
-                          <span>Add Shift Combo</span>
-                        </button>
-                      </div>
-
-                      <div className="space-y-4">
-                        {conditionCombos.map((combo, idx) => (
-                          <div key={combo.id} className="space-y-2">
-                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 relative shadow-sm">
-                              {/* Combo Header */}
-                              <div className="flex items-center justify-between mb-3 border-b border-slate-200/80 pb-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800">
-                                    Combo #{idx + 1}
-                                  </span>
-                                  <span className="text-[11px] text-slate-500 font-medium">
-                                    ({combo.conditions?.length || 0} {combo.conditions?.length === 1 ? "condition" : "conditions"})
-                                  </span>
-                                </div>
-                                {conditionCombos.length > 1 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveConditionCombo(combo.id)}
-                                    className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded font-semibold transition flex items-center gap-1"
-                                  >
-                                    <span>🗑</span>
-                                    <span>Remove Combo</span>
-                                  </button>
-                                )}
-                              </div>
-
-                              {/* Shift Conditions under this combo */}
-                              <div className="space-y-2.5">
-                                {combo.conditions?.map((cond, cIdx) => (
-                                  <div
-                                    key={cond.id}
-                                    className="flex flex-wrap sm:flex-nowrap items-center gap-3 bg-white p-2.5 rounded-lg border border-slate-200 shadow-sm"
-                                  >
-                                    <div className="flex items-center gap-1 text-xs font-bold text-slate-500 min-w-[85px]">
-                                      <span>Condition {cIdx + 1}</span>
-                                    </div>
-
-                                    {/* Dropdown list box with Shift I, Shift II, Shift III (multi-selectable) */}
-                                    <div className="flex-1 min-w-[200px]">
-                                      <ShiftMultiSelectDropdown
-                                        selectedShifts={cond.shifts || []}
-                                        onChange={(newShifts) =>
-                                          handleUpdateConditionShifts(combo.id, cond.id, newShifts)
-                                        }
-                                      />
-                                    </div>
-
-                                    {/* Number box for min days */}
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-xs text-slate-600 font-medium whitespace-nowrap">
-                                        Min Days:
-                                      </span>
-                                      <input
-                                        type="number"
-                                        min="1"
-                                        max="31"
-                                        placeholder="Days"
-                                        value={cond.minDays}
-                                        onChange={(e) =>
-                                          handleUpdateConditionMinDays(combo.id, cond.id, e.target.value)
-                                        }
-                                        className="w-20 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-800 text-center"
-                                      />
-                                    </div>
-
-                                    {/* Remove condition button (if > 1) */}
-                                    {combo.conditions.length > 1 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleRemoveShiftCondition(combo.id, cond.id)}
-                                        className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition"
-                                        title="Remove this shift condition"
-                                      >
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                        </svg>
-                                      </button>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-
-                              {/* Add Shift Condition button */}
-                              <div className="pt-2.5 flex items-center justify-between border-t border-slate-200/60 mt-3">
-                                <button
-                                  type="button"
-                                  onClick={() => handleAddShiftCondition(combo.id)}
-                                  className="text-xs text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-sm"
-                                >
-                                  <span>➕</span>
-                                  <span>Add Shift Condition</span>
-                                </button>
-                                <span className="text-[11px] text-slate-400">
-                                  Conditions within this combo are combined together (Addition)
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* OR divider between combos */}
-                            {idx < conditionCombos.length - 1 && (
-                              <div className="flex items-center justify-center py-1">
-                                <div className="border-t border-dashed border-slate-300 flex-1"></div>
-                                <span className="mx-3 px-3 py-0.5 text-[10px] font-extrabold text-slate-500 uppercase tracking-widest bg-slate-200/70 rounded-full border border-slate-300">
-                                  OR
-                                </span>
-                                <div className="border-t border-dashed border-slate-300 flex-1"></div>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Row 4: Day Thresholds & Rates */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
-                          Min Days Required (Threshold)
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          max="31"
-                          value={conditionForm.minDays}
-                          onChange={(e) => setConditionForm((p) => ({ ...p, minDays: e.target.value }))}
-                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-semibold"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
-                          Low Tier Days
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          max="31"
-                          value={conditionForm.lowTierDays}
-                          onChange={(e) => setConditionForm((p) => ({ ...p, lowTierDays: e.target.value }))}
-                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-semibold"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
-                          Low Tier Rate (₹/day) <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          required
-                          value={conditionForm.lowTierRate}
-                          onChange={(e) => setConditionForm((p) => ({ ...p, lowTierRate: e.target.value }))}
-                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-mono font-bold text-amber-700"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Row 5: High Tier Days & Rate */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
-                          High Tier Days
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          max="31"
-                          value={conditionForm.highTierDays}
-                          onChange={(e) => setConditionForm((p) => ({ ...p, highTierDays: e.target.value }))}
-                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-semibold"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
-                          High Tier Rate (₹/day) <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          required
-                          value={conditionForm.highTierRate}
-                          onChange={(e) => setConditionForm((p) => ({ ...p, highTierRate: e.target.value }))}
-                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-mono font-bold text-emerald-700"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Row 6: Experience Override Settings */}
-                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
-                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={conditionForm.maleExpOverride}
-                          onChange={(e) => setConditionForm((p) => ({ ...p, maleExpOverride: e.target.checked }))}
-                          className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
-                        />
-                        <span>Enable Experience Override (e.g. Male worker experience rule)</span>
-                      </label>
-                      {conditionForm.maleExpOverride && (
-                        <div className="pl-6 pt-1 flex items-center gap-3">
-                          <div>
-                            <label className="block text-xs text-slate-500 mb-1">
-                              Experience Threshold (Years)
-                            </label>
-                            <input
-                              type="number"
-                              min="1"
-                              value={conditionForm.maleExpThreshold}
-                              onChange={(e) => setConditionForm((p) => ({ ...p, maleExpThreshold: e.target.value }))}
-                              className="w-32 border border-slate-200 rounded-lg px-2.5 py-1 text-sm bg-white"
-                            />
-                          </div>
-                          <span className="text-xs text-slate-400 mt-4">
-                            Workers exceeding this experience receive the base Day Shift rate.
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Row 7: Remarks */}
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1">
-                        Remarks / Rule Description
-                      </label>
-                      <input
-                        type="text"
-                        value={conditionForm.remarks}
-                        onChange={(e) => setConditionForm((p) => ({ ...p, remarks: e.target.value }))}
-                        placeholder="e.g. Hostel Shift I Only or Combo shift rules"
-                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
                       <button
                         type="button"
                         onClick={() => setShowConditionModal(false)}
-                        className="px-4 py-2 border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-lg text-sm font-semibold transition"
+                        className="text-slate-400 hover:text-slate-600 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-slate-100"
                       >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition shadow-sm font-semibold"
-                      >
-                        {editingCondition ? "Update Hostel Rule" : "Save Hostel Rule"}
+                        ✕
                       </button>
                     </div>
-                  </form>
+
+                    {error && (
+                      <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-start gap-2">
+                        <span className="text-red-400 mt-0.5">✕</span>
+                        <span>{error}</span>
+                      </div>
+                    )}
+
+                    <form onSubmit={handleSaveConditionSubmit} className="space-y-4">
+                      {/* Scope Banner: Universal for all departments */}
+                      <div className="p-3.5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl flex items-center gap-3 shadow-xs">
+                        <div className="w-9 h-9 rounded-lg bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 text-lg flex-shrink-0">
+                          🏨
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-blue-900">
+                              Universal Hostel Scope
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-blue-200 text-blue-800 uppercase tracking-wide">
+                              All Departments
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-blue-700 mt-0.5 leading-relaxed">
+                            This rule automatically applies to all workers in the <strong>Hostel</strong> category, regardless of which department they work in.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Row: Display Name & Target Gender */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                            Rule / Grade Display Name <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={conditionForm.gradeName}
+                            onChange={(e) => setConditionForm((p) => ({
+                              ...p,
+                              gradeName: e.target.value,
+                            }))}
+                            placeholder="e.g. Hostel - Day Shift Rule"
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-medium"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                            Target Gender
+                          </label>
+                          <select
+                            value={conditionForm.gender || "ALL"}
+                            onChange={(e) => setConditionForm((p) => ({ ...p, gender: e.target.value }))}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-medium"
+                          >
+                            <option value="ALL">All Genders</option>
+                            <option value="MALE">Male Only</option>
+                            <option value="FEMALE">Female Only</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Row 3: Shift Selection & Custom Combo */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between pb-1 border-b border-slate-200">
+                          <div>
+                            <span className="text-xs font-bold text-slate-700">
+                              Active Shift Combinations (Satisfied if ANY combo matches)
+                            </span>
+                            <p className="text-[11px] text-slate-500">
+                              Configure alternative shift combinations. Inside each combo, conditions are combined together.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleAddConditionCombo}
+                            className="text-xs text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg shadow-sm transition"
+                          >
+                            <span>➕</span>
+                            <span>Add Shift Combo</span>
+                          </button>
+                        </div>
+
+                        <div className="space-y-4">
+                          {conditionCombos.map((combo, idx) => (
+                            <div key={combo.id} className="space-y-2">
+                              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 relative shadow-sm">
+                                {/* Combo Header */}
+                                <div className="flex items-center justify-between mb-3 border-b border-slate-200/80 pb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800">
+                                      Combo #{idx + 1}
+                                    </span>
+                                    <span className="text-[11px] text-slate-500 font-medium">
+                                      ({combo.conditions?.length || 0} {combo.conditions?.length === 1 ? "condition" : "conditions"})
+                                    </span>
+                                  </div>
+                                  {conditionCombos.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveConditionCombo(combo.id)}
+                                      className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded font-semibold transition flex items-center gap-1"
+                                    >
+                                      <span>🗑</span>
+                                      <span>Remove Combo</span>
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Shift Conditions under this combo */}
+                                <div className="space-y-2.5">
+                                  {combo.conditions?.map((cond, cIdx) => (
+                                    <div
+                                      key={cond.id}
+                                      className="flex flex-wrap sm:flex-nowrap items-center gap-3 bg-white p-2.5 rounded-lg border border-slate-200 shadow-sm"
+                                    >
+                                      <div className="flex items-center gap-1 text-xs font-bold text-slate-500 min-w-[85px]">
+                                        <span>Condition {cIdx + 1}</span>
+                                      </div>
+
+                                      {/* Dropdown list box with Shift I, Shift II, Shift III (multi-selectable) */}
+                                      <div className="flex-1 min-w-[200px]">
+                                        <ShiftMultiSelectDropdown
+                                          selectedShifts={cond.shifts || []}
+                                          onChange={(newShifts) =>
+                                            handleUpdateConditionShifts(combo.id, cond.id, newShifts)
+                                          }
+                                        />
+                                      </div>
+
+                                      {/* Number box for min days */}
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-xs text-slate-600 font-medium whitespace-nowrap">
+                                          Min Days:
+                                        </span>
+                                        <input
+                                          type="number"
+                                          min="1"
+                                          max="31"
+                                          placeholder="Days"
+                                          value={cond.minDays}
+                                          onChange={(e) =>
+                                            handleUpdateConditionMinDays(combo.id, cond.id, e.target.value)
+                                          }
+                                          className="w-20 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-800 text-center"
+                                        />
+                                      </div>
+
+                                      {/* Remove condition button (if > 1) */}
+                                      {combo.conditions.length > 1 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveShiftCondition(combo.id, cond.id)}
+                                          className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition"
+                                          title="Remove this shift condition"
+                                        >
+                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                          </svg>
+                                        </button>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {/* Add Shift Condition button */}
+                                <div className="pt-2.5 flex items-center justify-between border-t border-slate-200/60 mt-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddShiftCondition(combo.id)}
+                                    className="text-xs text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-sm"
+                                  >
+                                    <span>➕</span>
+                                    <span>Add Shift Condition</span>
+                                  </button>
+                                  <span className="text-[11px] text-slate-400">
+                                    Conditions within this combo are combined together (Addition)
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* OR divider between combos */}
+                              {idx < conditionCombos.length - 1 && (
+                                <div className="flex items-center justify-center py-1">
+                                  <div className="border-t border-dashed border-slate-300 flex-1"></div>
+                                  <span className="mx-3 px-3 py-0.5 text-[10px] font-extrabold text-slate-500 uppercase tracking-widest bg-slate-200/70 rounded-full border border-slate-300">
+                                    OR
+                                  </span>
+                                  <div className="border-t border-dashed border-slate-300 flex-1"></div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Row 4: Day Thresholds & Rates */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                            Min Days Required (Threshold)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="31"
+                            value={conditionForm.minDays}
+                            onChange={(e) => setConditionForm((p) => ({ ...p, minDays: e.target.value }))}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-semibold"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                            Low Tier Days
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="31"
+                            value={conditionForm.lowTierDays}
+                            onChange={(e) => setConditionForm((p) => ({ ...p, lowTierDays: e.target.value }))}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-semibold"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                            Low Tier Rate (₹/day) <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            required
+                            value={conditionForm.lowTierRate}
+                            onChange={(e) => setConditionForm((p) => ({ ...p, lowTierRate: e.target.value }))}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-mono font-bold text-amber-700"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Row 5: High Tier Days & Rate */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                            High Tier Days
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="31"
+                            value={conditionForm.highTierDays}
+                            onChange={(e) => setConditionForm((p) => ({ ...p, highTierDays: e.target.value }))}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-semibold"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                            High Tier Rate (₹/day) <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            required
+                            value={conditionForm.highTierRate}
+                            onChange={(e) => setConditionForm((p) => ({ ...p, highTierRate: e.target.value }))}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-mono font-bold text-emerald-700"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Row 6: Experience Override Settings */}
+                      <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
+                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={conditionForm.maleExpOverride}
+                            onChange={(e) => setConditionForm((p) => ({ ...p, maleExpOverride: e.target.checked }))}
+                            className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
+                          />
+                          <span>Enable Experience Override (e.g. Male worker experience rule)</span>
+                        </label>
+                        {conditionForm.maleExpOverride && (
+                          <div className="pl-6 pt-1 flex items-center gap-3">
+                            <div>
+                              <label className="block text-xs text-slate-500 mb-1">
+                                Experience Threshold (Years)
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={conditionForm.maleExpThreshold}
+                                onChange={(e) => setConditionForm((p) => ({ ...p, maleExpThreshold: e.target.value }))}
+                                className="w-32 border border-slate-200 rounded-lg px-2.5 py-1 text-sm bg-white"
+                              />
+                            </div>
+                            <span className="text-xs text-slate-400 mt-4">
+                              Workers exceeding this experience receive the base Day Shift rate.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Row 7: Remarks */}
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">
+                          Remarks / Rule Description
+                        </label>
+                        <input
+                          type="text"
+                          value={conditionForm.remarks}
+                          onChange={(e) => setConditionForm((p) => ({ ...p, remarks: e.target.value }))}
+                          placeholder="e.g. Hostel Shift I Only or Combo shift rules"
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => setShowConditionModal(false)}
+                          className="px-4 py-2 border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-lg text-sm font-semibold transition"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition shadow-sm font-semibold"
+                        >
+                          {editingCondition ? "Update Hostel Rule" : "Save Hostel Rule"}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )
+            }
+          </div >
         )}
-      </div>
-    </div>
+      </div >
+    </div >
   );
 }

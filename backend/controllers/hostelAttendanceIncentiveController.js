@@ -183,36 +183,14 @@ const calculateHostelIncentive = ({
 
   const shiftRuleKey = resolveHostelShiftKey(shiftMap);
 
-  // Match condition from DB or fallback to default Hostel config
-  const empDeptId = employee.departmentId ? Number(employee.departmentId) : null;
-
-  const matchesDept = (c) => {
-    if (c.departmentIds) {
-      try {
-        const dIds = typeof c.departmentIds === "string" ? JSON.parse(c.departmentIds) : c.departmentIds;
-        if (Array.isArray(dIds) && dIds.length > 0) {
-          return empDeptId && dIds.map(Number).includes(empDeptId);
-        }
-      } catch (e) {}
-    }
-    if (c.departmentId) {
-      return empDeptId && Number(c.departmentId) === empDeptId;
-    }
-    return false;
-  };
-
-  const isUniversalDept = (c) => {
-    if (c.departmentId) return false;
-    if (c.departmentIds) {
-      try {
-        const dIds = typeof c.departmentIds === "string" ? JSON.parse(c.departmentIds) : c.departmentIds;
-        if (Array.isArray(dIds) && dIds.length > 0) return false;
-      } catch (e) {}
-    }
-    return true;
-  };
-
   const isEligibleForCond = (c) => {
+    // Gender check if specified
+    if (c.gender && c.gender !== "ALL") {
+      const empGender = (employee.gender || "").toUpperCase();
+      if (c.gender === "MALE" && empGender !== "MALE") return false;
+      if (c.gender === "FEMALE" && empGender !== "FEMALE") return false;
+    }
+
     if (c.shiftRuleKey && (c.shiftRuleKey.startsWith("[") || c.shiftRuleKey.startsWith("{"))) {
       return isHostelShiftEligible(shiftMap, c.shiftRuleKey);
     }
@@ -225,17 +203,12 @@ const calculateHostelIncentive = ({
     return isHostelShiftEligible(shiftMap, c.shiftRuleKey);
   };
 
-  // Strictly only consider active conditions that are HOSTEL
+  // Strictly only consider active conditions that are HOSTEL (automatically applies to all hostel employees across any department)
   const hostelConditions = (dbConditions || []).filter(
     (c) => c.status === "Active" && c.gradeKey === "HOSTEL"
   );
 
-  // 1. Dept match + shift match
-  let cond = hostelConditions.find((c) => matchesDept(c) && isEligibleForCond(c));
-  // 2. Universal dept + shift match
-  if (!cond) {
-    cond = hostelConditions.find((c) => isUniversalDept(c) && isEligibleForCond(c));
-  }
+  let cond = hostelConditions.find((c) => isEligibleForCond(c));
 
   const defaultHostelConfig = INCENTIVE_CONFIG.GRADES.HOSTEL || {
     gradeName: "Hostel",

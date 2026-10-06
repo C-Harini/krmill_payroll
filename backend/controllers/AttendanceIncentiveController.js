@@ -1312,17 +1312,25 @@ exports.getConditions = async (req, res) => {
     const { companyId, gradeKey } = req.query;
     await AttendanceIncentiveCondition.sync();
 
+    const isHostel = Boolean(
+      req.baseUrl?.includes("hostel") ||
+      req.originalUrl?.includes("hostel")
+    );
+
     const where = { status: "Active" };
     if (companyId) {
       where[Op.or] = [{ companyId }, { companyId: null }];
     }
-    if (gradeKey === "HOSTEL") {
+
+    if (isHostel) {
       where.gradeKey = "HOSTEL";
-    } else if (gradeKey && gradeKey !== "ALL" && gradeKey !== "NON_HOSTEL") {
-      where.gradeKey = gradeKey;
     } else {
       // Regular attendance incentive conditions must NEVER include HOSTEL conditions!
-      where.gradeKey = { [Op.ne]: "HOSTEL" };
+      if (gradeKey && gradeKey !== "ALL" && gradeKey !== "NON_HOSTEL" && gradeKey !== "HOSTEL") {
+        where.gradeKey = gradeKey;
+      } else {
+        where.gradeKey = { [Op.ne]: "HOSTEL" };
+      }
     }
 
     let conditions = await AttendanceIncentiveCondition.findAll({
@@ -1378,11 +1386,22 @@ exports.createCondition = async (req, res) => {
       remarks,
     } = req.body;
 
-    let gKey = (gradeKey || gradeName || "CUSTOM").toUpperCase().trim().replace(/[^A-Z0-9_]/g, "_");
-    // If not creating through hostel routes, ensure gradeKey is never accidentally "HOSTEL"
-    if (gKey === "HOSTEL" && !req.baseUrl?.includes("hostel") && !req.originalUrl?.includes("hostel")) {
-      gKey = "ALL_DEPARTMENTS";
+    const isHostel = Boolean(
+      req.baseUrl?.includes("hostel") ||
+      req.originalUrl?.includes("hostel")
+    );
+
+    let gKey;
+    if (isHostel) {
+      gKey = "HOSTEL";
+    } else {
+      gKey = (gradeKey || gradeName || "CUSTOM").toUpperCase().trim().replace(/[^A-Z0-9_]/g, "_");
+      // If creating from regular page, ensure it is NEVER saved with gradeKey "HOSTEL"
+      if (gKey === "HOSTEL") {
+        gKey = "ALL_DEPARTMENTS";
+      }
     }
+
     let sKey = (shiftRuleKey || shiftLabel || "SHIFT_I").trim();
     if (!sKey.startsWith("[") && !sKey.startsWith("{")) {
       sKey = sKey.replace(/[^A-Za-z0-9_]/g, "_");
@@ -1419,7 +1438,7 @@ exports.createCondition = async (req, res) => {
       shiftTypeId: shiftTypeId ? parseInt(shiftTypeId, 10) : null,
       gender: gender || "ALL",
       gradeKey: gKey,
-      gradeName: gradeName || gradeKey || "Custom Grade",
+      gradeName: gradeName || (isHostel ? "Hostel" : gradeKey || "Custom Grade"),
       shiftRuleKey: sKey,
       shiftLabel: shiftLabel || shiftRuleKey || "All Shifts",
       minDays: minDays !== undefined && minDays !== "" ? parseInt(minDays, 10) : 22,
@@ -1444,9 +1463,22 @@ exports.createCondition = async (req, res) => {
 exports.updateCondition = async (req, res) => {
   try {
     const { id } = req.params;
+    const isHostel = Boolean(
+      req.baseUrl?.includes("hostel") ||
+      req.originalUrl?.includes("hostel")
+    );
+
     const cond = await AttendanceIncentiveCondition.findByPk(id);
     if (!cond) {
       return res.status(404).json({ success: false, message: "Condition not found." });
+    }
+
+    // Strict boundary check: prevent updating hostel condition from regular route and vice-versa
+    if (isHostel && cond.gradeKey !== "HOSTEL") {
+      return res.status(400).json({ success: false, message: "Cannot edit regular incentive condition from Hostel Management." });
+    }
+    if (!isHostel && cond.gradeKey === "HOSTEL") {
+      return res.status(400).json({ success: false, message: "Cannot edit Hostel condition from Regular Attendance Incentive Management." });
     }
 
     const {
@@ -1471,7 +1503,17 @@ exports.updateCondition = async (req, res) => {
       status,
     } = req.body;
 
-    const gKey = gradeKey ? gradeKey.toUpperCase().trim().replace(/[^A-Z0-9_]/g, "_") : (gradeName ? gradeName.toUpperCase().trim().replace(/[^A-Z0-9_]/g, "_") : undefined);
+    let gKey;
+    if (isHostel) {
+      gKey = "HOSTEL";
+    } else if (gradeKey) {
+      gKey = gradeKey.toUpperCase().trim().replace(/[^A-Z0-9_]/g, "_");
+      if (gKey === "HOSTEL") gKey = "ALL_DEPARTMENTS";
+    } else if (gradeName) {
+      gKey = gradeName.toUpperCase().trim().replace(/[^A-Z0-9_]/g, "_");
+      if (gKey === "HOSTEL") gKey = "ALL_DEPARTMENTS";
+    }
+
     let sKey = shiftRuleKey ? shiftRuleKey.trim() : undefined;
     if (sKey && !sKey.startsWith("[") && !sKey.startsWith("{")) {
       sKey = sKey.replace(/[^A-Za-z0-9_]/g, "_");
@@ -1544,9 +1586,21 @@ exports.updateCondition = async (req, res) => {
 exports.deleteCondition = async (req, res) => {
   try {
     const { id } = req.params;
+    const isHostel = Boolean(
+      req.baseUrl?.includes("hostel") ||
+      req.originalUrl?.includes("hostel")
+    );
+
     const cond = await AttendanceIncentiveCondition.findByPk(id);
     if (!cond) {
       return res.status(404).json({ success: false, message: "Condition not found." });
+    }
+
+    if (isHostel && cond.gradeKey !== "HOSTEL") {
+      return res.status(400).json({ success: false, message: "Cannot delete regular incentive condition from Hostel Management." });
+    }
+    if (!isHostel && cond.gradeKey === "HOSTEL") {
+      return res.status(400).json({ success: false, message: "Cannot delete Hostel condition from Regular Attendance Incentive Management." });
     }
 
     await cond.destroy();
@@ -1559,12 +1613,18 @@ exports.deleteCondition = async (req, res) => {
 
 exports.resetConditions = async (req, res) => {
   try {
-    const { companyId, gradeKey } = req.body;
+    const { companyId } = req.body;
+    const isHostel = Boolean(
+      req.baseUrl?.includes("hostel") ||
+      req.originalUrl?.includes("hostel")
+    );
+
     const where = {};
     if (companyId) {
       where[Op.or] = [{ companyId }, { companyId: null }];
     }
-    if (gradeKey === "HOSTEL") {
+
+    if (isHostel) {
       where.gradeKey = "HOSTEL";
     } else {
       where.gradeKey = { [Op.ne]: "HOSTEL" };
@@ -1575,7 +1635,7 @@ exports.resetConditions = async (req, res) => {
     return res.status(200).json({
       success: true,
       conditions: [],
-      message: "All incentive conditions cleared successfully.",
+      message: isHostel ? "Hostel incentive conditions cleared successfully." : "All regular incentive conditions cleared successfully.",
     });
   } catch (error) {
     console.error("Error resetting incentive conditions:", error);

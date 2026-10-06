@@ -117,11 +117,10 @@ const ShiftMultiSelectDropdown = ({ selectedShifts = [], onChange }) => {
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-xs font-semibold rounded-lg border transition ${
-          selectedShifts.length > 0
+        className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-xs font-semibold rounded-lg border transition ${selectedShifts.length > 0
             ? "bg-white border-blue-300 text-blue-900 shadow-sm"
             : "bg-white border-amber-300 text-amber-600"
-        } focus:outline-none focus:ring-2 focus:ring-blue-500`}
+          } focus:outline-none focus:ring-2 focus:ring-blue-500`}
       >
         <div className="flex items-center gap-1.5 truncate">
           <span className="text-slate-400">🕒</span>
@@ -379,7 +378,7 @@ const formatConditionDepts = (cond, departments = []) => {
           .filter(Boolean);
         return names.join(", ");
       }
-    } catch (e) {}
+    } catch (e) { }
   }
   if (cond.department?.departmentname) {
     return cond.department.departmentname;
@@ -1272,7 +1271,7 @@ export default function AttendanceIncentiveManagement() {
         if (Array.isArray(parsed) && parsed.length > 0) {
           selectedDepts = parsed;
         }
-      } catch (e) {}
+      } catch (e) { }
     } else if (cond.departmentId) {
       selectedDepts = [cond.departmentId];
     } else {
@@ -1367,8 +1366,11 @@ export default function AttendanceIncentiveManagement() {
     const deptVal = !isAll && selectedDepts.length === 1 ? parseInt(selectedDepts[0], 10) : null;
     const deptIdsVal = !isAll && selectedDepts.length > 0 ? selectedDepts.map(Number) : null;
 
-    const finalGradeName = conditionForm.gradeName?.trim() || (isAll ? "All Departments" : "Custom Departments");
-    const finalGradeKey = conditionForm.gradeKey?.trim() || finalGradeName.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+    let finalGradeName = conditionForm.gradeName?.trim() || (isAll ? "All Departments" : "Custom Departments");
+    let finalGradeKey = conditionForm.gradeKey?.trim() || finalGradeName.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+    if (finalGradeKey === "HOSTEL") {
+      finalGradeKey = "ALL_DEPARTMENTS";
+    }
 
     try {
       const payload = {

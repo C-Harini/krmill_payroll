@@ -281,7 +281,7 @@ async function generateStrengthReportData(companyId, date) {
     const workedDeptName = att.workedDepartment?.departmentname || "";
     const isDeptTrg = isTrainingDepartment(workedDeptName) || isTrainingDepartment(homeDeptName);
     const isTrainee = !!emp.isTrainee || isDeptTrg;
-    const empWorkload = parseFloat(emp.workload) || (isTrainee ? 1.0 : 0);
+    const empWorkload = parseFloat(emp.workload) || 0;
 
     if (isTrainee) {
       deptRows[targetIdx].shifts[shiftKey].trainee += strengthVal;
@@ -438,6 +438,13 @@ async function generateStrengthReportData(companyId, date) {
     });
   });
 
+  // Definition of Merged Groups (SPG SIDER + SEMI CLG SIDERS + CONTRACT SIDERS combined = 42, etc.)
+  const MERGED_GROUPS = [
+    { groupKey: "siders", masterSno: 12, childSnos: [13, 14], combinedDayStd: 42, label: "SPG SIDER / SEMI CLG SIDERS / CONTRACT SIDERS" },
+    { groupKey: "semiCleaning", masterSno: 34, childSnos: [35], combinedDayStd: 15, label: "SEMI-CLEANING / SEMI-CLEANING CONTRACT" },
+    { groupKey: "cleaning", masterSno: 39, childSnos: [40], combinedDayStd: 25, label: "CLEANING / CLEANING CONT." },
+  ];
+
   // ── 7. Format Three Shift Data ─────────────────────────────
   const OT_DIVISOR = 8.5;
   const formatShift = (s) => {
@@ -454,7 +461,7 @@ async function generateStrengthReportData(companyId, date) {
     };
   };
 
-  const threeShiftData = deptRows.map((dept) => {
+  const rawThreeShiftData = deptRows.map((dept) => {
     const shiftA = formatShift(dept.shifts.A);
     const shiftB = formatShift(dept.shifts.B);
     const shiftC = formatShift(dept.shifts.C);
@@ -474,8 +481,65 @@ async function generateStrengthReportData(companyId, date) {
       shiftIII: shiftC,
       overallTotal,
       diff,
+      isGroupMaster: false,
+      isGroupChild: false,
+      groupRowSpan: 1,
+      groupKey: null,
     };
   });
+
+  // Apply merged groups logic (combine Day STD, shift totals, Con Total, Diff)
+  MERGED_GROUPS.forEach((mg) => {
+    const masterRow = rawThreeShiftData.find((r) => r.slno === mg.masterSno);
+    const childRows = rawThreeShiftData.filter((r) => mg.childSnos.includes(r.slno));
+    if (!masterRow) return;
+
+    const allGroupRows = [masterRow, ...childRows];
+
+    masterRow.isGroupMaster = true;
+    masterRow.isGroupChild = false;
+    masterRow.groupRowSpan = allGroupRows.length;
+    masterRow.groupKey = mg.groupKey;
+    masterRow.dayStd = mg.combinedDayStd;
+
+    childRows.forEach((cr) => {
+      cr.isGroupMaster = false;
+      cr.isGroupChild = true;
+      cr.groupRowSpan = 0;
+      cr.groupKey = mg.groupKey;
+      cr.dayStd = mg.combinedDayStd;
+    });
+
+    // Calculate combined shift totals
+    ["shiftI", "shiftII", "shiftIII"].forEach((s) => {
+      const combinedShiftTotal = round(
+        allGroupRows.reduce(
+          (sum, r) => sum + (r[s].regular + r[s].conTrainee + r[s].otConversion),
+          0
+        )
+      );
+      masterRow[s].total = combinedShiftTotal;
+      childRows.forEach((cr) => {
+        cr[s].total = combinedShiftTotal;
+      });
+    });
+
+    // Combined overall total & diff
+    const combinedOverallTotal = round(
+      masterRow.shiftI.total + masterRow.shiftII.total + masterRow.shiftIII.total
+    );
+    const combinedDiff = round(combinedOverallTotal - mg.combinedDayStd);
+
+    masterRow.overallTotal = combinedOverallTotal;
+    masterRow.diff = combinedDiff;
+
+    childRows.forEach((cr) => {
+      cr.overallTotal = combinedOverallTotal;
+      cr.diff = combinedDiff;
+    });
+  });
+
+  const threeShiftData = rawThreeShiftData;
 
   // ── 8. Grand Totals ────────────────────────────────────────
   const grandTotal = {
@@ -488,7 +552,6 @@ async function generateStrengthReportData(companyId, date) {
   };
 
   threeShiftData.forEach((dept) => {
-    grandTotal.dayStd += dept.dayStd;
     ["shiftI", "shiftII", "shiftIII"].forEach((s) => {
       grandTotal[s].regular += dept[s].regular;
       grandTotal[s].trainee += dept[s].trainee;
@@ -496,10 +559,16 @@ async function generateStrengthReportData(companyId, date) {
       grandTotal[s].sOt += dept[s].sOt;
       grandTotal[s].ot += dept[s].ot;
       grandTotal[s].otConversion += dept[s].otConversion;
-      grandTotal[s].total += dept[s].total;
     });
-    grandTotal.overallTotal += dept.overallTotal;
-    grandTotal.diff += dept.diff;
+
+    if (!dept.isGroupChild) {
+      grandTotal.dayStd += dept.dayStd;
+      ["shiftI", "shiftII", "shiftIII"].forEach((s) => {
+        grandTotal[s].total += dept[s].total;
+      });
+      grandTotal.overallTotal += dept.overallTotal;
+      grandTotal.diff += dept.diff;
+    }
   });
 
   grandTotal.dayStd = round(grandTotal.dayStd);
@@ -753,10 +822,10 @@ exports.exportStrengthReportExcel = async (req, res) => {
       groupedDepts[cat].push(dept);
     });
 
-    const getShiftExportVals = (s) =>
+    const getShiftExportVals = (s, isChild = false) =>
       omitSOt
-        ? [s.regular, s.trainee, s.conTrainee, s.ot, s.otConversion, s.total]
-        : [s.regular, s.trainee, s.conTrainee, s.sOt, s.ot, s.otConversion, s.total];
+        ? [s.regular, s.trainee, s.conTrainee, s.ot, s.otConversion, isChild ? "" : s.total]
+        : [s.regular, s.trainee, s.conTrainee, s.sOt, s.ot, s.otConversion, isChild ? "" : s.total];
 
     let rowIdx = 5;
     Object.entries(groupedDepts).forEach(([categoryName, depts]) => {
@@ -775,23 +844,34 @@ exports.exportStrengthReportExcel = async (req, res) => {
         catRow.getCell(c).border = borderThin();
       }
 
+      const groupMergeRanges = [];
+
       // Department Rows
       depts.forEach((dept) => {
         const row = ws.getRow(rowIdx++);
         row.height = 16;
+        const currentRowNum = rowIdx - 1;
+
+        if (dept.isGroupMaster) {
+          groupMergeRanges.push({
+            startRow: currentRowNum,
+            endRow: currentRowNum + dept.groupRowSpan - 1,
+          });
+        }
+
         const vals = [
           dept.departmentName,
-          dept.dayStd,
-          ...getShiftExportVals(dept.shiftI),
-          ...getShiftExportVals(dept.shiftII),
-          ...getShiftExportVals(dept.shiftIII),
-          dept.overallTotal,
-          dept.diff,
+          dept.isGroupChild ? "" : dept.dayStd,
+          ...getShiftExportVals(dept.shiftI, dept.isGroupChild),
+          ...getShiftExportVals(dept.shiftII, dept.isGroupChild),
+          ...getShiftExportVals(dept.shiftIII, dept.isGroupChild),
+          dept.isGroupChild ? "" : dept.overallTotal,
+          dept.isGroupChild ? "" : dept.diff,
         ];
 
         vals.forEach((v, i) => {
           const cell = row.getCell(i + 1);
-          cell.value = v === 0 && i > 0 ? "-" : v;
+          cell.value = v === 0 && i > 0 && !dept.isGroupChild ? "-" : v;
           cell.font = { size: 9 };
           cell.alignment = { horizontal: i === 0 ? "left" : "center", vertical: "middle" };
           cell.border = borderThin();
@@ -802,6 +882,38 @@ exports.exportStrengthReportExcel = async (req, res) => {
             cell.font = { size: 9, bold: true };
           }
         });
+      });
+
+      // Apply Excel vertical merges for grouped rows
+      groupMergeRanges.forEach(({ startRow, endRow }) => {
+        if (endRow > startRow) {
+          // Day STD (Col 2)
+          ws.mergeCells(startRow, 2, endRow, 2);
+          ws.getCell(startRow, 2).alignment = { horizontal: "center", vertical: "middle" };
+
+          // Shift I Total
+          const s1TotalCol = 2 + shiftColsCount;
+          ws.mergeCells(startRow, s1TotalCol, endRow, s1TotalCol);
+          ws.getCell(startRow, s1TotalCol).alignment = { horizontal: "center", vertical: "middle" };
+
+          // Shift II Total
+          const s2TotalCol = 2 + shiftColsCount * 2;
+          ws.mergeCells(startRow, s2TotalCol, endRow, s2TotalCol);
+          ws.getCell(startRow, s2TotalCol).alignment = { horizontal: "center", vertical: "middle" };
+
+          // Shift III Total
+          const s3TotalCol = 2 + shiftColsCount * 3;
+          ws.mergeCells(startRow, s3TotalCol, endRow, s3TotalCol);
+          ws.getCell(startRow, s3TotalCol).alignment = { horizontal: "center", vertical: "middle" };
+
+          // Con Total (Col totalCols - 1)
+          ws.mergeCells(startRow, totalCols - 1, endRow, totalCols - 1);
+          ws.getCell(startRow, totalCols - 1).alignment = { horizontal: "center", vertical: "middle" };
+
+          // Diff (Col totalCols)
+          ws.mergeCells(startRow, totalCols, endRow, totalCols);
+          ws.getCell(startRow, totalCols).alignment = { horizontal: "center", vertical: "middle" };
+        }
       });
     });
 

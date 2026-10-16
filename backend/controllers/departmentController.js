@@ -7,16 +7,16 @@ const { Op } = require("sequelize");
 exports.getDepartmentsByCompany = async (req, res) => {
   const { companyId, page = 1, limit = 100, search = "" } = req.query;
 
-  if (!companyId) {
-    return res.status(400).json({ message: "Company ID is required" });
-  }
-
   const offset = (page - 1) * limit;
 
   try {
+    const where = {};
+    if (companyId) {
+      where.companyId = companyId;
+    }
     const { count, rows } = await Department.findAndCountAll({
       where: {
-        companyId,
+        ...where,
         ...(search && {
           [Op.or]: [
             {

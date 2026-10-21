@@ -11,12 +11,95 @@ const orderComponents = (components) => {
         comp.componentName?.toLowerCase() === 'basic pay' || 
         comp.componentName?.toLowerCase() === 'basic'
     );
-    if (basicIndex > -1) {
-        const basicComp = components[basicIndex];
-        const otherComps = components.filter((_, idx) => idx !== basicIndex);
-        return [basicComp, ...otherComps];
-    }
-    return components;
+    let basicComp = null;
+    const otherEarnings = [];
+    const deductions = [];
+
+    components.forEach((comp, idx) => {
+        if (idx === basicIndex) {
+            basicComp = comp;
+        } else if (comp.componentType === 'Deduction') {
+            deductions.push(comp);
+        } else {
+            otherEarnings.push(comp);
+        }
+    });
+
+    const result = [];
+    if (basicComp) result.push(basicComp);
+    result.push(...otherEarnings);
+    result.push(...deductions);
+    return result;
+};
+
+const buildComponentsList = (allMasterComponents, existingComponents = []) => {
+    if (!allMasterComponents || !Array.isArray(allMasterComponents)) return [];
+
+    const list = allMasterComponents.map(masterComp => {
+        const existing = (existingComponents || []).find(c => 
+            (c.componentId && Number(c.componentId) === Number(masterComp.id)) ||
+            (c.componentCode && c.componentCode.toUpperCase() === masterComp.code?.toUpperCase()) ||
+            (c.componentName && c.componentName.toLowerCase() === masterComp.name?.toLowerCase())
+        );
+
+        if (existing) {
+            const valType = existing.valueType || masterComp.calculationType || 'Fixed';
+            const fixedAmt = existing.fixedAmount !== null && existing.fixedAmount !== undefined && existing.fixedAmount !== ''
+                ? String(existing.fixedAmount)
+                : (valType === 'Fixed' ? '0' : '');
+            const pctVal = existing.percentageValue !== null && existing.percentageValue !== undefined && existing.percentageValue !== ''
+                ? String(existing.percentageValue)
+                : (valType === 'Percentage' ? String(masterComp.percentage || '0') : '');
+
+            return {
+                componentId: masterComp.id,
+                componentName: existing.componentName || masterComp.name,
+                componentCode: existing.componentCode || masterComp.code,
+                componentType: existing.componentType || masterComp.type,
+                valueType: valType,
+                fixedAmount: fixedAmt,
+                percentageValue: pctVal,
+                percentageBase: existing.percentageBase || 'BASIC',
+                formula: existing.formulaExpression || existing.formula || (valType === 'Formula' ? masterComp.formula : null)
+            };
+        }
+
+        const valType = masterComp.calculationType || 'Fixed';
+        return {
+            componentId: masterComp.id,
+            componentName: masterComp.name,
+            componentCode: masterComp.code,
+            componentType: masterComp.type,
+            valueType: valType,
+            fixedAmount: valType === 'Fixed' ? '0' : '',
+            percentageValue: valType === 'Percentage' ? String(masterComp.percentage || '0') : '',
+            percentageBase: 'BASIC',
+            formula: valType === 'Formula' ? masterComp.formula : null
+        };
+    });
+
+    (existingComponents || []).forEach(existing => {
+        const existsInList = list.some(item => 
+            (existing.componentId && Number(item.componentId) === Number(existing.componentId)) ||
+            (existing.componentCode && item.componentCode.toUpperCase() === existing.componentCode.toUpperCase())
+        );
+        if (!existsInList) {
+            const valType = existing.valueType || 'Fixed';
+            list.push({
+                componentId: existing.componentId,
+                componentName: existing.componentName,
+                componentCode: existing.componentCode,
+                componentType: existing.componentType || 'Earning',
+                valueType: valType,
+                fixedAmount: existing.fixedAmount !== null && existing.fixedAmount !== undefined && existing.fixedAmount !== '' ? String(existing.fixedAmount) : '0',
+                percentageValue: existing.percentageValue !== null && existing.percentageValue !== undefined && existing.percentageValue !== '' ? String(existing.percentageValue) : '0',
+                percentageBase: existing.percentageBase || 'BASIC',
+                formula: existing.formulaExpression || existing.formula || null
+            });
+        }
+    });
+
+    return orderComponents(list);
 };
 
 const EmployeeSelector = ({ employees, selectedIds, onChange }) => {
@@ -280,6 +363,7 @@ const EmployeeSalaryManagement = () => {
     const [currentSalary, setCurrentSalary] = useState(null);
     const [viewHistoryModal, setViewHistoryModal] = useState(false);
     const [salaryHistory, setSalaryHistory] = useState([]);
+    const [historyEmployee, setHistoryEmployee] = useState(null);
     const [bulkUploadFile, setBulkUploadFile] = useState(null);
     const [bulkUploadResults, setBulkUploadResults] = useState(null);
     const [bulkEffectiveFrom, setBulkEffectiveFrom] = useState('2026-08-01');
@@ -321,7 +405,7 @@ const EmployeeSalaryManagement = () => {
                 const [employeesData, componentsData, salariesData] = await Promise.all([
                     apiRequest(`/employees?companyId=${selectedCompanyId}`),
                     apiRequest(`/salary-components?companyId=${selectedCompanyId}&status=Active`),
-                    apiRequest(`/employee-salary?companyId=${selectedCompanyId}`)
+                    apiRequest(`/employee-salary?companyId=${selectedCompanyId}&currentOnly=true`)
                 ]);
 
                 setEmployees(employeesData);
@@ -357,19 +441,47 @@ const EmployeeSalaryManagement = () => {
             revisionPercentage: '',
             reason: '',
             remarks: '',
-            components: orderComponents(salaryComponents.map(comp => ({
-                componentId: comp.id,
-                componentName: comp.name,
-                componentCode: comp.code,
-                componentType: comp.type,
-                valueType: comp.calculationType,
-                fixedAmount: '',
-                percentageValue: comp.calculationType === 'Percentage' ? comp.percentage : '',
-                percentageBase: 'BASIC',
-                formula: comp.calculationType === 'Formula' ? comp.formula : null
-            })))
+            components: buildComponentsList(salaryComponents, [])
         });
         setIsModalOpen(true);
+    };
+
+    const handleEmployeeSelectInModal = async (empId) => {
+        const empIdNum = parseInt(empId);
+        const activeSal = salaries.find(s => s.employeeId === empIdNum && s.status === 'Active');
+        if (activeSal) {
+            try {
+                const salaryDetails = await apiRequest(`/employee-salary/current/${empIdNum}`);
+                setCurrentSalary(salaryDetails);
+                setIsRevisionMode(true);
+                setFormData(prev => ({
+                    ...prev,
+                    employeeId: empId,
+                    effectiveFrom: new Date().toISOString().split('T')[0],
+                    revisionType: 'Annual_Hike',
+                    revisionPercentage: '',
+                    reason: '',
+                    remarks: '',
+                    components: buildComponentsList(salaryComponents, salaryDetails.EmployeeSalaryComponents || [])
+                }));
+                return;
+            } catch (err) {
+                console.error('Error fetching employee current salary:', err);
+            }
+        }
+
+        setCurrentSalary(null);
+        setIsRevisionMode(false);
+        setFormData(prev => ({
+            ...prev,
+            employeeId: empId,
+            effectiveFrom: new Date().toISOString().split('T')[0],
+            revisionType: 'Initial',
+            revisionPercentage: '',
+            reason: '',
+            remarks: '',
+            components: buildComponentsList(salaryComponents, [])
+        }));
     };
 
     const openBulkUploadModal = () => {
@@ -554,7 +666,7 @@ const EmployeeSalaryManagement = () => {
 
                 setBulkUploadResults(result);
 
-                const salariesData = await apiRequest(`/employee-salary?companyId=${selectedCompanyId}`);
+                const salariesData = await apiRequest(`/employee-salary?companyId=${selectedCompanyId}&currentOnly=true`);
                 setSalaries(salariesData);
 
             } catch (error) {
@@ -579,17 +691,7 @@ const EmployeeSalaryManagement = () => {
                 revisionPercentage: salary.revisionPercentage || '',
                 reason: '',
                 remarks: salary.remarks || '',
-                components: salaryDetails.EmployeeSalaryComponents.map(comp => ({
-                    componentId: comp.componentId,
-                    componentName: comp.componentName,
-                    componentCode: comp.componentCode,
-                    componentType: comp.componentType,
-                    valueType: comp.valueType,
-                    fixedAmount: comp.fixedAmount || '',
-                    percentageValue: comp.percentageValue || '',
-                    percentageBase: comp.percentageBase || 'BASIC',
-                    formula: comp.formulaExpression || null
-                }))
+                components: buildComponentsList(salaryComponents, salaryDetails.EmployeeSalaryComponents || [])
             });
             setIsModalOpen(true);
         } catch (err) {
@@ -611,17 +713,7 @@ const EmployeeSalaryManagement = () => {
                 revisionPercentage: '',
                 reason: '',
                 remarks: '',
-                components: currentSalaryData.EmployeeSalaryComponents.map(comp => ({
-                    componentId: comp.componentId,
-                    componentName: comp.componentName,
-                    componentCode: comp.componentCode,
-                    componentType: comp.componentType,
-                    valueType: comp.valueType,
-                    fixedAmount: comp.fixedAmount || '',
-                    percentageValue: comp.percentageValue || '',
-                    percentageBase: comp.percentageBase || 'BASIC',
-                    formula: comp.formulaExpression || null
-                }))
+                components: buildComponentsList(salaryComponents, currentSalaryData.EmployeeSalaryComponents || [])
             });
             setIsModalOpen(true);
         } catch (err) {
@@ -644,11 +736,11 @@ const EmployeeSalaryManagement = () => {
 
     const handleComponentChange = (index, field, value) => {
         const updatedComponents = [...formData.components];
-        updatedComponents[index][field] = value;
+        updatedComponents[index] = { ...updatedComponents[index], [field]: value };
 
         if (field === 'valueType') {
-            updatedComponents[index].fixedAmount = '';
-            updatedComponents[index].percentageValue = '';
+            updatedComponents[index].fixedAmount = value === 'Fixed' ? '0' : '';
+            updatedComponents[index].percentageValue = value === 'Percentage' ? '0' : '';
             updatedComponents[index].formula = null;
         }
 
@@ -662,18 +754,20 @@ const EmployeeSalaryManagement = () => {
         const componentValues = {};
 
         formData.components.forEach(comp => {
-            if (comp.valueType === 'Fixed' && comp.fixedAmount) {
-                componentValues[comp.componentCode] = parseFloat(comp.fixedAmount);
-                if (comp.componentCode === 'BASIC' || comp.componentName.toLowerCase().includes('basic')) {
-                    basic = parseFloat(comp.fixedAmount);
+            if (comp.valueType === 'Fixed') {
+                const val = parseFloat(comp.fixedAmount) || 0;
+                componentValues[comp.componentCode] = val;
+                if (comp.componentCode === 'BASIC' || comp.componentName?.toLowerCase().includes('basic')) {
+                    basic = val;
                 }
             }
         });
 
         formData.components.forEach(comp => {
-            if (comp.valueType === 'Percentage' && comp.percentageValue && comp.percentageBase) {
+            if (comp.valueType === 'Percentage' && comp.percentageBase) {
                 const baseValue = componentValues[comp.percentageBase] || 0;
-                componentValues[comp.componentCode] = (baseValue * parseFloat(comp.percentageValue)) / 100;
+                const pct = parseFloat(comp.percentageValue) || 0;
+                componentValues[comp.componentCode] = (baseValue * pct) / 100;
             }
         });
 
@@ -725,14 +819,14 @@ const EmployeeSalaryManagement = () => {
                 components: formData.components.map(comp => ({
                     componentId: comp.componentId,
                     valueType: comp.valueType,
-                    fixedAmount: comp.valueType === 'Fixed' ? parseFloat(comp.fixedAmount) || 0 : null,
-                    percentageValue: comp.valueType === 'Percentage' ? parseFloat(comp.percentageValue) || 0 : null,
-                    percentageBase: comp.valueType === 'Percentage' ? comp.percentageBase : null,
+                    fixedAmount: comp.valueType === 'Fixed' ? (comp.fixedAmount !== '' && !isNaN(parseFloat(comp.fixedAmount)) ? parseFloat(comp.fixedAmount) : 0) : null,
+                    percentageValue: comp.valueType === 'Percentage' ? (comp.percentageValue !== '' && !isNaN(parseFloat(comp.percentageValue)) ? parseFloat(comp.percentageValue) : 0) : null,
+                    percentageBase: comp.valueType === 'Percentage' ? (comp.percentageBase || 'BASIC') : null,
                     formula: comp.valueType === 'Formula' ? comp.formula : null,
                     remarks: comp.remarks || null
                 })).filter(comp => {
-                    if (comp.valueType === 'Fixed') return comp.fixedAmount > 0;
-                    if (comp.valueType === 'Percentage') return comp.percentageValue > 0;
+                    if (comp.valueType === 'Fixed') return comp.fixedAmount !== null && !isNaN(comp.fixedAmount);
+                    if (comp.valueType === 'Percentage') return comp.percentageValue !== null && !isNaN(comp.percentageValue);
                     if (comp.valueType === 'Formula') return comp.formula !== null;
                     return false;
                 }),
@@ -766,7 +860,7 @@ const EmployeeSalaryManagement = () => {
                 window.alert('Salary assigned successfully!');
             }
 
-            const salariesData = await apiRequest(`/employee-salary?companyId=${selectedCompanyId}`);
+            const salariesData = await apiRequest(`/employee-salary?companyId=${selectedCompanyId}&currentOnly=true`);
             setSalaries(salariesData);
 
             closeModal();
@@ -783,7 +877,7 @@ const EmployeeSalaryManagement = () => {
 
         try {
             await apiRequest(`/employee-salary/${salaryId}`, { method: 'DELETE' });
-            const salariesData = await apiRequest(`/employee-salary?companyId=${selectedCompanyId}`);
+            const salariesData = await apiRequest(`/employee-salary?companyId=${selectedCompanyId}&currentOnly=true`);
             setSalaries(salariesData);
             window.alert('Salary structure deleted successfully!');
         } catch (err) {
@@ -792,9 +886,15 @@ const EmployeeSalaryManagement = () => {
         }
     };
 
-    const viewHistory = async (employeeId) => {
+    const viewHistory = async (salaryOrEmpId) => {
         try {
-            const history = await apiRequest(`/employee-salary/history/${employeeId}`);
+            const empId = typeof salaryOrEmpId === 'object' ? salaryOrEmpId.employeeId : salaryOrEmpId;
+            const empObj = typeof salaryOrEmpId === 'object' ? {
+                name: salaryOrEmpId.Employee?.firstName,
+                code: salaryOrEmpId.Employee?.curEmployeeCode || salaryOrEmpId.Employee?.employeeCode
+            } : null;
+            setHistoryEmployee(empObj);
+            const history = await apiRequest(`/employee-salary/history/${empId}`);
             setSalaryHistory(history);
             setViewHistoryModal(true);
         } catch (err) {
@@ -807,6 +907,21 @@ const EmployeeSalaryManagement = () => {
     const filteredSalaries = selectedEmployeeIds.length > 0
         ? salaries.filter(s => selectedEmployeeIds.includes(s.employeeId))
         : salaries;
+
+    const displaySalaries = React.useMemo(() => {
+        const empMap = new Map();
+        filteredSalaries.forEach(sal => {
+            if (!empMap.has(sal.employeeId)) {
+                empMap.set(sal.employeeId, sal);
+            } else {
+                const existing = empMap.get(sal.employeeId);
+                if (sal.status === 'Active' && existing.status !== 'Active') {
+                    empMap.set(sal.employeeId, sal);
+                }
+            }
+        });
+        return Array.from(empMap.values());
+    }, [filteredSalaries]);
 
     if (loading) {
         return (
@@ -896,7 +1011,7 @@ const EmployeeSalaryManagement = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
-                            {filteredSalaries.length === 0 ? (
+                            {displaySalaries.length === 0 ? (
                                 <tr>
                                     <td colSpan="10" className="px-6 py-12 text-center text-gray-500">
                                         {selectedCompanyId
@@ -905,10 +1020,10 @@ const EmployeeSalaryManagement = () => {
                                     </td>
                                 </tr>
                             ) : (
-                                filteredSalaries.map((salary, index) => (
+                                displaySalaries.map((salary, index) => (
                                     <tr key={salary.id} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
                                         <td className="px-6 py-4 text-sm text-gray-700">{salary.Employee?.firstName}</td>
-                                        <td className="px-6 py-4 text-sm text-gray-700">{salary.Employee?.employeeCode}</td>
+                                        <td className="px-6 py-4 text-sm text-gray-700">{salary.Employee?.curEmployeeCode || salary.Employee?.employeeCode}</td>
                                         <td className="px-6 py-4 text-sm text-gray-700">{new Date(salary.effectiveFrom).toLocaleDateString()}</td>
                                         <td className="px-6 py-4 text-sm font-semibold text-gray-800">₹{parseFloat(salary.basicSalary).toLocaleString()}</td>
                                         <td className="px-6 py-4 text-sm font-semibold text-green-700">₹{parseFloat(salary.grossSalary).toLocaleString()}</td>
@@ -918,6 +1033,8 @@ const EmployeeSalaryManagement = () => {
                                         <td className="px-6 py-4 text-sm">
                                             <span className={salary.status === 'Active'
                                                 ? 'px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 border border-green-300'
+                                                : salary.status === 'Revised' || salary.status === 'Superseded'
+                                                ? 'px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-300'
                                                 : 'px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 border border-gray-300'
                                             }>
                                                 {salary.status}
@@ -942,7 +1059,7 @@ const EmployeeSalaryManagement = () => {
                                                     📈
                                                 </button>
                                                 <button
-                                                    onClick={() => viewHistory(salary.employeeId)}
+                                                    onClick={() => viewHistory(salary)}
                                                     className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded text-sm transition duration-200"
                                                     title="View History"
                                                 >
@@ -1087,6 +1204,27 @@ const EmployeeSalaryManagement = () => {
                         </div>
 
                         <form onSubmit={handleFormSubmit} className="p-6">
+                            {/* Notice if employee already has active salary */}
+                            {currentSalary && (
+                                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-sm text-blue-900">
+                                    <div>
+                                        <p className="font-semibold">Notice: Employee already has an active salary structure.</p>
+                                        <p className="text-xs text-blue-700 mt-0.5">
+                                            {isRevisionMode 
+                                                ? '✨ Revision Mode active: submitting will create a new Revision in history and update previous record status to "Revised".' 
+                                                : '✏️ Direct Edit Mode active: updating the existing record in place.'}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsRevisionMode(!isRevisionMode)}
+                                        className="px-3 py-1.5 bg-white border border-blue-300 rounded-lg text-xs font-semibold text-blue-700 hover:bg-blue-100 shrink-0 shadow-sm transition"
+                                    >
+                                        {isRevisionMode ? 'Switch to Direct Edit' : 'Switch to Revision Mode'}
+                                    </button>
+                                </div>
+                            )}
+
                             {/* Basic Info */}
                             <div className={`grid gap-4 mb-6 bg-gray-50 p-4 rounded-lg ${isRevisionMode ? 'grid-cols-4' : 'grid-cols-2'}`}>
                                 <div>
@@ -1094,7 +1232,7 @@ const EmployeeSalaryManagement = () => {
                                     <EmployeeSingleSelector
                                         employees={employees}
                                         selectedId={formData.employeeId}
-                                        onChange={val => setFormData({ ...formData, employeeId: val })}
+                                        onChange={handleEmployeeSelectInModal}
                                         disabled={isRevisionMode || !!currentSalary}
                                     />
                                 </div>
@@ -1189,9 +1327,9 @@ const EmployeeSalaryManagement = () => {
                                                             <input
                                                                 type="number"
                                                                 step="0.01"
-                                                                value={comp.fixedAmount}
+                                                                value={comp.fixedAmount !== undefined && comp.fixedAmount !== null && comp.fixedAmount !== '' ? comp.fixedAmount : '0'}
                                                                 onChange={e => handleComponentChange(index, 'fixedAmount', e.target.value)}
-                                                                placeholder="Amount"
+                                                                placeholder="0"
                                                                 className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                                             />
                                                         )}
@@ -1199,9 +1337,9 @@ const EmployeeSalaryManagement = () => {
                                                             <input
                                                                 type="number"
                                                                 step="0.01"
-                                                                value={comp.percentageValue}
+                                                                value={comp.percentageValue !== undefined && comp.percentageValue !== null && comp.percentageValue !== '' ? comp.percentageValue : '0'}
                                                                 onChange={e => handleComponentChange(index, 'percentageValue', e.target.value)}
-                                                                placeholder="%"
+                                                                placeholder="0"
                                                                 className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                                             />
                                                         )}
@@ -1297,7 +1435,9 @@ const EmployeeSalaryManagement = () => {
                 <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">
                     <div className="bg-white rounded-lg shadow-lg max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
                         <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 border-b border-blue-800 flex justify-between items-center">
-                            <h2 className="text-xl font-bold">Salary History</h2>
+                            <h2 className="text-xl font-bold">
+                                Salary History {historyEmployee?.name ? `— ${historyEmployee.name} (${historyEmployee.code})` : ''}
+                            </h2>
                             <button onClick={() => setViewHistoryModal(false)} className="text-white hover:text-gray-200 text-2xl">✕</button>
                         </div>
 
@@ -1321,7 +1461,7 @@ const EmployeeSalaryManagement = () => {
                                             <tr key={history.id} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
                                                 <td className="px-4 py-3 text-sm text-gray-700">{new Date(history.effectiveFrom).toLocaleDateString()}</td>
                                                 <td className="px-4 py-3 text-sm text-gray-700">{history.effectiveTo ? new Date(history.effectiveTo).toLocaleDateString() : 'Present'}</td>
-                                                <td className="px-4 py-3 text-sm text-gray-700">{history.revisionType.replace('_', ' ')}</td>
+                                                <td className="px-4 py-3 text-sm text-gray-700">{history.revisionType ? history.revisionType.replace('_', ' ') : '-'}</td>
                                                 <td className="px-4 py-3 text-sm font-semibold text-gray-800">₹{parseFloat(history.basicSalary).toLocaleString()}</td>
                                                 <td className="px-4 py-3 text-sm font-semibold text-gray-800">₹{parseFloat(history.grossSalary).toLocaleString()}</td>
                                                 <td className="px-4 py-3 text-sm font-semibold text-gray-800">₹{parseFloat(history.netSalary).toLocaleString()}</td>
@@ -1329,6 +1469,8 @@ const EmployeeSalaryManagement = () => {
                                                 <td className="px-4 py-3 text-sm">
                                                     <span className={history.status === 'Active'
                                                         ? 'px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 border border-green-300'
+                                                        : history.status === 'Revised' || history.status === 'Superseded'
+                                                        ? 'px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-300'
                                                         : 'px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 border border-gray-300'
                                                     }>
                                                         {history.status}

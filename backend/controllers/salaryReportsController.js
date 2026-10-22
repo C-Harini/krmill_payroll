@@ -871,18 +871,6 @@ function addStaffSheet(
   const { showEL, showWO, reportType } = opts;
   const ws = wb.addWorksheet(sheetName);
 
-  ws.mergeCells("A1:Z1");
-  setCell(ws, "A1", name, { bold: true, size: 13 }, "center");
-  ws.mergeCells("A2:Z2");
-  setCell(
-    ws,
-    "A2",
-    `Salary for the month of ${monthLabel} [${reportTypeLabel(reportType)}]`,
-    { size: 11 },
-    "center",
-  );
-  ws.addRow([]);
-
   // Build extra column for EL or WO
   const elCol = showEL
     ? [reportType === "with_el" ? "EL Days (+)" : "EL Days"]
@@ -909,7 +897,7 @@ function addStaffSheet(
     "HRA",
     "Spl. Allo",
     "Conv",
-    ...(isMgmt ? ["Ent. Allo"] : []),
+    "Ent. Allo",
     "NH/FH Salary",
     "Attn Incentive",
     "Earnings",
@@ -926,6 +914,19 @@ function addStaffSheet(
     ...totCol,
     "Net",
   ];
+
+  const lastColLetter = colToLetter(headers.length);
+  ws.mergeCells(`A1:${lastColLetter}1`);
+  setCell(ws, "A1", name, { bold: true, size: 13 }, "center");
+  ws.mergeCells(`A2:${lastColLetter}2`);
+  setCell(
+    ws,
+    "A2",
+    `Salary for the month of ${monthLabel} [${reportTypeLabel(reportType)}]`,
+    { size: 11 },
+    "center",
+  );
+  ws.addRow([]);
 
   const headerRow = ws.addRow(headers);
   styleHeaderRow(headerRow, "#1F3864");
@@ -947,7 +948,7 @@ function addStaffSheet(
       (e.hra || 0) +
       (e.spl || 0) +
       (e.conv || 0) +
-      (isMgmt ? e.ent || 0 : 0) +
+      (e.ent || 0) +
       (e.nhfh || 0) +
       (e.incentive || 0);
     const totalDedu =
@@ -998,7 +999,7 @@ function addStaffSheet(
       e.hra || 0,
       e.spl || 0,
       e.conv || 0,
-      ...(isMgmt ? [e.ent || 0] : []),
+      e.ent || 0,
       e.nhfh || 0,
       e.incentive || 0,
       earnings,
@@ -1022,7 +1023,7 @@ function addStaffSheet(
     });
 
     // Colour-code EL / WO cells
-    const baseColCount = 27 + (isMgmt ? 1 : 0);
+    const baseColCount = 28;
     if (showEL) {
       const elCellIdx = baseColCount + 1;
       row.getCell(elCellIdx).fill = {
@@ -1066,7 +1067,7 @@ function addStaffSheet(
 
   const grandNet = records.reduce((s, r) => s + toNum(r.netSalary), 0);
   const wordsRow = ws.addRow([numberToWords(grandNet) + " ONLY"]);
-  ws.mergeCells(`A${ws.rowCount}:Z${ws.rowCount}`);
+  ws.mergeCells(`A${ws.rowCount}:${lastColLetter}${ws.rowCount}`);
   wordsRow.getCell(1).font = { italic: true, size: 9 };
 }
 
@@ -1074,18 +1075,6 @@ function addStaffSheet(
 function addWorkerSheet(wb, sheetName, records, name, monthLabel, opts = {}) {
   const { showEL, showWO, reportType } = opts;
   const ws = wb.addWorksheet(sheetName);
-
-  ws.mergeCells("A1:AC1");
-  setCell(ws, "A1", name, { bold: true, size: 13 }, "center");
-  ws.mergeCells("A2:AC2");
-  setCell(
-    ws,
-    "A2",
-    `Worker wages for the month of ${monthLabel} [${reportTypeLabel(reportType)}]`,
-    { size: 11 },
-    "center",
-  );
-  ws.addRow([]);
 
   const elCol = showEL
     ? [reportType === "with_el" ? "EL Days (+)" : "EL Days"]
@@ -1111,6 +1100,7 @@ function addWorkerSheet(wb, sheetName, records, name, monthLabel, opts = {}) {
     "HRA",
     "Spl. Allo",
     "Conv",
+    "Ent. Allo",
     "NH/FH Salary",
     "Attn Incentive",
     "Earnings",
@@ -1128,6 +1118,19 @@ function addWorkerSheet(wb, sheetName, records, name, monthLabel, opts = {}) {
     "Net",
     "Net (Round)",
   ];
+
+  const lastColLetter = colToLetter(headers.length);
+  ws.mergeCells(`A1:${lastColLetter}1`);
+  setCell(ws, "A1", name, { bold: true, size: 13 }, "center");
+  ws.mergeCells(`A2:${lastColLetter}2`);
+  setCell(
+    ws,
+    "A2",
+    `Worker wages for the month of ${monthLabel} [${reportTypeLabel(reportType)}]`,
+    { size: 11 },
+    "center",
+  );
+  ws.addRow([]);
 
   const headerRow = ws.addRow(headers);
   styleHeaderRow(headerRow, "#1F3864");
@@ -1147,6 +1150,7 @@ function addWorkerSheet(wb, sheetName, records, name, monthLabel, opts = {}) {
       (e.hra || 0) +
       (e.spl || 0) +
       (e.conv || 0) +
+      (e.ent || 0) +
       (e.nhfh || 0) +
       (e.incentive || 0) +
       (e.arrears || 0);
@@ -1191,6 +1195,7 @@ function addWorkerSheet(wb, sheetName, records, name, monthLabel, opts = {}) {
       e.hra || 0,
       e.spl || 0,
       e.conv || 0,
+      e.ent || 0,
       e.nhfh || 0,
       e.incentive || 0,
       earnings,
@@ -1214,7 +1219,7 @@ function addWorkerSheet(wb, sheetName, records, name, monthLabel, opts = {}) {
       if (colNum >= 5) cell.alignment = { horizontal: "right" };
     });
 
-    const baseColCount = 28;
+    const baseColCount = 29;
     if (showEL) {
       const elCellIdx = baseColCount + 1;
       row.getCell(elCellIdx).fill = {
@@ -1261,7 +1266,7 @@ function addWorkerSheet(wb, sheetName, records, name, monthLabel, opts = {}) {
     0,
   );
   const wordsRow = ws.addRow([numberToWords(grandNet) + " ONLY"]);
-  ws.mergeCells(`A${ws.rowCount}:AC${ws.rowCount}`);
+  ws.mergeCells(`A${ws.rowCount}:${lastColLetter}${ws.rowCount}`);
   wordsRow.getCell(1).font = { italic: true, size: 9 };
 }
 
@@ -1363,6 +1368,7 @@ exports.downloadSalaryReportPDF = async (req, res) => {
       { label: "HRA", width: 40 },
       { label: "Spl", width: 46 },
       { label: "Conv", width: 40 },
+      { label: "Ent", width: 40 },
       { label: "Earnings", width: 55 },
       { label: "PF", width: 40 },
       { label: "ESI", width: 36 },
@@ -1463,6 +1469,7 @@ exports.downloadSalaryReportPDF = async (req, res) => {
         (e.hra || 0) +
         (e.spl || 0) +
         (e.conv || 0) +
+        (e.ent || 0) +
         (e.nhfh || 0) +
         (e.incentive || 0);
       const totalDedu =
@@ -1509,6 +1516,7 @@ exports.downloadSalaryReportPDF = async (req, res) => {
         e.hra || 0,
         e.spl || 0,
         e.conv || 0,
+        e.ent || 0,
         earnings,
         d.pf || 0,
         d.esi || 0,

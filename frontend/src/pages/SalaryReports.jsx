@@ -1116,6 +1116,7 @@ function SalaryTab({
                     "HRA",
                     "Spl",
                     "Conv",
+                    "Ent",
                     "NH Wages",
                     "Incentive",
                     "Earnings",
@@ -1252,7 +1253,7 @@ function SalaryTab({
                         {r.weekOffDays}
                       </td>
                       <Num v={e.basic} /> <Num v={e.hra} /> <Num v={e.spl} />
-                      <Num v={e.conv} /> <Num v={e.nhfh} />{" "}
+                      <Num v={e.conv} /> <Num v={e.ent} /> <Num v={e.nhfh} />{" "}
                       <Num v={e.incentive} />
                       <td className="px-2 py-1.5 text-right font-semibold text-blue-700 bg-blue-50/60">
                         {earnings.toLocaleString("en-IN")}
@@ -1311,7 +1312,7 @@ function SalaryTab({
               <tfoot>
                 <tr className="bg-slate-200/70 font-bold text-xs border-t border-slate-300">
                   <td
-                    colSpan={17}
+                    colSpan={18}
                     className="px-2 py-2 text-right text-slate-700 font-bold"
                   >
                     Total

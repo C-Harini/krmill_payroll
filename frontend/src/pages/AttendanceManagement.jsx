@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { format, subDays, isValid } from "date-fns";
 import API from "../api";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
@@ -515,6 +515,164 @@ const CategoryMultiSelect = ({ categories, selected, onChange }) => {
 };
 
 // ─────────────────────────────────────────────────────────────
+// EMPLOYEE MULTI-SELECT COMPONENT (SEARCH + MULTI-FILTER)
+// ─────────────────────────────────────────────────────────────
+const EmployeeMultiSelect = ({ employees = [], selected = [], onChange }) => {
+  const [open, setOpen] = useState(false);
+  const [searchTxt, setSearchTxt] = useState("");
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!searchTxt.trim()) return employees;
+    const q = searchTxt.toLowerCase().trim();
+    return employees.filter((e) => {
+      const name = String(e.firstName || "").toLowerCase();
+      const curCode = String(e.curEmployeeCode || e.employeeCode || "").toLowerCase();
+      const newCode = String(e.newEmployeeCode || "").toLowerCase();
+      return name.includes(q) || curCode.includes(q) || newCode.includes(q);
+    });
+  }, [employees, searchTxt]);
+
+  const toggle = (id) => {
+    const sid = String(id);
+    onChange(
+      selected.includes(sid)
+        ? selected.filter((s) => s !== sid)
+        : [...selected, sid]
+    );
+  };
+
+  const toggleAll = () => {
+    if (selected.length === employees.length && employees.length > 0) {
+      onChange([]);
+    } else {
+      onChange(employees.map((e) => String(e.id)));
+    }
+  };
+
+  const displayText = () => {
+    if (!selected.length) return "All Employees";
+    if (selected.length === 1) {
+      const found = employees.find((e) => String(e.id) === selected[0]);
+      if (found) {
+        const code = found.curEmployeeCode || found.employeeCode || "";
+        return `${found.firstName}${code ? ` (${code})` : ""}`;
+      }
+      return "1 selected";
+    }
+    return `${selected.length} Employees Selected`;
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <label className="block text-xs font-medium text-gray-600 mb-1.5">
+        Employee
+      </label>
+      <div
+        onClick={() => setOpen(!open)}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white cursor-pointer flex justify-between items-center select-none hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[38px]"
+      >
+        <span className="truncate text-gray-800 text-xs font-medium">{displayText()}</span>
+        <div className="flex items-center gap-1.5 ml-1 shrink-0">
+          {selected.length > 0 && (
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange([]);
+              }}
+              className="text-gray-400 hover:text-gray-600 text-xs font-bold px-1"
+              title="Clear selection"
+            >
+              ✕
+            </span>
+          )}
+          <span className="text-gray-400 text-xs">{open ? "▲" : "▼"}</span>
+        </div>
+      </div>
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-[280px] max-w-[360px] overflow-hidden">
+          {/* Internal search input */}
+          <div className="p-2 border-b border-gray-100 bg-gray-50">
+            <input
+              type="text"
+              placeholder="Search name, cur/new code..."
+              value={searchTxt}
+              onChange={(e) => setSearchTxt(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+              autoFocus
+            />
+          </div>
+          {/* Select all bar */}
+          <div
+            onClick={toggleAll}
+            className="flex items-center justify-between px-3 py-2 cursor-pointer border-b border-gray-100 hover:bg-gray-50 bg-gray-50/50 text-xs"
+          >
+            <span className="font-semibold text-gray-700">
+              {selected.length === employees.length && employees.length > 0
+                ? "Deselect All"
+                : "Select All"}
+            </span>
+            <span className="text-[11px] text-gray-500">
+              {selected.length} / {employees.length}
+            </span>
+          </div>
+          {/* Options list */}
+          <div className="max-h-60 overflow-y-auto divide-y divide-gray-50">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-3 text-xs text-gray-400 text-center">
+                No matching employees
+              </div>
+            ) : (
+              filtered.map((e) => {
+                const sid = String(e.id);
+                const isChecked = selected.includes(sid);
+                const curCode = e.curEmployeeCode || e.employeeCode || "";
+                const newCode = e.newEmployeeCode || "";
+                return (
+                  <div
+                    key={e.id}
+                    onClick={() => toggle(e.id)}
+                    className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-blue-50/60 transition-colors text-xs ${
+                      isChecked ? "bg-blue-50 text-blue-900 font-medium" : "text-gray-700"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => {}}
+                      className="rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 pointer-events-none"
+                    />
+                    <div className="truncate flex-1">
+                      <span className="font-medium">
+                        {e.firstName}
+                      </span>
+                      <span className="text-gray-500 ml-1 font-mono text-[11px]">
+                        ({curCode})
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────
 const AttendanceManagement = ({ companyId: propCompanyId }) => {
@@ -536,7 +694,7 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
   const [attendance, setAttendance] = useState([]);
   const [startDate, setStartDate] = useState(subDays(new Date(), 7));
   const [endDate, setEndDate] = useState(new Date());
-  const [selEmployee, setSelEmployee] = useState("");
+  const [selEmployees, setSelEmployees] = useState([]);
   const [selDepartment, setSelDepartment] = useState("");
   const [selCategories, setSelCategories] = useState([]);
   const [selStatus, setSelStatus] = useState("");
@@ -579,6 +737,7 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
       fetchShiftTypes();
       setSelShift("");
       setSelCategories([]);
+      setSelEmployees([]);
     }
   }, [selectedCompanyId]);
 
@@ -588,7 +747,7 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
     selectedCompanyId,
     startDate,
     endDate,
-    selEmployee,
+    selEmployees,
     selDepartment,
     selCategories,
     selShift,
@@ -683,7 +842,10 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
           endDate: format(endDate, "yyyy-MM-dd"),
           page,
           limit: 50,
-          ...(selEmployee && { employeeId: selEmployee }),
+          ...(selEmployees.length > 0 && {
+            employeeIds: selEmployees.join(","),
+            ...(selEmployees.length === 1 && { employeeId: selEmployees[0] }),
+          }),
           ...(selDepartment && { departmentId: selDepartment }),
           ...(selCategories.length > 0 && { categoryIds: selCategories.join(",") }),
           ...(selShift && { shiftName: selShift }),
@@ -737,13 +899,13 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
   };
 
   const fetchSummary = async () => {
-    if (!selEmployee) return setError("Select an employee first");
+    if (!selEmployees.length) return setError("Select an employee first");
     setLoading(true);
     try {
       const { data } = await API.get("/attendance/summary", {
         params: {
           companyId: selectedCompanyId,
-          employeeId: selEmployee,
+          employeeId: selEmployees[0],
           startDate: format(startDate, "yyyy-MM-dd"),
           endDate: format(endDate, "yyyy-MM-dd"),
         },
@@ -859,7 +1021,7 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
             records.forEach((r) => {
               const row = [
                 formatDate(r.attendanceDate),
-                r.employee?.employeeCode || "",
+                r.employee?.curEmployeeCode || "",
                 r.employee?.firstName || "",
                 r.workedDepartment?.departmentname || r.department?.departmentname || r.employee?.department?.departmentname || "",
                 r.firstCheckIn ? formatTime(r.firstCheckIn) : "",
@@ -966,7 +1128,7 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
 
             const tableRows = records.map((r) => [
               formatDate(r.attendanceDate),
-              r.employee?.employeeCode || "",
+              r.employee?.curEmployeeCode || "",
               r.employee?.firstName || "",
               r.workedDepartment?.departmentname || r.department?.departmentname || r.employee?.department?.departmentname || "",
               r.firstCheckIn ? formatTime(r.firstCheckIn) : "-",
@@ -1031,13 +1193,14 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
         !selCategories.length ||
         selCategories.includes(String(e.categoryId)),
     )
-    .filter(
-      (e) =>
-        !empSearch ||
-        e.firstName
-          .toLowerCase()
-          .includes(empSearch.toLowerCase())
-    );
+    .filter((e) => {
+      if (!empSearch) return true;
+      const q = empSearch.toLowerCase().trim();
+      const name = String(e.firstName || "").toLowerCase();
+      const curCode = String(e.curEmployeeCode || e.employeeCode || "").toLowerCase();
+      const newCode = String(e.newEmployeeCode || "").toLowerCase();
+      return name.includes(q) || curCode.includes(q) || newCode.includes(q);
+    });
 
   const groupedAttendance = attendance
     .filter((r) => !selShift || r.shiftName === selShift)
@@ -1153,8 +1316,8 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
               </button>
               <button
                 onClick={fetchSummary}
-                disabled={!selEmployee}
-                title={!selEmployee ? "Select an employee first" : ""}
+                disabled={!selEmployees.length}
+                title={!selEmployees.length ? "Select an employee first" : ""}
                 className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium disabled:opacity-50"
               >
                 View Summary
@@ -1195,7 +1358,7 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
                     value={selDepartment}
                     onChange={(e) => {
                       setSelDepartment(e.target.value);
-                      setSelEmployee("");
+                      setSelEmployees([]);
                       setPage(1);
                     }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1214,18 +1377,18 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
                     selected={selCategories}
                     onChange={(v) => {
                       setSelCategories(v);
-                      setSelEmployee("");
+                      setSelEmployees([]);
                       setPage(1);
                     }}
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                    Search Name
+                    Search (Name / Code)
                   </label>
                   <input
                     type="text"
-                    placeholder="Type name..."
+                    placeholder="Search name, code..."
                     value={empSearch}
                     onChange={(e) => {
                       setEmpSearch(e.target.value);
@@ -1235,24 +1398,14 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                    Employee
-                  </label>
-                  <select
-                    value={selEmployee}
-                    onChange={(e) => {
-                      setSelEmployee(e.target.value);
+                  <EmployeeMultiSelect
+                    employees={filteredEmployees}
+                    selected={selEmployees}
+                    onChange={(ids) => {
+                      setSelEmployees(ids);
                       setPage(1);
                     }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">All Employees</option>
-                    {filteredEmployees.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.firstName} ({e.employeeCode})
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1.5">
@@ -1417,8 +1570,8 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
                       {/* Shift Table */}
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
-                          <thead className="bg-gray-100 border-b border-gray-200">
-                            <tr>
+                          <thead>
+                            <tr className="bg-gradient-to-r from-slate-700 to-slate-800 text-white">
                               {[
                                 "Date",
                                 "Emp Code",
@@ -1434,7 +1587,9 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
                               ].map((h) => (
                                 <th
                                   key={h}
-                                  className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase whitespace-nowrap"
+                                  className={`px-4 py-3.5 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap ${
+                                    h === "Actions" ? "text-center" : "text-left"
+                                  }`}
                                 >
                                   {h}
                                 </th>
@@ -1442,8 +1597,8 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-200">
-                            {records.map((r) => (
-                              <tr key={r.id} className="hover:bg-gray-50">
+                            {records.map((r, idx) => (
+                              <tr key={r.id} className={`hover:bg-slate-50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/60"}`}>
                                 <td className="px-4 py-3 text-gray-900 whitespace-nowrap">
                                   <div>{formatDate(r.attendanceDate)}</div>
                                   <div className="text-[10px] mt-0.5">
@@ -1458,8 +1613,8 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
                                     )}
                                   </div>
                                 </td>
-                                <td className="px-4 py-3 text-gray-900 whitespace-nowrap">
-                                  {r.employee?.employeeCode || "-"}
+                                <td className="px-4 py-3 text-gray-900 whitespace-nowrap font-mono text-xs">
+                                  {r.employee?.curEmployeeCode || "-"}
                                 </td>
                                 <td className="px-4 py-3">
                                   {r.employee ? (
@@ -1545,13 +1700,13 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
                                   )}
                                 </td>
                                 <td className="px-4 py-3">
-                                  <div className="flex gap-1 justify-center">
+                                  <div className="flex gap-1.5 justify-center items-center">
                                     <button
                                       onClick={() => {
                                         setSelRecord(r);
                                         setEditOpen(true);
                                       }}
-                                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
+                                      className="p-1.5 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors"
                                       title="Edit"
                                     >
                                       <Edit2 size={15} />
@@ -1559,14 +1714,14 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
                                     <button
                                       onClick={() => handleApprove(r.id)}
                                       disabled={!!r.approvedAt}
-                                      className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg disabled:opacity-40"
+                                      className="p-1.5 rounded-lg bg-green-100 text-green-600 hover:bg-green-200 transition-colors disabled:opacity-40"
                                       title="Approve"
                                     >
                                       <Check size={15} />
                                     </button>
                                     <button
                                       onClick={() => handleDelete(r.id)}
-                                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
+                                      className="p-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
                                       title="Delete"
                                     >
                                       <Trash2 size={15} />
@@ -1714,8 +1869,8 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="bg-gray-50 border-b">
-                        <tr>
+                      <thead>
+                        <tr className="bg-gradient-to-r from-slate-700 to-slate-800 text-white">
                           {[
                             "Employee",
                             "Type",
@@ -1728,7 +1883,7 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
                           ].map((h) => (
                             <th
                               key={h}
-                              className="px-4 py-2.5 text-left text-xs font-medium text-gray-600 uppercase whitespace-nowrap"
+                              className="px-4 py-3 text-left text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap"
                             >
                               {h}
                             </th>
@@ -1736,14 +1891,14 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {(dashData.employees || []).map((emp) => (
-                          <tr key={emp.employeeId} className="hover:bg-gray-50">
+                        {(dashData.employees || []).map((emp, idx) => (
+                          <tr key={emp.employeeId} className={`hover:bg-slate-50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/60"}`}>
                             <td className="px-4 py-2.5">
                               <p className="font-medium text-gray-900">
                                 {emp.employeeName}
                               </p>
                               <p className="text-xs text-gray-500">
-                                {emp.employeeCode}
+                                {emp.curEmployeeCode || emp.employeeCode || "-"}
                               </p>
                             </td>
                             <td className="px-4 py-2.5 text-xs text-gray-600 capitalize">
@@ -1886,7 +2041,7 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
                             {emp.employeeName}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {emp.employeeCode} · {emp.employeeType}
+                            {emp.curEmployeeCode || emp.employeeCode || "-"} · {emp.employeeType}
                           </p>
                         </div>
                         <div className="text-right">

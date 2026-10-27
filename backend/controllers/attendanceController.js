@@ -429,6 +429,7 @@ exports.getAttendance = async (req, res) => {
     startDate,
     endDate,
     employeeId,
+    employeeIds,
     departmentId,
     categoryIds,
     categoryId,
@@ -455,7 +456,17 @@ exports.getAttendance = async (req, res) => {
         ],
       };
     }
-    if (employeeId) where.employeeId = employeeId;
+    const empIdList = (employeeIds || employeeId)
+      ? String(employeeIds || employeeId)
+          .split(",")
+          .map((id) => parseInt(id.trim()))
+          .filter(Boolean)
+      : [];
+    if (empIdList.length === 1) {
+      where.employeeId = empIdList[0];
+    } else if (empIdList.length > 1) {
+      where.employeeId = { [Op.in]: empIdList };
+    }
     if (status) where.status = status;
     if (shiftName) where.shiftName = shiftName;
     if (departmentId) {

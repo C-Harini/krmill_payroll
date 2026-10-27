@@ -65,7 +65,7 @@ const SALARY_REPORT_TYPES = [
     key: "with_weekoff",
     label: "+ WO",
     full: "With Week Off",
-    desc: "Week-off days added to present days",
+    desc: "Worked week-off days added to regular working days",
     color: "purple",
     badge: "bg-purple-100 text-purple-700",
     btn: "bg-purple-600 hover:bg-purple-700",
@@ -75,7 +75,7 @@ const SALARY_REPORT_TYPES = [
     key: "without_weekoff",
     label: "− WO",
     full: "Without Week Off",
-    desc: "Week-off days subtracted from total",
+    desc: "Regular working days excluding worked week-offs",
     color: "amber",
     badge: "bg-amber-100 text-amber-700",
     btn: "bg-amber-500 hover:bg-amber-600",
@@ -600,8 +600,8 @@ export default function SalaryReports() {
                       }`}
                     >
                       {salaryReportType === "with_weekoff"
-                        ? "+ Week Off Added"
-                        : "− Week Off Subtracted"}
+                        ? "+ Worked Week-Off Added"
+                        : "− Worked Week-Off Excluded"}
                     </span>
                   )}
                 </div>

@@ -33,6 +33,8 @@ const Company = db.Company;
 const Designation = db.Designation;
 const EmployerGrade = db.EmployerGrade;
 const EmployeeSalaryMaster = db.EmployeeSalaryMaster;
+const Attendance = db.Attendance;
+const moment = require("moment");
 
 /* ================================================================
    HELPERS
@@ -64,6 +66,115 @@ const SALARY_REPORT_TYPES = [
   "without_weekoff",
 ];
 
+const DAY_MAP = {
+  SUNDAY: 0,
+  MONDAY: 1,
+  TUESDAY: 2,
+  WEDNESDAY: 3,
+  THURSDAY: 4,
+  FRIDAY: 5,
+  SATURDAY: 6,
+};
+
+/**
+ * Calculate week-off days worked for a list of salary records.
+ * Returns a Map: employeeId -> weekOffDaysWorked
+ */
+const getWeekOffWorkedMap = async (records, month, year) => {
+  const map = new Map();
+  if (!records || records.length === 0) return map;
+
+  const employeeIds = [
+    ...new Set(
+      records
+        .map((r) => r.employeeId || r.employee?.id)
+        .filter(Boolean),
+    ),
+  ];
+  if (employeeIds.length === 0) return map;
+
+  const m = parseInt(month) || records[0]?.salaryMonth || 1;
+  const y = parseInt(year) || records[0]?.salaryYear || new Date().getFullYear();
+
+  const start = moment({ year: y, month: m - 1, day: 1 })
+    .startOf("month")
+    .format("YYYY-MM-DD");
+  const end = moment({ year: y, month: m - 1, day: 1 })
+    .endOf("month")
+    .format("YYYY-MM-DD");
+
+  const empOffDays = new Map();
+  records.forEach((r) => {
+    const emp = r.employee;
+    const offStr = (emp?.weeklyOff || "Sunday").trim().toUpperCase();
+    const offDays = [];
+    offStr.split(",").forEach((d) => {
+      const trimmed = d.trim();
+      if (DAY_MAP[trimmed] !== undefined) {
+        offDays.push(DAY_MAP[trimmed]);
+      }
+    });
+    const empId = r.employeeId || emp?.id;
+    if (empId) {
+      empOffDays.set(empId, offDays.length > 0 ? offDays : [0]);
+    }
+  });
+
+  try {
+    const attRecords = await Attendance.findAll({
+      where: {
+        employeeId: { [Op.in]: employeeIds },
+        attendanceDate: { [Op.between]: [start, end] },
+        [Op.or]: [
+          {
+            status: {
+              [Op.in]: [
+                "Present",
+                "Present with Permission",
+                "Present/Leave (P/L)",
+                "Present/Leave",
+                "Half Day",
+                "Late Present",
+              ],
+            },
+          },
+          {
+            status: "Week Off",
+            workingHours: { [Op.gt]: 0 },
+          },
+        ],
+      },
+      attributes: ["employeeId", "attendanceDate", "status", "workingHours"],
+      raw: true,
+    });
+
+    attRecords.forEach((att) => {
+      const offDays = empOffDays.get(att.employeeId) || [0];
+      const dayOfWeek = moment(att.attendanceDate).day();
+      const isWO = offDays.includes(dayOfWeek) || att.status === "Week Off";
+      if (isWO) {
+        let daysWorked = 1;
+        if (
+          att.status === "Half Day" ||
+          att.status === "Present/Leave (P/L)" ||
+          att.status === "Present/Leave"
+        ) {
+          daysWorked = 0.5;
+        } else if (att.status === "Week Off") {
+          const hrs = parseFloat(att.workingHours || 0);
+          daysWorked = hrs >= 4 && hrs < 7 ? 0.5 : 1;
+        }
+        const prev = map.get(att.employeeId) || 0;
+        map.set(att.employeeId, prev + daysWorked);
+      }
+    });
+  } catch (err) {
+    console.error("[getWeekOffWorkedMap] error:", err.message);
+  }
+
+  return map;
+};
+
 /**
  * Compute the "grand total days" for a salary record depending on
  * the selected report type.
@@ -71,8 +182,8 @@ const SALARY_REPORT_TYPES = [
  * salary_report  → presentDays (base, no adjustment)
  * with_el        → presentDays + paidLeaveDays
  * without_el     → presentDays  (EL shown in separate col, not added)
- * with_weekoff   → presentDays + weekOffDays
- * without_weekoff → Math.max(0, presentDays - weekOffDays)
+ * with_weekoff   → presentDays + weekOffDays (regular worked + worked WO)
+ * without_weekoff → presentDays (regular worked without worked WO)
  */
 const computeGrandTotal = (r, reportType) => {
   const present = toNum(r.presentDays);
@@ -84,9 +195,9 @@ const computeGrandTotal = (r, reportType) => {
     case "without_el":
       return present; // EL column separate
     case "with_weekoff":
-      return present + wo;
+      return present + wo; // regularPresent + workedWO
     case "without_weekoff":
-      return Math.max(0, present - wo);
+      return Math.max(0, present - wo); // fullPresent - workedWO
     default:
       return present; // salary_report
   }
@@ -466,13 +577,36 @@ exports.getSalaryReport = async (req, res) => {
     const showWO =
       reportType === "with_weekoff" || reportType === "without_weekoff";
 
+    const woWorkedMap = showWO
+      ? await getWeekOffWorkedMap(enrichedRows, month, year)
+      : new Map();
+
     const enriched = enrichedRows.map((r) => {
       const { earnings, deductions } = buildBreakdown(
         r.details || [],
         r.attnIncentive,
       );
 
-      const grandTotalDays = computeGrandTotal(r, reportType);
+      const totalPresentDays = toNum(r.presentDays);
+      let presentDays = totalPresentDays;
+      let weekOffDays = toNum(r.weekOffDays);
+      let grandTotalDays = totalPresentDays;
+
+      if (reportType === "with_weekoff") {
+        const woWorked = woWorkedMap.get(r.employeeId) || 0;
+        presentDays = Math.max(0, totalPresentDays - woWorked);
+        weekOffDays = woWorked;
+        grandTotalDays = presentDays + weekOffDays;
+      } else if (reportType === "without_weekoff") {
+        const woWorked = woWorkedMap.get(r.employeeId) || 0;
+        presentDays = totalPresentDays;
+        weekOffDays = woWorked;
+        grandTotalDays = Math.max(0, totalPresentDays - woWorked);
+      } else if (reportType === "with_el") {
+        grandTotalDays = totalPresentDays + toNum(r.paidLeaveDays);
+      } else {
+        grandTotalDays = totalPresentDays;
+      }
 
       const isDaily =
         (r.empSalaryType || "").toLowerCase() === "daily" ||
@@ -503,11 +637,11 @@ exports.getSalaryReport = async (req, res) => {
         empSalaryType: r.empSalaryType,
         empPfType: r.empPfType,
         workingDays: r.workingDays,
-        presentDays: toNum(r.presentDays),
+        presentDays,
         absentDays: toNum(r.absentDays),
         paidLeaveDays: toNum(r.paidLeaveDays), // EL days
         unpaidLeaveDays: toNum(r.unpaidLeaveDays),
-        weekOffDays: toNum(r.weekOffDays),
+        weekOffDays,
         nhFhDays: toNum(r.nhFhDays),
         grandTotalDays, // adjusted total
         dailyWage: computedDailyWage,
@@ -671,16 +805,48 @@ exports.downloadSalaryReportExcel = async (req, res) => {
 
     const enrichedRows = await enrichWithDeptDesig(rows);
 
+    const showEL = reportType === "with_el" || reportType === "without_el";
+    const showWO =
+      reportType === "with_weekoff" || reportType === "without_weekoff";
+
+    const woWorkedMap = showWO
+      ? await getWeekOffWorkedMap(enrichedRows, month, year)
+      : new Map();
+
     const records = enrichedRows.map((r) => {
       const { earnings, deductions } = buildBreakdown(
         r.details || [],
         r.attnIncentive,
       );
+
+      const totalPresentDays = toNum(r.presentDays);
+      let presentDays = totalPresentDays;
+      let weekOffDays = toNum(r.weekOffDays);
+      let grandTotalDays = totalPresentDays;
+
+      if (reportType === "with_weekoff") {
+        const woWorked = woWorkedMap.get(r.employeeId) || 0;
+        presentDays = Math.max(0, totalPresentDays - woWorked);
+        weekOffDays = woWorked;
+        grandTotalDays = presentDays + weekOffDays;
+      } else if (reportType === "without_weekoff") {
+        const woWorked = woWorkedMap.get(r.employeeId) || 0;
+        presentDays = totalPresentDays;
+        weekOffDays = woWorked;
+        grandTotalDays = Math.max(0, totalPresentDays - woWorked);
+      } else if (reportType === "with_el") {
+        grandTotalDays = totalPresentDays + toNum(r.paidLeaveDays);
+      } else {
+        grandTotalDays = totalPresentDays;
+      }
+
       return {
         ...r.toJSON(),
+        presentDays,
+        weekOffDays,
+        grandTotalDays,
         earnings,
         deductions,
-        grandTotalDays: computeGrandTotal(r, reportType),
         employee: {
           ...r.toJSON().employee,
           department: r.employee?.department || null,
@@ -699,10 +865,6 @@ exports.downloadSalaryReportExcel = async (req, res) => {
 
     const name = rows[0]?.company?.name || "Company";
     const monthLabel = `${getMonthName(month)} ${year}`;
-
-    const showEL = reportType === "with_el" || reportType === "without_el";
-    const showWO =
-      reportType === "with_weekoff" || reportType === "without_weekoff";
 
     const mgmtIds = await getManagementGradeIds();
     const isMgmtRecord = (r) => {
@@ -1301,16 +1463,48 @@ exports.downloadSalaryReportPDF = async (req, res) => {
 
     const enrichedRows = await enrichWithDeptDesig(rows);
 
+    const showEL = reportType === "with_el" || reportType === "without_el";
+    const showWO =
+      reportType === "with_weekoff" || reportType === "without_weekoff";
+
+    const woWorkedMap = showWO
+      ? await getWeekOffWorkedMap(enrichedRows, month, year)
+      : new Map();
+
     const records = enrichedRows.map((r) => {
       const { earnings, deductions } = buildBreakdown(
         r.details || [],
         r.attnIncentive,
       );
+
+      const totalPresentDays = toNum(r.presentDays);
+      let presentDays = totalPresentDays;
+      let weekOffDays = toNum(r.weekOffDays);
+      let grandTotalDays = totalPresentDays;
+
+      if (reportType === "with_weekoff") {
+        const woWorked = woWorkedMap.get(r.employeeId) || 0;
+        presentDays = Math.max(0, totalPresentDays - woWorked);
+        weekOffDays = woWorked;
+        grandTotalDays = presentDays + weekOffDays;
+      } else if (reportType === "without_weekoff") {
+        const woWorked = woWorkedMap.get(r.employeeId) || 0;
+        presentDays = totalPresentDays;
+        weekOffDays = woWorked;
+        grandTotalDays = Math.max(0, totalPresentDays - woWorked);
+      } else if (reportType === "with_el") {
+        grandTotalDays = totalPresentDays + toNum(r.paidLeaveDays);
+      } else {
+        grandTotalDays = totalPresentDays;
+      }
+
       return {
         ...r.toJSON(),
+        presentDays,
+        weekOffDays,
+        grandTotalDays,
         earnings,
         deductions,
-        grandTotalDays: computeGrandTotal(r, reportType),
         employee: {
           ...r.toJSON().employee,
           department: r.employee?.department || null,
@@ -1325,10 +1519,6 @@ exports.downloadSalaryReportPDF = async (req, res) => {
       if (nameA !== nameB) return nameA.localeCompare(nameB);
       return (a.employee?.curEmployeeCode || "").localeCompare(b.employee?.curEmployeeCode || "");
     });
-
-    const showEL = reportType === "with_el" || reportType === "without_el";
-    const showWO =
-      reportType === "with_weekoff" || reportType === "without_weekoff";
 
     const name = rows[0]?.company?.name || "Company";
     const doc = new PDFDocument({

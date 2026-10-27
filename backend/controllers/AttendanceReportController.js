@@ -79,6 +79,16 @@ exports.getAttendanceReport = async (req, res) => {
       ];
     }
 
+    if (req.query.employeeCodes) {
+      const codes = String(req.query.employeeCodes).split(",").map((c) => c.trim()).filter(Boolean);
+      if (codes.length) {
+        employeeWhere[Op.or] = [
+          { curEmployeeCode: { [Op.in]: codes } },
+          { newEmployeeCode: { [Op.in]: codes } },
+        ];
+      }
+    }
+
     const rows = await Attendance.findAll({
       where,
       include: [
@@ -131,7 +141,15 @@ exports.getAttendanceReport = async (req, res) => {
       ],
     });
 
-    return res.status(200).json({ success: true, data: rows });
+    const formattedRows = rows.map((r) => {
+      const plain = r.toJSON();
+      if (plain.employee) {
+        plain.employee.curEmployeeCode = plain.employee.curEmployeeCode || plain.employee.newEmployeeCode || "";
+      }
+      return plain;
+    });
+
+    return res.status(200).json({ success: true, data: formattedRows });
   } catch (err) {
     console.error("[getAttendanceReport]", err);
     return res.status(500).json({ success: false, message: err.message });

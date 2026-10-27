@@ -504,9 +504,9 @@ exports.createOTHours = async (req, res) => {
   try {
     const { companyId, departmentId, date, entries } = req.body;
 
-    if (!companyId || !departmentId || !date || !entries || entries.length === 0) {
+    if (!companyId || !date || !entries || entries.length === 0) {
       return res.status(400).json({
-        message: "Missing required fields: companyId, departmentId, date, entries",
+        message: "Missing required fields: companyId, date, entries",
       });
     }
 
@@ -533,13 +533,25 @@ exports.createOTHours = async (req, res) => {
       }
     }
 
+    // Resolve departmentId for employees if not provided
+    const empIds = entries.map((e) => e.employeeId);
+    const empList = await Employee.findAll({
+      where: { id: { [Op.in]: empIds } },
+      attributes: ["id", "departmentId"],
+    });
+    const empDeptMap = {};
+    empList.forEach((e) => {
+      empDeptMap[e.id] = e.departmentId;
+    });
+
     // Upsert OT Hours (create or update)
     const createdOrUpdatedRecords = await Promise.all(
-      entries.map((entry) =>
-        OTHours.upsert(
+      entries.map((entry) => {
+        const dId = entry.departmentId || departmentId || empDeptMap[entry.employeeId] || null;
+        return OTHours.upsert(
           {
             companyId,
-            departmentId,
+            departmentId: dId,
             employeeId: entry.employeeId,
             date,
             otHours: Number(entry.otHours),
@@ -551,8 +563,8 @@ exports.createOTHours = async (req, res) => {
               date: date,
             },
           }
-        )
-      )
+        );
+      })
     );
 
     return res.status(201).json({

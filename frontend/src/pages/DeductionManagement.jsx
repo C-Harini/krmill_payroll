@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { apiRequest } from '../utils/apiCaller';
 
 
@@ -100,6 +100,211 @@ const MultiSelectDropdown = ({ label, options, selected, onChange, displayKey = 
     );
 };
 
+// ─── Employee Multi-Select Component (Search by name & cur/new code, displays curEmployeeCode) ───
+const EmployeeMultiSelect = ({ label, employees = [], selected = [], onChange, defaultPlaceholder = "Select Employee(s)...", required = false }) => {
+    const [open, setOpen] = useState(false);
+    const [searchTxt, setSearchTxt] = useState('');
+    const [openSelectedSnapshot, setOpenSelectedSnapshot] = useState([]);
+    const ref = useRef(null);
+
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (ref.current && !ref.current.contains(e.target)) {
+                setOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    useEffect(() => {
+        if (open) {
+            setOpenSelectedSnapshot(selected);
+        }
+    }, [open]);
+
+    const filtered = useMemo(() => {
+        let list = employees;
+        if (searchTxt.trim()) {
+            const q = searchTxt.toLowerCase().trim();
+            list = employees.filter((e) => {
+                const name = String(e.firstName || e.employeeName || e.name || '').toLowerCase();
+                const lastName = String(e.lastName || '').toLowerCase();
+                const fullName = `${name} ${lastName}`.trim();
+                const curCode = String(e.curEmployeeCode || e.employeeCode || '').toLowerCase();
+                const newCode = String(e.newEmployeeCode || '').toLowerCase();
+                return (
+                    name.includes(q) ||
+                    lastName.includes(q) ||
+                    fullName.includes(q) ||
+                    curCode.includes(q) ||
+                    newCode.includes(q)
+                );
+            });
+        }
+
+        return [...list].sort((a, b) => {
+            const aSel = openSelectedSnapshot.includes(String(a.id));
+            const bSel = openSelectedSnapshot.includes(String(b.id));
+            if (aSel && !bSel) return -1;
+            if (!aSel && bSel) return 1;
+            return 0;
+        });
+    }, [employees, searchTxt, openSelectedSnapshot]);
+
+    const toggle = (id) => {
+        const sid = String(id);
+        onChange(
+            selected.includes(sid)
+                ? selected.filter((s) => s !== sid)
+                : [...selected, sid]
+        );
+    };
+
+    const toggleAll = () => {
+        if (searchTxt.trim()) {
+            const filteredIds = filtered.map((e) => String(e.id));
+            const allFilteredSelected = filteredIds.length > 0 && filteredIds.every((id) => selected.includes(id));
+            if (allFilteredSelected) {
+                onChange(selected.filter((id) => !filteredIds.includes(id)));
+            } else {
+                onChange(Array.from(new Set([...selected, ...filteredIds])));
+            }
+        } else {
+            if (selected.length === employees.length && employees.length > 0) {
+                onChange([]);
+            } else {
+                onChange(employees.map((e) => String(e.id)));
+            }
+        }
+    };
+
+    const isAllSelected = searchTxt.trim()
+        ? filtered.length > 0 && filtered.every((e) => selected.includes(String(e.id)))
+        : selected.length === employees.length && employees.length > 0;
+
+    const displayText = () => {
+        if (!selected.length) return defaultPlaceholder;
+        if (selected.length === 1) {
+            const found = employees.find((e) => String(e.id) === selected[0]);
+            if (found) {
+                const code = found.curEmployeeCode || found.employeeCode || '';
+                return `${found.firstName || found.name || ''}${code ? ` (${code})` : ''}`;
+            }
+            return '1 selected';
+        }
+        return `${selected.length} Employees Selected`;
+    };
+
+    return (
+        <div className="relative" ref={ref}>
+            {label && (
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    {label} {required && <span className="text-red-500">*</span>}
+                </label>
+            )}
+            <div
+                onClick={() => setOpen(!open)}
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-slate-900 cursor-pointer bg-white flex items-center justify-between min-h-[42px] hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 select-none"
+            >
+                <span className={`truncate text-sm ${!selected.length ? 'text-slate-400' : 'text-slate-800 font-medium'}`}>
+                    {displayText()}
+                </span>
+                <div className="flex items-center gap-1.5 ml-1 shrink-0">
+                    {selected.length > 0 && (
+                        <span
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onChange([]);
+                            }}
+                            className="text-slate-400 hover:text-slate-600 text-xs font-bold px-1 cursor-pointer"
+                            title="Clear selection"
+                        >
+                            ✕
+                        </span>
+                    )}
+                    <span className="text-slate-400 text-xs">{open ? '▲' : '▼'}</span>
+                </div>
+            </div>
+
+            {open && (
+                <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-50 min-w-[280px] max-w-[360px] w-full overflow-hidden">
+                    {/* Search input */}
+                    <div className="p-2 border-b border-slate-100 bg-slate-50">
+                        <input
+                            type="text"
+                            placeholder="Search name, cur/new code..."
+                            value={searchTxt}
+                            onChange={(e) => setSearchTxt(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                            autoFocus
+                        />
+                    </div>
+                    {/* Select all bar */}
+                    <div
+                        onClick={toggleAll}
+                        className="flex items-center justify-between px-3 py-2 cursor-pointer border-b border-slate-100 hover:bg-slate-50 bg-slate-50/50 text-xs"
+                    >
+                        <span className="font-semibold text-slate-700">
+                            {isAllSelected ? 'Deselect All' : 'Select All'}
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                            {selected.length} / {employees.length}
+                        </span>
+                    </div>
+                    {/* Options list */}
+                    <div className="max-h-60 overflow-y-auto divide-y divide-slate-50">
+                        {filtered.length === 0 ? (
+                            <div className="px-3 py-3 text-xs text-slate-400 text-center">
+                                No matching employees
+                            </div>
+                        ) : (
+                            filtered.map((e) => {
+                                const sid = String(e.id);
+                                const isChecked = selected.includes(sid);
+                                const curCode = e.curEmployeeCode || e.employeeCode || '';
+                                return (
+                                    <div
+                                        key={e.id}
+                                        onClick={() => toggle(e.id)}
+                                        className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-blue-50/60 transition-colors text-xs ${
+                                            isChecked ? 'bg-blue-50 text-blue-900 font-medium' : 'text-slate-700'
+                                        }`}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={isChecked}
+                                            readOnly
+                                            style={{
+                                                height: 14,
+                                                width: 14,
+                                                accentColor: '#2563eb',
+                                                pointerEvents: 'none',
+                                                cursor: 'pointer',
+                                            }}
+                                        />
+                                        <div className="truncate flex-1">
+                                            <span className="font-medium">
+                                                {e.firstName || e.employeeName}
+                                            </span>
+                                            {curCode && (
+                                                <span className="text-slate-500 ml-1 font-mono text-[11px]">
+                                                    ({curCode})
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 // ─── Main Component ───
 const DeductionManagement = () => {
     const [activeTab, setActiveTab] = useState('entry');
@@ -116,9 +321,8 @@ const DeductionManagement = () => {
     // Entry form state
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingDeduction, setEditingDeduction] = useState(null);
+    const [modalSelectedEmps, setModalSelectedEmps] = useState([]);
     const [formData, setFormData] = useState({
-        departmentId: '',
-        employeeId: '',
         month: currentMonth,
         year: currentYear,
         deductionType: 'Mess',
@@ -127,17 +331,35 @@ const DeductionManagement = () => {
     });
 
     // Entry filter state
-    const [entryFilterDeptId, setEntryFilterDeptId] = useState('');
+    const [entryFilterEmps, setEntryFilterEmps] = useState([]);
     const [entryFilterMonth, setEntryFilterMonth] = useState(currentMonth);
     const [entryFilterYear, setEntryFilterYear] = useState(currentYear);
 
     // Report state
     const [reportDeptIds, setReportDeptIds] = useState([]);
+    const [reportEmployeeIds, setReportEmployeeIds] = useState([]);
     const [reportTypes, setReportTypes] = useState([...DEDUCTION_TYPES]);
     const [reportMonth, setReportMonth] = useState(currentMonth);
     const [reportYear, setReportYear] = useState(currentYear);
     const [reportData, setReportData] = useState(null);
     const [reportLoading, setReportLoading] = useState(false);
+
+    // Filter employees for the report dropdown based on selected departments (if any)
+    const reportEmployees = useMemo(() => {
+        if (!reportDeptIds.length) return employees;
+        return employees.filter(e => reportDeptIds.includes(e.departmentId));
+    }, [employees, reportDeptIds]);
+
+    // Keep reportEmployeeIds in sync if department filter changes
+    useEffect(() => {
+        if (reportDeptIds.length > 0 && reportEmployeeIds.length > 0) {
+            const validIds = new Set(reportEmployees.map(e => String(e.id)));
+            setReportEmployeeIds(prev => {
+                const next = prev.filter(id => validIds.has(id));
+                return next.length !== prev.length ? next : prev;
+            });
+        }
+    }, [reportDeptIds, reportEmployees]);
 
     // ─── Fetch companies on mount ───
     useEffect(() => {
@@ -155,9 +377,10 @@ const DeductionManagement = () => {
         fetchCompanies();
     }, []);
 
-    // ─── Fetch departments when company changes ───
+    // ─── Fetch departments & employees when company changes ───
     useEffect(() => {
         if (!selectedCompanyId) return;
+        setEntryFilterEmps([]);
         const fetchDepts = async () => {
             try {
                 const data = await apiRequest(`/departments?companyId=${selectedCompanyId}`);
@@ -166,33 +389,28 @@ const DeductionManagement = () => {
                 console.error(err);
             }
         };
-        fetchDepts();
-    }, [selectedCompanyId]);
-
-    // ─── Fetch employees when department changes in form ───
-    useEffect(() => {
-        if (!formData.departmentId || !selectedCompanyId) { setEmployees([]); return; }
         const fetchEmps = async () => {
             try {
-                const data = await apiRequest(`/employees?companyId=${selectedCompanyId}&departmentId=${formData.departmentId}`);
-                setEmployees(data);
+                const data = await apiRequest(`/employees?companyId=${selectedCompanyId}`);
+                setEmployees(Array.isArray(data) ? data : data.data || []);
             } catch (err) {
                 console.error(err);
             }
         };
+        fetchDepts();
         fetchEmps();
-    }, [formData.departmentId, selectedCompanyId]);
+    }, [selectedCompanyId]);
 
     // ─── Fetch deductions list (entry tab) ───
     useEffect(() => {
         if (!selectedCompanyId) return;
         fetchDeductions();
-    }, [selectedCompanyId, entryFilterDeptId, entryFilterMonth, entryFilterYear]);
+    }, [selectedCompanyId, entryFilterEmps, entryFilterMonth, entryFilterYear]);
 
     const fetchDeductions = async () => {
         try {
             let url = `/deductions?companyId=${selectedCompanyId}&month=${entryFilterMonth}&year=${entryFilterYear}`;
-            if (entryFilterDeptId) url += `&departmentId=${entryFilterDeptId}`;
+            if (entryFilterEmps.length > 0) url += `&employeeIds=${entryFilterEmps.join(',')}`;
             const data = await apiRequest(url);
             setDeductions(data);
         } catch (err) {
@@ -211,9 +429,8 @@ const DeductionManagement = () => {
     // ─── Modal handlers ───
     const openAddModal = () => {
         setEditingDeduction(null);
+        setModalSelectedEmps([]);
         setFormData({
-            departmentId: entryFilterDeptId || '',
-            employeeId: '',
             month: entryFilterMonth,
             year: entryFilterYear,
             deductionType: 'Mess',
@@ -225,9 +442,8 @@ const DeductionManagement = () => {
 
     const openEditModal = (d) => {
         setEditingDeduction(d);
+        setModalSelectedEmps([String(d.employeeId)]);
         setFormData({
-            departmentId: d.departmentId,
-            employeeId: d.employeeId,
             month: d.month,
             year: d.year,
             deductionType: d.deductionType,
@@ -240,33 +456,44 @@ const DeductionManagement = () => {
     const closeModal = () => {
         setIsModalOpen(false);
         setEditingDeduction(null);
+        setModalSelectedEmps([]);
     };
 
     // ─── Save deduction ───
     const handleFormSubmit = async (e) => {
         e.preventDefault();
+        if (modalSelectedEmps.length === 0) {
+            setError('Please select at least one employee.');
+            return;
+        }
         setSaving(true);
         setError(null);
 
-        const payload = {
-            ...formData,
-            companyId: selectedCompanyId,
-            amount: parseFloat(formData.amount),
-        };
-
         try {
             if (editingDeduction) {
+                const payload = {
+                    ...formData,
+                    employeeId: parseInt(modalSelectedEmps[0]),
+                    companyId: selectedCompanyId,
+                    amount: parseFloat(formData.amount),
+                };
                 await apiRequest(`/deductions/${editingDeduction.id}`, {
                     method: 'PUT',
                     body: JSON.stringify(payload),
                 });
                 setSuccess('Deduction updated successfully!');
             } else {
-                await apiRequest('/deductions', {
+                const payload = {
+                    ...formData,
+                    employeeIds: modalSelectedEmps.map(id => parseInt(id)),
+                    companyId: selectedCompanyId,
+                    amount: parseFloat(formData.amount),
+                };
+                const res = await apiRequest('/deductions', {
                     method: 'POST',
                     body: JSON.stringify(payload),
                 });
-                setSuccess('Deduction saved successfully!');
+                setSuccess(res.message || 'Deduction(s) saved successfully!');
             }
             fetchDeductions();
             closeModal();
@@ -291,10 +518,6 @@ const DeductionManagement = () => {
 
     // ─── Generate report ───
     const handleGenerateReport = async () => {
-        if (reportDeptIds.length === 0) {
-            setError('Please select at least one department.');
-            return;
-        }
         if (reportTypes.length === 0) {
             setError('Please select at least one deduction type.');
             return;
@@ -306,9 +529,14 @@ const DeductionManagement = () => {
                 companyId: selectedCompanyId,
                 month: reportMonth,
                 year: reportYear,
-                departmentIds: reportDeptIds.join(','),
                 deductionTypes: reportTypes.join(','),
             });
+            if (reportDeptIds.length > 0) {
+                params.set('departmentIds', reportDeptIds.join(','));
+            }
+            if (reportEmployeeIds.length > 0) {
+                params.set('employeeIds', reportEmployeeIds.join(','));
+            }
             const data = await apiRequest(`/deductions/report?${params}`);
             setReportData(data);
         } catch (err) {
@@ -328,7 +556,8 @@ const DeductionManagement = () => {
 
         let sno = 1;
         reportData.reportData.forEach(row => {
-            csv += `${sno++},${row.employeeCode},${row.employeeName},${row.departmentAcronym},${row.Mess.toFixed(2)},${row.Stores.toFixed(2)},${row.EB.toFixed(2)},${row.Others.toFixed(2)},${row.total.toFixed(2)}\n`;
+            const code = row.curEmployeeCode || row.employeeCode || '';
+            csv += `${sno++},${code},${row.employeeName},${row.departmentAcronym},${row.Mess.toFixed(2)},${row.Stores.toFixed(2)},${row.EB.toFixed(2)},${row.Others.toFixed(2)},${row.total.toFixed(2)}\n`;
         });
 
         csv += '\nDepartment Sub-Totals\n';
@@ -431,16 +660,14 @@ const DeductionManagement = () => {
                     {/* Entry Filters + Add Button */}
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-4">
                         <div className="flex flex-wrap gap-4 items-end">
-                            <div className="min-w-[180px]">
-                                <label className="block text-sm font-semibold text-slate-700 mb-2">Department</label>
-                                <select
-                                    value={entryFilterDeptId}
-                                    onChange={(e) => setEntryFilterDeptId(e.target.value)}
-                                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                    <option value="">All Departments</option>
-                                    {departments.map(d => <option key={d.id} value={d.id}>{d.departmentname}</option>)}
-                                </select>
+                            <div className="min-w-[240px] flex-1 max-w-sm">
+                                <EmployeeMultiSelect
+                                    label="Employee"
+                                    employees={employees}
+                                    selected={entryFilterEmps}
+                                    onChange={setEntryFilterEmps}
+                                    defaultPlaceholder="All Employees"
+                                />
                             </div>
                             <div className="min-w-[140px]">
                                 <label className="block text-sm font-semibold text-slate-700 mb-2">Month</label>
@@ -478,9 +705,9 @@ const DeductionManagement = () => {
                         <div className="overflow-x-auto">
                             <table className="w-full">
                                 <thead>
-                                    <tr className="bg-slate-50 border-b border-slate-200">
+                                    <tr className="bg-gradient-to-r from-slate-700 to-slate-800 text-white">
                                         {['S.No', 'Employee Code', 'Employee Name', 'Department', 'Type', 'Amount (₹)', 'Remarks', 'Actions'].map(h => (
-                                            <th key={h} className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">{h}</th>
+                                            <th key={h} className="px-4 py-3.5 text-left text-xs font-bold text-white uppercase tracking-wider">{h}</th>
                                         ))}
                                     </tr>
                                 </thead>
@@ -488,7 +715,7 @@ const DeductionManagement = () => {
                                     {deductions.length > 0 ? deductions.map((d, idx) => (
                                         <tr key={d.id} className="hover:bg-slate-50 transition-colors">
                                             <td className="px-4 py-3 text-sm text-slate-500">{idx + 1}</td>
-                                            <td className="px-4 py-3 text-sm font-mono text-slate-700">{d.employee?.employeeCode}</td>
+                                            <td className="px-4 py-3 text-sm font-mono text-slate-700 font-semibold">{d.employee?.curEmployeeCode || d.employee?.newEmployeeCode || '-'}</td>
                                             <td className="px-4 py-3 text-sm font-semibold text-slate-800">{d.employee?.firstName}</td>
                                             <td className="px-4 py-3">
                                                 <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">
@@ -561,12 +788,19 @@ const DeductionManagement = () => {
                         <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
                             <span>🔍</span> Report Filters
                         </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-4">
                             <MultiSelectDropdown
                                 label="Departments"
                                 options={(departments || []).map(d => ({ value: d.id, label: d.departmentname }))}
                                 selected={reportDeptIds}
                                 onChange={setReportDeptIds}
+                            />
+                            <EmployeeMultiSelect
+                                label="Employees"
+                                employees={reportEmployees}
+                                selected={reportEmployeeIds}
+                                onChange={setReportEmployeeIds}
+                                defaultPlaceholder="All Employees"
                             />
                             <MultiSelectDropdown
                                 label="Deduction Types"
@@ -597,7 +831,7 @@ const DeductionManagement = () => {
                         </div>
                         <div className="flex gap-3 justify-end pt-3 border-t border-slate-100">
                             <button
-                                onClick={() => { setReportDeptIds([]); setReportTypes([...DEDUCTION_TYPES]); setReportData(null); }}
+                                onClick={() => { setReportDeptIds([]); setReportEmployeeIds([]); setReportTypes([...DEDUCTION_TYPES]); setReportData(null); }}
                                 className="px-5 py-2.5 border border-slate-300 text-slate-700 font-semibold rounded-lg hover:bg-slate-50 transition-colors"
                             >
                                 Reset Filters
@@ -640,16 +874,16 @@ const DeductionManagement = () => {
                                 <div className="overflow-x-auto">
                                     <table className="w-full">
                                         <thead>
-                                            <tr className="bg-slate-50 border-b border-slate-200">
-                                                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">S.No</th>
-                                                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Emp Code</th>
-                                                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Employee Name</th>
-                                                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Department</th>
-                                                {reportTypes.includes('Mess') && <th className="px-4 py-3 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">Mess (₹)</th>}
-                                                {reportTypes.includes('Stores') && <th className="px-4 py-3 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">Stores (₹)</th>}
-                                                {reportTypes.includes('EB') && <th className="px-4 py-3 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">EB (₹)</th>}
-                                                {reportTypes.includes('Others') && <th className="px-4 py-3 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">Others (₹)</th>}
-                                                <th className="px-4 py-3 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">Total (₹)</th>
+                                            <tr className="bg-gradient-to-r from-slate-700 to-slate-800 text-white">
+                                                <th className="px-4 py-3.5 text-left text-xs font-bold text-white uppercase tracking-wider">S.No</th>
+                                                <th className="px-4 py-3.5 text-left text-xs font-bold text-white uppercase tracking-wider">Emp Code</th>
+                                                <th className="px-4 py-3.5 text-left text-xs font-bold text-white uppercase tracking-wider">Employee Name</th>
+                                                <th className="px-4 py-3.5 text-left text-xs font-bold text-white uppercase tracking-wider">Department</th>
+                                                {reportTypes.includes('Mess') && <th className="px-4 py-3.5 text-right text-xs font-bold text-white uppercase tracking-wider">Mess (₹)</th>}
+                                                {reportTypes.includes('Stores') && <th className="px-4 py-3.5 text-right text-xs font-bold text-white uppercase tracking-wider">Stores (₹)</th>}
+                                                {reportTypes.includes('EB') && <th className="px-4 py-3.5 text-right text-xs font-bold text-white uppercase tracking-wider">EB (₹)</th>}
+                                                {reportTypes.includes('Others') && <th className="px-4 py-3.5 text-right text-xs font-bold text-white uppercase tracking-wider">Others (₹)</th>}
+                                                <th className="px-4 py-3.5 text-right text-xs font-bold text-white uppercase tracking-wider">Total (₹)</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
@@ -657,7 +891,7 @@ const DeductionManagement = () => {
                                             {reportData.reportData.map((row, idx) => (
                                                 <tr key={row.employeeId} className="hover:bg-slate-50">
                                                     <td className="px-4 py-3 text-sm text-slate-500">{idx + 1}</td>
-                                                    <td className="px-4 py-3 text-sm font-mono text-slate-700">{row.employeeCode}</td>
+                                                    <td className="px-4 py-3 text-sm font-mono text-slate-700">{row.curEmployeeCode || row.employeeCode}</td>
                                                     <td className="px-4 py-3 text-sm font-semibold text-slate-800">{row.employeeName}</td>
                                                     <td className="px-4 py-3">
                                                         <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">
@@ -730,39 +964,16 @@ const DeductionManagement = () => {
 
                         <form onSubmit={handleFormSubmit} className="p-6">
                             <div className="space-y-4">
-                                {/* Department */}
+                                {/* Employee Multi-Select */}
                                 <div>
-                                    <label className="block text-sm font-semibold text-slate-700 mb-2">
-                                        Department <span className="text-red-500">*</span>
-                                    </label>
-                                    <select
-                                        value={formData.departmentId}
-                                        onChange={(e) => setFormData({ ...formData, departmentId: parseInt(e.target.value), employeeId: '' })}
+                                    <EmployeeMultiSelect
+                                        label={editingDeduction ? "Employee" : "Select Employee(s)"}
+                                        employees={employees}
+                                        selected={modalSelectedEmps}
+                                        onChange={setModalSelectedEmps}
+                                        defaultPlaceholder="-- Select Employee(s) --"
                                         required
-                                        className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    >
-                                        <option value="">-- Select Department --</option>
-                                        {departments.map(d => <option key={d.id} value={d.id}>{d.departmentname}</option>)}
-                                    </select>
-                                </div>
-
-                                {/* Employee */}
-                                <div>
-                                    <label className="block text-sm font-semibold text-slate-700 mb-2">
-                                        Staff Name <span className="text-red-500">*</span>
-                                    </label>
-                                    <select
-                                        value={formData.employeeId}
-                                        onChange={(e) => setFormData({ ...formData, employeeId: parseInt(e.target.value) })}
-                                        required
-                                        disabled={!formData.departmentId}
-                                        className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
-                                    >
-                                        <option value="">{formData.departmentId ? '-- Select Staff --' : '-- Select Department First --'}</option>
-                                        {employees.map(e => (
-                                            <option key={e.id} value={e.id}>{e.employeeCode} — {e.firstName}</option>
-                                        ))}
-                                    </select>
+                                    />
                                 </div>
 
                                 {/* Month & Year */}

@@ -377,6 +377,16 @@ const baseOrder = [
   ["employeeId", "ASC"],
 ];
 
+const sortByNameAsc = (records) => {
+  if (!Array.isArray(records)) return records;
+  return records.sort((a, b) => {
+    const nameA = (a.employee?.firstName || a.employee?.fullName || a.employee?.name || "").trim().toLowerCase();
+    const nameB = (b.employee?.firstName || b.employee?.fullName || b.employee?.name || "").trim().toLowerCase();
+    if (nameA !== nameB) return nameA.localeCompare(nameB);
+    return (a.employee?.curEmployeeCode || a.employee?.employeeCode || "").localeCompare(b.employee?.curEmployeeCode || b.employee?.employeeCode || "");
+  });
+};
+
 const enrichWithDeptDesig = async (records) => {
   const empIds = [...new Set(records.map((r) => r.employeeId).filter(Boolean))];
   if (!empIds.length) return records;
@@ -388,13 +398,13 @@ const enrichWithDeptDesig = async (records) => {
       {
         model: Department,
         as: "department",
-        attributes: ["id", "departmentname"],
+        attributes: ["id", "departmentname", "acronym"],
         required: false,
       },
       {
         model: Designation,
         as: "designation",
-        attributes: ["id", "name"],
+        attributes: ["id", "name", "acronym"],
         required: false,
       },
       {
@@ -518,10 +528,13 @@ const buildWhere = (query) => {
 const groupByDept = (rows) => {
   const map = {};
   rows.forEach((r) => {
-    const dept = r.employee?.department?.departmentname || "Unassigned";
+    const dept = r.employee?.department?.acronym || r.employee?.department?.departmentname || "Unassigned";
     if (!map[dept]) map[dept] = { records: [], total: 0 };
     map[dept].records.push(r);
     map[dept].total += toNum(r.netSalary);
+  });
+  Object.values(map).forEach((d) => {
+    sortByNameAsc(d.records);
   });
   return map;
 };
@@ -667,12 +680,7 @@ exports.getSalaryReport = async (req, res) => {
       };
     });
 
-    enriched.sort((a, b) => {
-      const nameA = (a.employee?.firstName || "").trim().toLowerCase();
-      const nameB = (b.employee?.firstName || "").trim().toLowerCase();
-      if (nameA !== nameB) return nameA.localeCompare(nameB);
-      return (a.employee?.curEmployeeCode || "").localeCompare(b.employee?.curEmployeeCode || "");
-    });
+    sortByNameAsc(enriched);
 
     const grouped = groupByDept(enriched);
 
@@ -856,12 +864,7 @@ exports.downloadSalaryReportExcel = async (req, res) => {
       };
     });
 
-    records.sort((a, b) => {
-      const nameA = (a.employee?.firstName || "").trim().toLowerCase();
-      const nameB = (b.employee?.firstName || "").trim().toLowerCase();
-      if (nameA !== nameB) return nameA.localeCompare(nameB);
-      return (a.employee?.curEmployeeCode || "").localeCompare(b.employee?.curEmployeeCode || "");
-    });
+    sortByNameAsc(records);
 
     const name = rows[0]?.company?.name || "Company";
     const monthLabel = `${getMonthName(month)} ${year}`;
@@ -1148,8 +1151,8 @@ function addStaffSheet(
       sno++,
       r.employee?.firstName || "",
       r.employee?.newEmployeeCode ? `${r.employee.curEmployeeCode || ''} / ${r.employee.newEmployeeCode}` : (r.employee?.curEmployeeCode || r.employee?.employeeCode || ""),
-      r.employee?.department?.departmentname || "",
-      r.employee?.designation?.name || "",
+      r.employee?.department?.acronym || r.employee?.department?.departmentname || "",
+      r.employee?.designation?.acronym || r.employee?.designation?.name || "",
       salaryVal,
       toNum(r.presentDays),
       toNum(r.nhFhDays),
@@ -1345,7 +1348,7 @@ function addWorkerSheet(wb, sheetName, records, name, monthLabel, opts = {}) {
       sno++,
       r.employee?.firstName || "",
       r.employee?.newEmployeeCode ? `${r.employee.curEmployeeCode || ''} / ${r.employee.newEmployeeCode}` : (r.employee?.curEmployeeCode || r.employee?.employeeCode || ""),
-      r.employee?.department?.departmentname || "",
+      r.employee?.department?.acronym || r.employee?.department?.departmentname || "",
       wagesPerDay,
       toNum(r.presentDays),
       toNum(r.nhFhDays),
@@ -1513,12 +1516,7 @@ exports.downloadSalaryReportPDF = async (req, res) => {
       };
     });
 
-    records.sort((a, b) => {
-      const nameA = (a.employee?.firstName || "").trim().toLowerCase();
-      const nameB = (b.employee?.firstName || "").trim().toLowerCase();
-      if (nameA !== nameB) return nameA.localeCompare(nameB);
-      return (a.employee?.curEmployeeCode || "").localeCompare(b.employee?.curEmployeeCode || "");
-    });
+    sortByNameAsc(records);
 
     const name = rows[0]?.company?.name || "Company";
     const doc = new PDFDocument({
@@ -1694,8 +1692,8 @@ exports.downloadSalaryReportPDF = async (req, res) => {
         sno,
         r.employee?.firstName || "",
         r.employee?.newEmployeeCode ? `${r.employee.curEmployeeCode || ''} / ${r.employee.newEmployeeCode}` : (r.employee?.curEmployeeCode || r.employee?.employeeCode || ""),
-        r.employee?.department?.departmentname || "",
-        r.employee?.designation?.name || "",
+        r.employee?.department?.acronym || r.employee?.department?.departmentname || "",
+        r.employee?.designation?.acronym || r.employee?.designation?.name || "",
         salaryVal,
         toNum(r.presentDays),
         toNum(r.nhFhDays),
@@ -1833,6 +1831,8 @@ exports.getBankStatement = async (req, res) => {
       },
     }));
 
+    sortByNameAsc(records);
+
     const grouped = groupByDept(records);
     const grandTotal = records.reduce((s, r) => s + r.netRounded, 0);
 
@@ -1937,6 +1937,8 @@ exports.downloadBankStatementPDF = async (req, res) => {
         department: r.employee?.department || null,
       },
     }));
+
+    sortByNameAsc(mappedRows);
 
     const grouped = groupByDept(mappedRows);
     let sno = 1,
@@ -2085,6 +2087,8 @@ exports.downloadBankStatementExcel = async (req, res) => {
         department: r.employee?.department || null,
       },
     }));
+
+    sortByNameAsc(mappedRows);
 
     const grouped = groupByDept(mappedRows);
     let sno = 1,
@@ -2447,6 +2451,7 @@ exports.getPayslipList = async (req, res) => {
     });
 
     const enrichedRows = await enrichWithDeptDesig(rows);
+    sortByNameAsc(enrichedRows);
     return res.json({ success: true, salaries: enrichedRows });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });

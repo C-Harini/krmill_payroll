@@ -834,7 +834,7 @@ export default function SalaryReports() {
                   <option value="">All Depts</option>
                   {departments.map((d) => (
                     <option key={d.id} value={d.id}>
-                      {d.departmentname || "Unknown"}
+                      {d.departmentname ? `${d.departmentname}${d.acronym ? ` (${d.acronym})` : ''}` : "Unknown"}
                     </option>
                   ))}
                 </FilterField>
@@ -972,10 +972,10 @@ function SalaryTab({
     }
     // Sort in ascending order of employee name (A to Z)
     return list.sort((a, b) => {
-      const nameA = (a.employee?.firstName || "").trim().toLowerCase();
-      const nameB = (b.employee?.firstName || "").trim().toLowerCase();
+      const nameA = (a.employee?.firstName || a.employee?.fullName || a.employee?.name || "").trim().toLowerCase();
+      const nameB = (b.employee?.firstName || b.employee?.fullName || b.employee?.name || "").trim().toLowerCase();
       if (nameA !== nameB) return nameA.localeCompare(nameB);
-      return (a.employee?.curEmployeeCode || "").localeCompare(b.employee?.curEmployeeCode || "");
+      return (a.employee?.curEmployeeCode || a.employee?.employeeCode || "").localeCompare(b.employee?.curEmployeeCode || b.employee?.employeeCode || "");
     });
   }, [report]);
 
@@ -1229,10 +1229,10 @@ function SalaryTab({
                         {r.employee?.curEmployeeCode ? `${r.employee.curEmployeeCode}${r.employee.newEmployeeCode ? ` / ${r.employee.newEmployeeCode}` : ''}` : (r.employee?.employeeCode || "-")}
                       </td>
                       <td className="px-2 py-1.5 whitespace-nowrap text-slate-600 font-medium">
-                        {r.employee?.department?.departmentname || "-"}
+                        {r.employee?.department?.acronym || r.employee?.department?.departmentname || "-"}
                       </td>
                       <td className="px-2 py-1.5 whitespace-nowrap text-slate-500">
-                        {r.employee?.designation?.name || "-"}
+                        {r.employee?.designation?.acronym || r.employee?.designation?.name || "-"}
                       </td>
                       <td className="px-2 py-1.5 text-right font-medium text-slate-700">
                         {displaySalary != null && displaySalary !== ""
@@ -1427,7 +1427,14 @@ function BankTab({ data, loading, dlLoading, onPdf, onExcel }) {
         </div>
       )}
       {hasData ? (
-        Object.entries(data.data).map(([dept, { records, total }]) => (
+        Object.entries(data.data).map(([dept, { records, total }]) => {
+          const sortedBankRecords = [...(records || [])].sort((a, b) => {
+            const nameA = (a.employee?.firstName || a.employee?.fullName || a.employee?.name || "").trim().toLowerCase();
+            const nameB = (b.employee?.firstName || b.employee?.fullName || b.employee?.name || "").trim().toLowerCase();
+            if (nameA !== nameB) return nameA.localeCompare(nameB);
+            return (a.employee?.curEmployeeCode || a.employee?.employeeCode || "").localeCompare(b.employee?.curEmployeeCode || b.employee?.employeeCode || "");
+          });
+          return (
           <div
             key={dept}
             className="bg-white rounded-xl shadow overflow-hidden"
@@ -1462,7 +1469,7 @@ function BankTab({ data, loading, dlLoading, onPdf, onExcel }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {records.map((r, i) => (
+                  {sortedBankRecords.map((r, i) => (
                     <tr
                       key={r.id}
                       className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}
@@ -1508,7 +1515,8 @@ function BankTab({ data, loading, dlLoading, onPdf, onExcel }) {
               </table>
             </div>
           </div>
-        ))
+        );
+      })
       ) : (
         <EmptyState
           loading={loading}
@@ -1523,6 +1531,15 @@ function BankTab({ data, loading, dlLoading, onPdf, onExcel }) {
    PAYSLIPS TAB  (unchanged from original)
 ================================================================ */
 function PayslipsTab({ list, loading, dlLoading, onDownload }) {
+  const sortedList = React.useMemo(() => {
+    return [...(list || [])].sort((a, b) => {
+      const nameA = (a.employee?.firstName || a.employee?.fullName || a.employee?.name || "").trim().toLowerCase();
+      const nameB = (b.employee?.firstName || b.employee?.fullName || b.employee?.name || "").trim().toLowerCase();
+      if (nameA !== nameB) return nameA.localeCompare(nameB);
+      return (a.employee?.curEmployeeCode || a.employee?.employeeCode || "").localeCompare(b.employee?.curEmployeeCode || b.employee?.employeeCode || "");
+    });
+  }, [list]);
+
   return (
     <div className="space-y-5">
       <div className="bg-white rounded-xl shadow p-4">
@@ -1531,7 +1548,7 @@ function PayslipsTab({ list, loading, dlLoading, onDownload }) {
           Download individual payslips
         </p>
       </div>
-      {list.length > 0 ? (
+      {sortedList.length > 0 ? (
         <div className="bg-white rounded-xl shadow overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -1541,8 +1558,8 @@ function PayslipsTab({ list, loading, dlLoading, onDownload }) {
                     "S.No",
                     "T.No",
                     "Employee Name",
-                    "Department",
-                    "Designation",
+                    "Dept",
+                    "Desig",
                     "Category",
                     "PF Type",
                     "Gross",
@@ -1561,7 +1578,7 @@ function PayslipsTab({ list, loading, dlLoading, onDownload }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {list.map((r, i) => (
+                {sortedList.map((r, i) => (
                   <tr
                     key={r.id}
                     className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}
@@ -1573,11 +1590,11 @@ function PayslipsTab({ list, loading, dlLoading, onDownload }) {
                     <td className="px-3 py-2 whitespace-nowrap">
                       {r.employee?.firstName}
                     </td>
-                    <td className="px-3 py-2 text-xs">
-                      {r.employee?.department?.departmentname || "-"}
+                    <td className="px-3 py-2 text-xs font-medium text-slate-600">
+                      {r.employee?.department?.acronym || r.employee?.department?.departmentname || "-"}
                     </td>
-                    <td className="px-3 py-2 text-xs">
-                      {r.employee?.designation?.name || "-"}
+                    <td className="px-3 py-2 text-xs text-slate-500">
+                      {r.employee?.designation?.acronym || r.employee?.designation?.name || "-"}
                     </td>
                     <td className="px-3 py-2">
                       <span

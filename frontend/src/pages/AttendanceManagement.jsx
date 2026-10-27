@@ -520,6 +520,7 @@ const CategoryMultiSelect = ({ categories, selected, onChange }) => {
 const EmployeeMultiSelect = ({ employees = [], selected = [], onChange }) => {
   const [open, setOpen] = useState(false);
   const [searchTxt, setSearchTxt] = useState("");
+  const [openSelectedSnapshot, setOpenSelectedSnapshot] = useState([]);
   const ref = useRef(null);
 
   useEffect(() => {
@@ -532,16 +533,32 @@ const EmployeeMultiSelect = ({ employees = [], selected = [], onChange }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (open) {
+      setOpenSelectedSnapshot(selected);
+    }
+  }, [open]);
+
   const filtered = useMemo(() => {
-    if (!searchTxt.trim()) return employees;
-    const q = searchTxt.toLowerCase().trim();
-    return employees.filter((e) => {
-      const name = String(e.firstName || "").toLowerCase();
-      const curCode = String(e.curEmployeeCode || e.employeeCode || "").toLowerCase();
-      const newCode = String(e.newEmployeeCode || "").toLowerCase();
-      return name.includes(q) || curCode.includes(q) || newCode.includes(q);
+    let list = employees;
+    if (searchTxt.trim()) {
+      const q = searchTxt.toLowerCase().trim();
+      list = employees.filter((e) => {
+        const name = String(e.firstName || "").toLowerCase();
+        const curCode = String(e.curEmployeeCode || e.employeeCode || "").toLowerCase();
+        const newCode = String(e.newEmployeeCode || "").toLowerCase();
+        return name.includes(q) || curCode.includes(q) || newCode.includes(q);
+      });
+    }
+
+    return [...list].sort((a, b) => {
+      const aSel = openSelectedSnapshot.includes(String(a.id));
+      const bSel = openSelectedSnapshot.includes(String(b.id));
+      if (aSel && !bSel) return -1;
+      if (!aSel && bSel) return 1;
+      return 0;
     });
-  }, [employees, searchTxt]);
+  }, [employees, searchTxt, openSelectedSnapshot]);
 
   const toggle = (id) => {
     const sid = String(id);
@@ -553,12 +570,26 @@ const EmployeeMultiSelect = ({ employees = [], selected = [], onChange }) => {
   };
 
   const toggleAll = () => {
-    if (selected.length === employees.length && employees.length > 0) {
-      onChange([]);
+    if (searchTxt.trim()) {
+      const filteredIds = filtered.map((e) => String(e.id));
+      const allFilteredSelected = filteredIds.length > 0 && filteredIds.every((id) => selected.includes(id));
+      if (allFilteredSelected) {
+        onChange(selected.filter((id) => !filteredIds.includes(id)));
+      } else {
+        onChange(Array.from(new Set([...selected, ...filteredIds])));
+      }
     } else {
-      onChange(employees.map((e) => String(e.id)));
+      if (selected.length === employees.length && employees.length > 0) {
+        onChange([]);
+      } else {
+        onChange(employees.map((e) => String(e.id)));
+      }
     }
   };
+
+  const isAllSelected = searchTxt.trim()
+    ? filtered.length > 0 && filtered.every((e) => selected.includes(String(e.id)))
+    : selected.length === employees.length && employees.length > 0;
 
   const displayText = () => {
     if (!selected.length) return "All Employees";
@@ -619,9 +650,7 @@ const EmployeeMultiSelect = ({ employees = [], selected = [], onChange }) => {
             className="flex items-center justify-between px-3 py-2 cursor-pointer border-b border-gray-100 hover:bg-gray-50 bg-gray-50/50 text-xs"
           >
             <span className="font-semibold text-gray-700">
-              {selected.length === employees.length && employees.length > 0
-                ? "Deselect All"
-                : "Select All"}
+              {isAllSelected ? "Deselect All" : "Select All"}
             </span>
             <span className="text-[11px] text-gray-500">
               {selected.length} / {employees.length}

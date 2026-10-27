@@ -4,7 +4,7 @@
 // Columns: Sl.No, Tkt No, Emp Name, Dept, Status, IN, OUT, Hours
 // Late arrivals underlined in red. Export Excel & PDF.
 // ================================================================
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { apiRequest } from "../utils/apiCaller";
@@ -166,6 +166,261 @@ const ms = {
   optRow: { display: "flex", alignItems: "center", padding: "7px 12px", cursor: "pointer" },
 };
 
+// ── Employee multi-select with search ─────────────────────────
+function EmployeeMultiSelect({ employees = [], selected = [], onChange }) {
+  const [open, setOpen] = useState(false);
+  const [searchTxt, setSearchTxt] = useState("");
+  const [openSelectedSnapshot, setOpenSelectedSnapshot] = useState([]);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      setOpenSelectedSnapshot(selected);
+    }
+  }, [open]);
+
+  const filtered = useMemo(() => {
+    let list = employees;
+    if (searchTxt.trim()) {
+      const q = searchTxt.toLowerCase().trim();
+      list = employees.filter((e) => {
+        const name = String(e.firstName || e.employeeName || e.name || "").toLowerCase();
+        const lastName = String(e.lastName || "").toLowerCase();
+        const fullName = `${name} ${lastName}`.trim();
+        const curCode = String(e.curEmployeeCode || "").toLowerCase();
+        const newCode = String(e.newEmployeeCode || "").toLowerCase();
+        return (
+          name.includes(q) ||
+          lastName.includes(q) ||
+          fullName.includes(q) ||
+          curCode.includes(q) ||
+          newCode.includes(q)
+        );
+      });
+    }
+
+    return [...list].sort((a, b) => {
+      const aSel = openSelectedSnapshot.includes(String(a.id));
+      const bSel = openSelectedSnapshot.includes(String(b.id));
+      if (aSel && !bSel) return -1;
+      if (!aSel && bSel) return 1;
+      return 0;
+    });
+  }, [employees, searchTxt, openSelectedSnapshot]);
+
+  const toggle = (id) => {
+    const sid = String(id);
+    onChange(
+      selected.includes(sid)
+        ? selected.filter((s) => s !== sid)
+        : [...selected, sid]
+    );
+  };
+
+  const toggleAll = () => {
+    if (searchTxt.trim()) {
+      const filteredIds = filtered.map((e) => String(e.id));
+      const allFilteredSelected = filteredIds.length > 0 && filteredIds.every((id) => selected.includes(id));
+      if (allFilteredSelected) {
+        onChange(selected.filter((id) => !filteredIds.includes(id)));
+      } else {
+        onChange(Array.from(new Set([...selected, ...filteredIds])));
+      }
+    } else {
+      if (selected.length === employees.length && employees.length > 0) {
+        onChange([]);
+      } else {
+        onChange(employees.map((e) => String(e.id)));
+      }
+    }
+  };
+
+  const isAllSelected = searchTxt.trim()
+    ? filtered.length > 0 && filtered.every((e) => selected.includes(String(e.id)))
+    : selected.length === employees.length && employees.length > 0;
+
+  const displayText = () => {
+    if (!selected.length) return "All Employees";
+    if (selected.length === 1) {
+      const found = employees.find((e) => String(e.id) === selected[0]);
+      if (found) {
+        const code = found.curEmployeeCode || found.newEmployeeCode || "";
+        return `${found.firstName || found.name || ""}${code ? ` (${code})` : ""}`;
+      }
+      return "1 selected";
+    }
+    return `${selected.length} Employees Selected`;
+  };
+
+  return (
+    <div style={ms.wrap} ref={ref}>
+      <label style={ms.label}>Employee</label>
+      <div
+        style={{
+          ...ms.trigger,
+          minWidth: 180,
+          maxWidth: 220,
+        }}
+        onClick={() => setOpen(!open)}
+      >
+        <span style={ms.triggerText}>{displayText()}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: 4, flexShrink: 0 }}>
+          {selected.length > 0 && (
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange([]);
+              }}
+              style={{
+                color: "#94a3b8",
+                fontWeight: "bold",
+                fontSize: 12,
+                padding: "0 2px",
+                cursor: "pointer",
+              }}
+              title="Clear selection"
+            >
+              ✕
+            </span>
+          )}
+          <span style={{ color: "#94a3b8", fontSize: 10 }}>{open ? "▲" : "▼"}</span>
+        </div>
+      </div>
+
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            background: "#fff",
+            border: "1px solid #cbd5e1",
+            borderRadius: 8,
+            zIndex: 300,
+            minWidth: 280,
+            maxWidth: 340,
+            boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+            marginTop: 4,
+            overflow: "hidden",
+          }}
+        >
+          {/* Internal search input */}
+          <div style={{ padding: "8px", borderBottom: "1px solid #f1f5f9", background: "#f8fafc" }}>
+            <input
+              type="text"
+              placeholder="Search name, cur/new code..."
+              value={searchTxt}
+              onChange={(e) => setSearchTxt(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: "100%",
+                padding: "6px 10px",
+                fontSize: 12,
+                border: "1px solid #cbd5e1",
+                borderRadius: 6,
+                outline: "none",
+                background: "#fff",
+                boxSizing: "border-box",
+              }}
+              autoFocus
+            />
+          </div>
+
+          {/* Select all bar */}
+          <div
+            onClick={toggleAll}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "8px 12px",
+              cursor: "pointer",
+              borderBottom: "1px solid #f1f5f9",
+              background: "#fafafa",
+              fontSize: 12,
+              userSelect: "none",
+            }}
+          >
+            <span style={{ fontWeight: 600, color: "#334155" }}>
+              {isAllSelected ? "Deselect All" : "Select All"}
+            </span>
+            <span style={{ fontSize: 11, color: "#64748b" }}>
+              {selected.length} / {employees.length}
+            </span>
+          </div>
+
+          {/* Options list */}
+          <div style={{ maxHeight: 240, overflowY: "auto" }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: "12px", fontSize: 12, color: "#94a3b8", textAlign: "center" }}>
+                No matching employees
+              </div>
+            ) : (
+              filtered.map((e) => {
+                const sid = String(e.id);
+                const isChecked = selected.includes(sid);
+                const curCode = e.curEmployeeCode || e.newEmployeeCode || "";
+                return (
+                  <div
+                    key={e.id}
+                    onClick={() => toggle(e.id)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "7px 12px",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      borderBottom: "1px solid #f8fafc",
+                      background: isChecked ? "#eff6ff" : "#fff",
+                      color: isChecked ? "#1e40af" : "#334155",
+                      transition: "background-color 0.15s ease",
+                      userSelect: "none",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      readOnly
+                      style={{
+                        height: 14,
+                        width: 14,
+                        accentColor: "#2563eb",
+                        pointerEvents: "none",
+                        cursor: "pointer",
+                      }}
+                    />
+                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                      <span style={{ fontWeight: isChecked ? 600 : 500 }}>
+                        {e.firstName || e.name}
+                      </span>
+                      {curCode && (
+                        <span style={{ color: isChecked ? "#3b82f6" : "#64748b", marginLeft: 4, fontFamily: "monospace", fontSize: 11 }}>
+                          ({curCode})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Excel export ──────────────────────────────────────────────
 const exportExcel = (grouped, companyName, from, to) => {
   const uniqueShifts = getUniqueShifts(grouped);
@@ -184,9 +439,10 @@ const exportExcel = (grouped, companyName, from, to) => {
       if (shift !== "Unknown") csvRows.push(shift);
       rows.forEach((r, i) => {
         const name = r.employee?.firstName || "";
+        const code = r.employee?.curEmployeeCode || r.employee?.newEmployeeCode || "";
         csvRows.push([
           i + 1,
-          `"${r.employee?.employeeCode || ""}"`,
+          `"${code}"`,
           `"${name}"`,
           `"${r.workedDepartment?.departmentname || r.department?.departmentname || r.employee?.department?.departmentname || ""}"`,
           statusLabel(r.status),
@@ -256,9 +512,10 @@ const exportPDF = (grouped, companyName, from, to) => {
 
       const tableRows = rows.map((r, i) => {
         const name = r.employee?.firstName || "";
+        const code = r.employee?.curEmployeeCode || r.employee?.newEmployeeCode || "";
         return [
           i + 1,
-          r.employee?.employeeCode || "",
+          code,
           name,
           r.workedDepartment?.departmentname || r.department?.departmentname || r.employee?.department?.departmentname || "",
           statusLabel(r.status),
@@ -399,14 +656,12 @@ export default function AttendanceReport() {
     }
   }, [companyId, from, to, selDepts, selCategories, selEmps, selEmpTypes, selGrades]);
 
-  // ── Employee display options ──────────────────────────────────
-  const empOptions = employees
+  // ── Employee display options (filtered by selected masters) ──
+  const filteredEmployees = employees
     .filter((e) => !selDepts.length || selDepts.includes(String(e.departmentId)))
     .filter((e) => !selCategories.length || selCategories.includes(String(e.categoryId)))
-    .map((e) => ({
-      id: e.id,
-      name: e.firstName,
-    }));
+    .filter((e) => !selEmpTypes.length || selEmpTypes.includes(String(e.employmentTypeId)))
+    .filter((e) => !selGrades.length || selGrades.includes(String(e.gradeId)));
 
   // ── Render ────────────────────────────────────────────────────
   return (
@@ -441,7 +696,7 @@ export default function AttendanceReport() {
         <MultiSelect label="Category" options={categories} selected={selCategories} onChange={setSelCategories} labelKey="categoryName" />
         <MultiSelect label="Employment type" options={employmentTypes} selected={selEmpTypes} onChange={setSelEmpTypes} />
         <MultiSelect label="Grade" options={grades} selected={selGrades} onChange={setSelGrades} />
-        <MultiSelect label="Employee" options={empOptions} selected={selEmps} onChange={setSelEmps} />
+        <EmployeeMultiSelect employees={filteredEmployees} selected={selEmps} onChange={setSelEmps} />
 
         <button style={s.btnPrimary} onClick={fetchReport} disabled={loading}>
           {loading ? "Fetching..." : "Generate"}
@@ -506,7 +761,9 @@ export default function AttendanceReport() {
                           return (
                             <tr key={r.id} style={late ? s.lateRow : (i % 2 === 1 ? s.evenRow : s.oddRow)}>
                               <td style={{ ...s.td, textAlign: "center", fontWeight: 600, color: "#64748b", fontSize: 13 }}>{i + 1}</td>
-                              <td style={{ ...s.td, textAlign: "center", fontWeight: 700, color: "#1e293b", fontSize: 13.5 }}>{r.employee?.employeeCode || "-"}</td>
+                              <td style={{ ...s.td, textAlign: "center", fontWeight: 700, color: "#1e293b", fontSize: 13.5 }}>
+                                {r.employee?.curEmployeeCode || r.employee?.newEmployeeCode || "-"}
+                              </td>
                               <td style={{ ...s.td, textDecoration: late ? "underline" : "none", color: late ? "#dc2626" : "#0f172a", fontWeight: 600, fontSize: 14.5 }}>
                                 {name}
                               </td>

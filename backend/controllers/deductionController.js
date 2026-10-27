@@ -2,10 +2,11 @@ const { Deduction, Employee, Department, Company } = require('../models');
 const { Op } = require('sequelize');
 
 // @desc    Get all deductions for a company (with optional filters)
+// @desc    Get all deductions for a company (with optional filters)
 // @route   GET /api/deductions?companyId=1&month=1&year=2026&departmentId=1
 // @access  Private
 exports.getDeductions = async (req, res) => {
-    const { companyId, month, year, departmentId, employeeId } = req.query;
+    const { companyId, month, year, departmentId, employeeId, employeeIds } = req.query;
     if (!companyId) return res.status(400).json({ message: 'Company ID is required' });
 
     try {
@@ -13,7 +14,12 @@ exports.getDeductions = async (req, res) => {
         if (month) where.month = month;
         if (year) where.year = year;
         if (departmentId) where.departmentId = departmentId;
-        if (employeeId) where.employeeId = employeeId;
+        if (employeeIds) {
+            const ids = String(employeeIds).split(',').map(id => parseInt(id.trim())).filter(Boolean);
+            if (ids.length) where.employeeId = { [Op.in]: ids };
+        } else if (employeeId) {
+            where.employeeId = employeeId;
+        }
 
         const deductions = await Deduction.findAll({
             where,
@@ -34,34 +40,69 @@ exports.getDeductions = async (req, res) => {
 // @route   POST /api/deductions
 // @access  Private
 exports.createDeduction = async (req, res) => {
-    const { employeeId, departmentId, companyId, month, year, deductionType, amount, remarks } = req.body;
+    const { employeeId, employeeIds, departmentId, companyId, month, year, deductionType, amount, remarks } = req.body;
 
-    if (!employeeId || !departmentId || !companyId || !month || !year || !deductionType || !amount) {
+    const targetEmpIds = Array.isArray(employeeIds) && employeeIds.length > 0 
+        ? employeeIds.map(id => parseInt(id)).filter(Boolean)
+        : (employeeId ? [parseInt(employeeId)] : []);
+
+    if (targetEmpIds.length === 0 || !companyId || !month || !year || !deductionType || amount === undefined || amount === null || amount === '') {
         return res.status(400).json({ message: 'Missing required fields' });
     }
 
     try {
-        const existing = await Deduction.findOne({
-            where: { employeeId, month, year, deductionType }
-        });
-        if (existing) {
+        const createdList = [];
+        const skippedList = [];
+
+        for (const empId of targetEmpIds) {
+            const existing = await Deduction.findOne({
+                where: { employeeId: empId, month, year, deductionType }
+            });
+            if (existing) {
+                skippedList.push(empId);
+                continue;
+            }
+
+            let deptId = departmentId;
+            if (!deptId) {
+                const emp = await Employee.findByPk(empId);
+                deptId = emp?.departmentId || null;
+            }
+
+            const newDeduction = await Deduction.create({
+                employeeId: empId,
+                departmentId: deptId,
+                companyId,
+                month,
+                year,
+                deductionType,
+                amount,
+                remarks
+            });
+            createdList.push(newDeduction);
+        }
+
+        if (createdList.length === 0 && skippedList.length > 0) {
             return res.status(409).json({
-                message: `Deduction entry already exists for this employee with type "${deductionType}" for ${month}/${year}. Please edit the existing entry instead.`
+                message: `Deduction entry already exists for the selected employee(s) with type "${deductionType}" for ${month}/${year}.`
             });
         }
 
-        const newDeduction = await Deduction.create({
-            employeeId, departmentId, companyId, month, year, deductionType, amount, remarks
-        });
+        if (createdList.length === 1) {
+            const deduction = await Deduction.findByPk(createdList[0].id, {
+                include: [
+                    { model: Employee, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode'] },
+                    { model: Department, as: 'department', attributes: ['id', 'departmentname', 'acronym'] },
+                ],
+            });
+            return res.status(201).json(deduction);
+        }
 
-        const deduction = await Deduction.findByPk(newDeduction.id, {
-            include: [
-                { model: Employee, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode'] },
-                { model: Department, as: 'department', attributes: ['id', 'departmentname', 'acronym'] },
-            ],
+        return res.status(201).json({
+            success: true,
+            message: `Successfully created ${createdList.length} deduction entry(s).${skippedList.length > 0 ? ` (${skippedList.length} skipped as duplicate)` : ''}`,
+            data: createdList
         });
-
-        res.status(201).json(deduction);
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Server Error', error: error.message });
@@ -73,12 +114,17 @@ exports.createDeduction = async (req, res) => {
 // @access  Private
 exports.updateDeduction = async (req, res) => {
     const { id } = req.params;
-    const { employeeId, departmentId, companyId, month, year, deductionType, amount, remarks } = req.body;
+    let { employeeId, departmentId, companyId, month, year, deductionType, amount, remarks } = req.body;
 
     try {
         const deduction = await Deduction.findByPk(id);
         if (!deduction) {
             return res.status(404).json({ message: 'Deduction not found' });
+        }
+
+        if (!departmentId && employeeId) {
+            const emp = await Employee.findByPk(employeeId);
+            departmentId = emp?.departmentId || deduction.departmentId;
         }
 
         if (employeeId !== deduction.employeeId || month !== deduction.month ||
@@ -136,7 +182,7 @@ exports.deleteDeduction = async (req, res) => {
 // @route   GET /api/deductions/report?companyId=1&month=1&year=2026&departmentIds=1,2,3&deductionTypes=Mess,Stores
 // @access  Private
 exports.getConsolidatedReport = async (req, res) => {
-    const { companyId, month, year, departmentIds, deductionTypes } = req.query;
+    const { companyId, month, year, departmentIds, deductionTypes, employeeIds } = req.query;
 
     if (!companyId || !month || !year) {
         return res.status(400).json({ message: 'companyId, month, and year are required' });
@@ -146,10 +192,15 @@ exports.getConsolidatedReport = async (req, res) => {
         const where = { companyId, month, year };
 
         if (departmentIds) {
-            where.departmentId = { [Op.in]: departmentIds.split(',').map(Number) };
+            const dIds = departmentIds.split(',').map(Number).filter(Boolean);
+            if (dIds.length) where.departmentId = { [Op.in]: dIds };
         }
         if (deductionTypes) {
             where.deductionType = { [Op.in]: deductionTypes.split(',') };
+        }
+        if (employeeIds) {
+            const eIds = employeeIds.split(',').map(Number).filter(Boolean);
+            if (eIds.length) where.employeeId = { [Op.in]: eIds };
         }
 
         const deductions = await Deduction.findAll({
@@ -171,9 +222,9 @@ exports.getConsolidatedReport = async (req, res) => {
             if (!employeeMap[key]) {
                 employeeMap[key] = {
                     employeeId: d.employeeId,
-                    employeeCode: d.employee.curEmployeeCode || d.employee.employeeCode,
-                    curEmployeeCode: d.employee.curEmployeeCode,
-                    newEmployeeCode: d.employee.newEmployeeCode,
+                    employeeCode: d.employee.curEmployeeCode || d.employee.newEmployeeCode || '',
+                    curEmployeeCode: d.employee.curEmployeeCode || d.employee.newEmployeeCode || '',
+                    newEmployeeCode: d.employee.newEmployeeCode || '',
                     employeeName: d.employee.firstName,
                     departmentId: d.departmentId,
                     departmentName: d.department.name,

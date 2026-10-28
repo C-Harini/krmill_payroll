@@ -5,6 +5,7 @@ const sequelize = db.sequelize;
 
 // Import formulaEvaluator 
 const formulaEvaluator = require('./formulaEvaluator');
+const { regenerateEmployeeSalaryFromDate } = require('./salaryGenerationController');
 
 // Test endpoint
 exports.testRoute = (req, res) => {
@@ -287,6 +288,13 @@ exports.assignSalary = async (req, res) => {
 
         await transaction.commit();
 
+        // Auto-regenerate salary for this employee from effectiveFrom date onwards
+        try {
+            await regenerateEmployeeSalaryFromDate(employeeId, effectiveFrom, companyId);
+        } catch (regenErr) {
+            console.error('[assignSalary] Auto-regeneration error:', regenErr.message);
+        }
+
         const completeSalary = await EmployeeSalaryMaster.findByPk(salaryMaster.id, {
             include: [
                 { model: Employee },
@@ -431,6 +439,13 @@ exports.bulkAssignSalary = async (req, res) => {
 
             await transaction.commit();
 
+            // Auto-regenerate salary for this employee from effectiveFrom date onwards
+            try {
+                await regenerateEmployeeSalaryFromDate(employee.id, effectiveFrom, companyId);
+            } catch (regenErr) {
+                console.error('[bulkAssignSalary] Auto-regeneration error:', regenErr.message);
+            }
+
             results.successful.push({
                 employeeId: employee.id,
                 employeeCode: employee.employeeCode,
@@ -553,6 +568,13 @@ exports.reviseSalary = async (req, res) => {
 
         await transaction.commit();
 
+        // Auto-regenerate salary for this employee from effectiveFrom date onwards
+        try {
+            await regenerateEmployeeSalaryFromDate(employeeId, effectiveFrom, companyId || currentSalary.companyId);
+        } catch (regenErr) {
+            console.error('[reviseSalary] Auto-regeneration error:', regenErr.message);
+        }
+
         const completeSalary = await EmployeeSalaryMaster.findByPk(newSalary.id, {
             include: [
                 { model: Employee },
@@ -625,6 +647,14 @@ exports.updateSalary = async (req, res) => {
         );
 
         await transaction.commit();
+
+        // Auto-regenerate salary for this employee from effectiveFrom date onwards
+        try {
+            const finalEffectiveFrom = effectiveFrom || salaryMaster.effectiveFrom;
+            await regenerateEmployeeSalaryFromDate(salaryMaster.employeeId, finalEffectiveFrom, salaryMaster.companyId);
+        } catch (regenErr) {
+            console.error('[updateSalary] Auto-regeneration error:', regenErr.message);
+        }
 
         // Fetch complete updated record
         const updatedSalary = await EmployeeSalaryMaster.findByPk(id, {

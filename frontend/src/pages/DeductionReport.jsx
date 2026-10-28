@@ -393,7 +393,7 @@ const DeductionReport = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 relative">
                         <MultiSelect
                             label="Departments"
-                            options={(Array.isArray(departments) ? departments : []).map(d => ({ value: d.id, label: `${d.departmentname} (${d.acronym})` }))}
+                            options={(Array.isArray(departments) ? departments : []).map(d => ({ value: d.id, label: d.departmentname || d.name }))}
                             selected={selectedDeptIds}
                             onChange={setSelectedDeptIds}
                             required

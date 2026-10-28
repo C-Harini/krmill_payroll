@@ -393,7 +393,7 @@ const enrichWithDeptDesig = async (records) => {
 
   const employees = await Employee.findAll({
     where: { id: empIds },
-    attributes: ["id"],
+    attributes: ["id", "departmentId", "designationId", "gradeId"],
     include: [
       {
         model: Department,
@@ -418,10 +418,15 @@ const enrichWithDeptDesig = async (records) => {
 
   const empMap = {};
   employees.forEach((e) => {
+    const deptObj = e.department ? (e.department.toJSON ? e.department.toJSON() : e.department) : null;
+    const desigObj = e.designation ? (e.designation.toJSON ? e.designation.toJSON() : e.designation) : null;
+    const gradeObj = e.grade ? (e.grade.toJSON ? e.grade.toJSON() : e.grade) : null;
     empMap[e.id] = {
-      department: e.department || null,
-      designation: e.designation || null,
-      grade: e.grade || null,
+      department: deptObj,
+      designation: desigObj,
+      grade: gradeObj,
+      departmentAcronym: deptObj?.acronym || deptObj?.departmentname || "",
+      designationAcronym: desigObj?.acronym || desigObj?.name || "",
     };
   });
 
@@ -431,6 +436,15 @@ const enrichWithDeptDesig = async (records) => {
       r.employee.department = extra.department || null;
       r.employee.designation = extra.designation || null;
       r.employee.grade = extra.grade || null;
+      r.employee.departmentAcronym = extra.departmentAcronym || "";
+      r.employee.designationAcronym = extra.designationAcronym || "";
+      if (r.employee.dataValues) {
+        r.employee.dataValues.department = extra.department || null;
+        r.employee.dataValues.designation = extra.designation || null;
+        r.employee.dataValues.grade = extra.grade || null;
+        r.employee.dataValues.departmentAcronym = extra.departmentAcronym || "";
+        r.employee.dataValues.designationAcronym = extra.designationAcronym || "";
+      }
     }
     return r;
   });
@@ -675,6 +689,8 @@ exports.getSalaryReport = async (req, res) => {
           department: r.employee?.department || null,
           designation: r.employee?.designation || null,
           grade: r.employee?.grade || null,
+          departmentAcronym: r.employee?.departmentAcronym || r.employee?.department?.acronym || "",
+          designationAcronym: r.employee?.designationAcronym || r.employee?.designation?.acronym || "",
         },
         company: r.company,
       };
@@ -2250,7 +2266,7 @@ exports.downloadPayslip = async (req, res) => {
     const left = [
       ["Name", emp.firstName || ""],
       ["Emp Code", emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode)],
-      ["Designation", emp.designation?.name || "-"],
+      ["Designation", emp.designation?.acronym || emp.designationAcronym || emp.designation?.name || "-"],
     ];
     const right = [
       [

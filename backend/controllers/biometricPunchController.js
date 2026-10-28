@@ -352,14 +352,13 @@ exports.getEmployeeDailySummary = async (req, res) => {
 // @desc    Fetch attendance from biometric device (preview only)
 // @route   GET /api/biometric-punches/fetch-from-device/:deviceId
 // @access  Private
-if (autoSyncService.isDeviceBusy()) {
-    return res.status(409).json({
-        success: false,
-        message: 'Auto-sync is currently running. Please try again in a moment.'
-    });
-}
-
 exports.fetchPunchesFromDevice = async (req, res) => {
+    if (autoSyncService.isDeviceBusy()) {
+        return res.status(409).json({
+            success: false,
+            message: 'Auto-sync is currently running. Please try again in a moment.'
+        });
+    }
     const { deviceId } = req.params;
     let zkInstance = null;
     let device = null;
@@ -441,15 +440,13 @@ exports.fetchPunchesFromDevice = async (req, res) => {
 // @desc    Fetch AND auto-import punches from device (manual trigger)
 // @route   POST /api/biometric-punches/fetch-and-import/:deviceId
 // @access  Private
-
-if (autoSyncService.isDeviceBusy()) {
-    return res.status(409).json({
-        success: false,
-        message: 'Auto-sync is currently running. Please try again in a moment.'
-    });
-}
-
 exports.fetchAndImportPunches = async (req, res) => {
+    if (autoSyncService.isDeviceBusy()) {
+        return res.status(409).json({
+            success: false,
+            message: 'Auto-sync is currently running. Please try again in a moment.'
+        });
+    }
     const { deviceId } = req.params;
     const { companyId } = req.body;
 

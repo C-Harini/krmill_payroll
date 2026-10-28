@@ -515,184 +515,224 @@ const CategoryMultiSelect = ({ categories, selected, onChange }) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// EMPLOYEE MULTI-SELECT COMPONENT (SEARCH + MULTI-FILTER)
+// EMPLOYEE SELECTOR DROPDOWN (LIKE ATTENDANCE INCENTIVE MANAGEMENT)
 // ─────────────────────────────────────────────────────────────
-const EmployeeMultiSelect = ({ employees = [], selected = [], onChange }) => {
+const EmployeeSelector = ({ employees = [], selected = [], selectedIds, onChange }) => {
   const [open, setOpen] = useState(false);
-  const [searchTxt, setSearchTxt] = useState("");
-  const [openSelectedSnapshot, setOpenSelectedSnapshot] = useState([]);
-  const ref = useRef(null);
+  const [search, setSearch] = useState("");
+  const containerRef = useRef(null);
 
+  const activeSelected = (selectedIds !== undefined ? selectedIds : selected || []).map(String);
+
+  // Close on outside click
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) {
+    if (!open) return;
+    const handleOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
         setOpen(false);
+        setSearch("");
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    if (open) {
-      setOpenSelectedSnapshot(selected);
-    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
   }, [open]);
 
-  const filtered = useMemo(() => {
-    let list = employees;
-    if (searchTxt.trim()) {
-      const q = searchTxt.toLowerCase().trim();
-      list = employees.filter((e) => {
-        const name = String(e.firstName || "").toLowerCase();
-        const curCode = String(e.curEmployeeCode || e.employeeCode || "").toLowerCase();
-        const newCode = String(e.newEmployeeCode || "").toLowerCase();
-        return name.includes(q) || curCode.includes(q) || newCode.includes(q);
-      });
-    }
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (e) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        setSearch("");
+      }
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open]);
 
-    return [...list].sort((a, b) => {
-      const aSel = openSelectedSnapshot.includes(String(a.id));
-      const bSel = openSelectedSnapshot.includes(String(b.id));
-      if (aSel && !bSel) return -1;
-      if (!aSel && bSel) return 1;
-      return 0;
+  // Instant filtering by code or name
+  const filtered = useMemo(() => {
+    if (!search.trim()) return employees;
+    const q = search.toLowerCase().trim();
+    return employees.filter((e) => {
+      const name = String(
+        e.employeeName ||
+        [e.firstName, e.middleName, e.lastName].filter(Boolean).join(" ") ||
+        e.firstName ||
+        ""
+      ).toLowerCase();
+      const curCode = String(e.curEmployeeCode || e.employeeCode || e.ticketNo || "").toLowerCase();
+      const newCode = String(e.newEmployeeCode || "").toLowerCase();
+      const formattedCode = String(
+        e.newEmployeeCode
+          ? `${e.curEmployeeCode || e.employeeCode || ""} / ${e.newEmployeeCode}`
+          : (e.curEmployeeCode || e.employeeCode || "")
+      ).toLowerCase();
+      return (
+        name.includes(q) ||
+        curCode.includes(q) ||
+        newCode.includes(q) ||
+        formattedCode.includes(q)
+      );
     });
-  }, [employees, searchTxt, openSelectedSnapshot]);
+  }, [employees, search]);
+
+  const isAllSelected =
+    activeSelected.length === employees.length && employees.length > 0;
+
+  const toggleAll = () => {
+    if (isAllSelected) {
+      onChange([]);
+    } else {
+      onChange(employees.map((e) => String(e.id)));
+    }
+  };
 
   const toggle = (id) => {
     const sid = String(id);
-    onChange(
-      selected.includes(sid)
-        ? selected.filter((s) => s !== sid)
-        : [...selected, sid]
-    );
+    const updated = activeSelected.includes(sid)
+      ? activeSelected.filter((x) => x !== sid)
+      : [...activeSelected, sid];
+    onChange(updated);
   };
 
-  const toggleAll = () => {
-    if (searchTxt.trim()) {
-      const filteredIds = filtered.map((e) => String(e.id));
-      const allFilteredSelected = filteredIds.length > 0 && filteredIds.every((id) => selected.includes(id));
-      if (allFilteredSelected) {
-        onChange(selected.filter((id) => !filteredIds.includes(id)));
-      } else {
-        onChange(Array.from(new Set([...selected, ...filteredIds])));
-      }
-    } else {
-      if (selected.length === employees.length && employees.length > 0) {
-        onChange([]);
-      } else {
-        onChange(employees.map((e) => String(e.id)));
-      }
+  const displayText = useMemo(() => {
+    if (!activeSelected.length || isAllSelected) {
+      return "All employees";
     }
-  };
-
-  const isAllSelected = searchTxt.trim()
-    ? filtered.length > 0 && filtered.every((e) => selected.includes(String(e.id)))
-    : selected.length === employees.length && employees.length > 0;
-
-  const displayText = () => {
-    if (!selected.length) return "All Employees";
-    if (selected.length === 1) {
-      const found = employees.find((e) => String(e.id) === selected[0]);
+    if (activeSelected.length === 1) {
+      const found = employees.find((e) => String(e.id) === activeSelected[0]);
       if (found) {
-        const code = found.curEmployeeCode || found.employeeCode || "";
-        return `${found.firstName}${code ? ` (${code})` : ""}`;
+        const name =
+          found.employeeName ||
+          [found.firstName, found.lastName].filter(Boolean).join(" ") ||
+          found.firstName ||
+          "";
+        const code =
+          found.curEmployeeCode ||
+          found.employeeCode ||
+          found.newEmployeeCode ||
+          "";
+        return `${name}${code ? ` (${code})` : ""}`;
       }
-      return "1 selected";
+      return "1 employee selected";
     }
-    return `${selected.length} Employees Selected`;
-  };
+    return `${activeSelected.length} employees selected`;
+  }, [activeSelected, isAllSelected, employees]);
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative" ref={containerRef}>
       <label className="block text-xs font-medium text-gray-600 mb-1.5">
         Employee
       </label>
-      <div
-        onClick={() => setOpen(!open)}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white cursor-pointer flex justify-between items-center select-none hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[38px]"
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white min-h-[38px] hover:border-slate-300 transition-colors shadow-sm"
       >
-        <span className="truncate text-gray-800 text-xs font-medium">{displayText()}</span>
+        <span
+          className={`truncate ${
+            !activeSelected.length || isAllSelected
+              ? "text-slate-400"
+              : "text-slate-800 font-semibold"
+          }`}
+        >
+          {displayText}
+        </span>
         <div className="flex items-center gap-1.5 ml-1 shrink-0">
-          {selected.length > 0 && (
+          {activeSelected.length > 0 && !isAllSelected && (
             <span
               onClick={(e) => {
                 e.stopPropagation();
                 onChange([]);
               }}
-              className="text-gray-400 hover:text-gray-600 text-xs font-bold px-1"
+              className="text-slate-400 hover:text-slate-600 text-xs font-bold px-1 cursor-pointer"
               title="Clear selection"
             >
               ✕
             </span>
           )}
-          <span className="text-gray-400 text-xs">{open ? "▲" : "▼"}</span>
+          <span className="text-slate-400 text-xs">
+            {open ? "▲" : "▼"}
+          </span>
         </div>
-      </div>
+      </button>
+
       {open && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-[280px] max-w-[360px] overflow-hidden">
-          {/* Internal search input */}
-          <div className="p-2 border-b border-gray-100 bg-gray-50">
+        <div className="absolute z-50 mt-1 w-full min-w-[280px] max-w-[380px] bg-white border border-slate-200 rounded-xl shadow-xl max-h-72 flex flex-col animate-in fade-in zoom-in-95 duration-100">
+          {/* Search box inside dropdown */}
+          <div className="p-2 border-b border-slate-100 bg-slate-50/50">
             <input
-              type="text"
-              placeholder="Search name, cur/new code..."
-              value={searchTxt}
-              onChange={(e) => setSearchTxt(e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
               autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search code or name…"
+              className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
             />
           </div>
-          {/* Select all bar */}
+
+          {/* All employees row */}
           <div
+            className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 cursor-pointer text-xs border-b border-slate-100 select-none"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={toggleAll}
-            className="flex items-center justify-between px-3 py-2 cursor-pointer border-b border-gray-100 hover:bg-gray-50 bg-gray-50/50 text-xs"
           >
-            <span className="font-semibold text-gray-700">
-              {isAllSelected ? "Deselect All" : "Select All"}
-            </span>
-            <span className="text-[11px] text-gray-500">
-              {selected.length} / {employees.length}
+            <input
+              type="checkbox"
+              readOnly
+              checked={isAllSelected}
+              className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer pointer-events-none"
+            />
+            <span className="font-semibold text-slate-700">All employees</span>
+            <span className="ml-auto text-[11px] text-slate-400 font-medium">
+              {employees.length} total
             </span>
           </div>
-          {/* Options list */}
-          <div className="max-h-60 overflow-y-auto divide-y divide-gray-50">
-            {filtered.length === 0 ? (
-              <div className="px-3 py-3 text-xs text-gray-400 text-center">
-                No matching employees
-              </div>
-            ) : (
-              filtered.map((e) => {
-                const sid = String(e.id);
-                const isChecked = selected.includes(sid);
-                const curCode = e.curEmployeeCode || e.employeeCode || "";
-                const newCode = e.newEmployeeCode || "";
-                return (
-                  <div
-                    key={e.id}
-                    onClick={() => toggle(e.id)}
-                    className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-blue-50/60 transition-colors text-xs ${
-                      isChecked ? "bg-blue-50 text-blue-900 font-medium" : "text-gray-700"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={() => {}}
-                      className="rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 pointer-events-none"
-                    />
-                    <div className="truncate flex-1">
-                      <span className="font-medium">
-                        {e.firstName}
-                      </span>
-                      <span className="text-gray-500 ml-1 font-mono text-[11px]">
-                        ({curCode})
-                      </span>
-                    </div>
+
+          {/* List of employees */}
+          <div className="overflow-y-auto flex-1 divide-y divide-slate-50">
+            {filtered.map((emp) => {
+              const sid = String(emp.id);
+              const isChecked = activeSelected.includes(sid);
+              const name =
+                emp.employeeName ||
+                [emp.firstName, emp.lastName].filter(Boolean).join(" ") ||
+                emp.firstName ||
+                "-";
+              const code = emp.newEmployeeCode
+                ? `${emp.curEmployeeCode || emp.employeeCode || ""} / ${emp.newEmployeeCode}`
+                : (emp.curEmployeeCode || emp.employeeCode || emp.newEmployeeCode || "");
+
+              return (
+                <div
+                  key={emp.id}
+                  className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer select-none transition-colors ${
+                    isChecked ? "bg-indigo-50/60 hover:bg-indigo-50" : "hover:bg-slate-50"
+                  }`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => toggle(emp.id)}
+                >
+                  <input
+                    type="checkbox"
+                    readOnly
+                    checked={isChecked}
+                    className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer pointer-events-none"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-xs truncate ${isChecked ? "font-bold text-indigo-900" : "font-medium text-slate-800"}`}>
+                      {name}
+                    </p>
+                    <p className="text-[11px] text-slate-400 font-mono">
+                      {code}
+                    </p>
                   </div>
-                );
-              })
+                </div>
+              );
+            })}
+            {filtered.length === 0 && (
+              <p className="text-center text-slate-400 text-xs py-4">
+                No employees found matching "{search}"
+              </p>
             )}
           </div>
         </div>
@@ -700,6 +740,8 @@ const EmployeeMultiSelect = ({ employees = [], selected = [], onChange }) => {
     </div>
   );
 };
+
+const EmployeeMultiSelect = EmployeeSelector;
 
 // ─────────────────────────────────────────────────────────────
 // MAIN COMPONENT
@@ -1221,15 +1263,7 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
       (e) =>
         !selCategories.length ||
         selCategories.includes(String(e.categoryId)),
-    )
-    .filter((e) => {
-      if (!empSearch) return true;
-      const q = empSearch.toLowerCase().trim();
-      const name = String(e.firstName || "").toLowerCase();
-      const curCode = String(e.curEmployeeCode || e.employeeCode || "").toLowerCase();
-      const newCode = String(e.newEmployeeCode || "").toLowerCase();
-      return name.includes(q) || curCode.includes(q) || newCode.includes(q);
-    });
+    );
 
   const groupedAttendance = attendance
     .filter((r) => !selShift || r.shiftName === selShift)
@@ -1411,21 +1445,7 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
                     }}
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                    Search (Name / Code)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Search name, code..."
-                    value={empSearch}
-                    onChange={(e) => {
-                      setEmpSearch(e.target.value);
-                      setPage(1);
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+
                 <div>
                   <EmployeeMultiSelect
                     employees={filteredEmployees}

@@ -32,8 +32,8 @@ exports.getEmployeesByCompany = async (req, res) => {
       where: whereClause,
       include: [
         { model: Company, as: "company", attributes: ["id", "name"] },
-        { model: Department, as: "department", attributes: ["id", "departmentname"] },
-        { model: Designation, as: "designation", attributes: ["id", "name"] },
+        { model: Department, as: "department", attributes: ["id", "departmentname", "acronym"] },
+        { model: Designation, as: "designation", attributes: ["id", "name", "acronym"] },
         { model: EmployerGrade, as: "grade", attributes: ["id", "name"] },
         { model: EmploymentType, as: "employmentType", attributes: ["id", "name"] },
         { model: Category, as: "category", attributes: ["id", "categoryName"] },
@@ -51,6 +51,8 @@ exports.getEmployeesByCompany = async (req, res) => {
       empData.fullName = emp.getFullName();
       empData.employeeName = empData.fullName || empData.firstName;
       empData.employeeCode = empData.curEmployeeCode || empData.employeeCode;
+      empData.departmentAcronym = emp.department?.acronym || emp.department?.departmentname || "";
+      empData.designationAcronym = emp.designation?.acronym || emp.designation?.name || "";
       return empData;
     });
 
@@ -70,8 +72,8 @@ exports.getEmployeeById = async (req, res) => {
     const employee = await Employee.findByPk(id, {
       include: [
         { model: Company, as: "company", attributes: ["id", "name"] },
-        { model: Department, as: "department", attributes: ["id", "departmentname"] },
-        { model: Designation, as: "designation", attributes: ["id", "name"] },
+        { model: Department, as: "department", attributes: ["id", "departmentname", "acronym"] },
+        { model: Designation, as: "designation", attributes: ["id", "name", "acronym"] },
         { model: EmployerGrade, as: "grade", attributes: ["id", "name"] },
         {
           model: EmploymentType,

@@ -131,6 +131,8 @@ const EmployeeMultiSelect = ({ label, employees = [], selected = [], onChange, d
                 const name = String(e.firstName || e.employeeName || e.name || '').toLowerCase();
                 const lastName = String(e.lastName || '').toLowerCase();
                 const fullName = `${name} ${lastName}`.trim();
+                const desig = String(e.designation?.acronym || e.designation?.name || e.designationAcronym || '').toLowerCase();
+                const dept = String(e.department?.acronym || e.department?.departmentname || e.departmentAcronym || '').toLowerCase();
                 const curCode = String(e.curEmployeeCode || e.employeeCode || '').toLowerCase();
                 const newCode = String(e.newEmployeeCode || '').toLowerCase();
                 return (
@@ -138,7 +140,7 @@ const EmployeeMultiSelect = ({ label, employees = [], selected = [], onChange, d
                     lastName.includes(q) ||
                     fullName.includes(q) ||
                     curCode.includes(q) ||
-                    newCode.includes(q)
+                    newCode.includes(q) || desig.includes(q) || dept.includes(q)
                 );
             });
         }
@@ -552,18 +554,18 @@ const DeductionManagement = () => {
         const monthLabel = MONTHS.find(m => m.value === parseInt(reportMonth))?.label || reportMonth;
 
         let csv = `Consolidated Deduction Report - ${monthLabel} ${reportYear}\n\n`;
-        csv += 'S.No,Employee Code,Employee Name,Department,Mess (₹),Stores (₹),EB (₹),Others (₹),Total (₹)\n';
+        csv += 'S.No,Employee Code,Employee Name,Department,Designation,Mess (₹),Stores (₹),EB (₹),Others (₹),Total (₹)\n';
 
         let sno = 1;
         reportData.reportData.forEach(row => {
             const code = row.curEmployeeCode || row.employeeCode || '';
-            csv += `${sno++},${code},${row.employeeName},${row.departmentAcronym},${row.Mess.toFixed(2)},${row.Stores.toFixed(2)},${row.EB.toFixed(2)},${row.Others.toFixed(2)},${row.total.toFixed(2)}\n`;
+            csv += `${sno++},${code},${row.employeeName},${row.departmentAcronym || row.departmentName},${row.designationAcronym || row.designationName || ''},${row.Mess.toFixed(2)},${row.Stores.toFixed(2)},${row.EB.toFixed(2)},${row.Others.toFixed(2)},${row.total.toFixed(2)}\n`;
         });
 
         csv += '\nDepartment Sub-Totals\n';
-        csv += ',,,Department,Mess (₹),Stores (₹),EB (₹),Others (₹),Total (₹)\n';
+        csv += ',,,,Department,Mess (₹),Stores (₹),EB (₹),Others (₹),Total (₹)\n';
         reportData.deptTotals.forEach(dt => {
-            csv += `,,,"${dt.departmentName}",${dt.Mess.toFixed(2)},${dt.Stores.toFixed(2)},${dt.EB.toFixed(2)},${dt.Others.toFixed(2)},${dt.total.toFixed(2)}\n`;
+            csv += `,,,,"${dt.departmentAcronym || dt.departmentName}",${dt.Mess.toFixed(2)},${dt.Stores.toFixed(2)},${dt.EB.toFixed(2)},${dt.Others.toFixed(2)},${dt.total.toFixed(2)}\n`;
         });
 
         const gt = reportData.grandTotal;
@@ -706,7 +708,7 @@ const DeductionManagement = () => {
                             <table className="w-full">
                                 <thead>
                                     <tr className="bg-gradient-to-r from-slate-700 to-slate-800 text-white">
-                                        {['S.No', 'Employee Code', 'Employee Name', 'Department', 'Type', 'Amount (₹)', 'Remarks', 'Actions'].map(h => (
+                                        {['S.No', 'Employee Code', 'Employee Name', 'Department', 'Designation', 'Type', 'Amount (₹)', 'Remarks', 'Actions'].map(h => (
                                             <th key={h} className="px-4 py-3.5 text-left text-xs font-bold text-white uppercase tracking-wider">{h}</th>
                                         ))}
                                     </tr>
@@ -760,7 +762,7 @@ const DeductionManagement = () => {
                                         </tr>
                                     )) : (
                                         <tr>
-                                            <td colSpan="8" className="px-6 py-12 text-center">
+                                            <td colSpan="9" className="px-6 py-12 text-center">
                                                 <div className="text-slate-500">
                                                     <svg className="w-12 h-12 mx-auto mb-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -791,7 +793,7 @@ const DeductionManagement = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-4">
                             <MultiSelectDropdown
                                 label="Departments"
-                                options={(departments || []).map(d => ({ value: d.id, label: d.departmentname }))}
+                                options={(departments || []).map(d => ({ value: d.id, label: d.departmentname || d.name }))}
                                 selected={reportDeptIds}
                                 onChange={setReportDeptIds}
                             />
@@ -879,6 +881,7 @@ const DeductionManagement = () => {
                                                 <th className="px-4 py-3.5 text-left text-xs font-bold text-white uppercase tracking-wider">Emp Code</th>
                                                 <th className="px-4 py-3.5 text-left text-xs font-bold text-white uppercase tracking-wider">Employee Name</th>
                                                 <th className="px-4 py-3.5 text-left text-xs font-bold text-white uppercase tracking-wider">Department</th>
+                                                <th className="px-4 py-3.5 text-left text-xs font-bold text-white uppercase tracking-wider">Designation</th>
                                                 {reportTypes.includes('Mess') && <th className="px-4 py-3.5 text-right text-xs font-bold text-white uppercase tracking-wider">Mess (₹)</th>}
                                                 {reportTypes.includes('Stores') && <th className="px-4 py-3.5 text-right text-xs font-bold text-white uppercase tracking-wider">Stores (₹)</th>}
                                                 {reportTypes.includes('EB') && <th className="px-4 py-3.5 text-right text-xs font-bold text-white uppercase tracking-wider">EB (₹)</th>}
@@ -923,7 +926,7 @@ const DeductionManagement = () => {
 
                                             {/* Grand Total */}
                                             <tr className="bg-slate-800 text-white">
-                                                <td colSpan="4" className="px-4 py-3 text-sm font-bold uppercase tracking-wider">Grand Total</td>
+                                                <td colSpan="5" className="px-4 py-3 text-sm font-bold uppercase tracking-wider">Grand Total</td>
                                                 {reportTypes.includes('Mess') && <td className="px-4 py-3 text-sm text-right font-mono font-bold">{formatCurrency(reportData.grandTotal.Mess)}</td>}
                                                 {reportTypes.includes('Stores') && <td className="px-4 py-3 text-sm text-right font-mono font-bold">{formatCurrency(reportData.grandTotal.Stores)}</td>}
                                                 {reportTypes.includes('EB') && <td className="px-4 py-3 text-sm text-right font-mono font-bold">{formatCurrency(reportData.grandTotal.EB)}</td>}

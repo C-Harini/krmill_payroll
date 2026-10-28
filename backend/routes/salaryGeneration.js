@@ -9,6 +9,9 @@ const salaryGenerationController = require('../controllers/salaryGenerationContr
 // Generate salary for employees
 router.post('/generate', salaryGenerationController.generateSalary);
 
+// Regenerate salary for single employee from effective date
+router.post('/regenerate-employee', salaryGenerationController.regenerateSingleEmployee);
+
 // Get salary generations with filters
 router.get('/', salaryGenerationController.getSalaryGenerations);
 

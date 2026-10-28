@@ -39,12 +39,13 @@ const EmployeeMultiSelect = ({
         const name = String(e.firstName || e.name || "").toLowerCase();
         const curCode = String(e.curEmployeeCode || e.employeeCode || e.ticketNo || "").toLowerCase();
         const newCode = String(e.newEmployeeCode || "").toLowerCase();
-        const desig = String(e.designation?.name || e.designationName || "").toLowerCase();
+        const desig = String(e.designation?.acronym || e.designation?.name || e.designationName || "").toLowerCase();
+        const dept = String(e.department?.acronym || e.department?.departmentname || "").toLowerCase();
         return (
           name.includes(q) ||
           curCode.includes(q) ||
           newCode.includes(q) ||
-          desig.includes(q)
+          desig.includes(q) || dept.includes(q)
         );
       });
     }
@@ -729,7 +730,9 @@ const OTHoursManagement = () => {
         const code = String(emp.curEmployeeCode || emp.employeeCode || emp.ticketNo || emp.id || "").toLowerCase();
         const newCode = String(emp.newEmployeeCode || "").toLowerCase();
         const name = (emp.firstName || "").toLowerCase();
-        return code.includes(term) || newCode.includes(term) || name.includes(term);
+        const desig = String(emp.designation?.acronym || emp.designation?.name || "").toLowerCase();
+        const dept = String(emp.department?.acronym || emp.department?.departmentname || "").toLowerCase();
+        return code.includes(term) || newCode.includes(term) || name.includes(term) || desig.includes(term) || dept.includes(term);
       });
     }
 
@@ -757,7 +760,7 @@ const OTHoursManagement = () => {
       <form onSubmit={handleSubmit}>
         {/* Filter Section */}
         <div className="bg-white shadow rounded-lg p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Company Dropdown */}
             <div>
               <label className="block text-sm font-semibold mb-2 text-gray-700">
@@ -815,14 +818,6 @@ const OTHoursManagement = () => {
               />
             </div>
 
-            {/* Direct Employee Select Filter (ALWAYS ALL COMPANY EMPLOYEES) */}
-            <EmployeeMultiSelect
-              label="Direct Employee Select"
-              employees={allCompanyEmployees.length ? allCompanyEmployees : employees}
-              selected={selectedEmployeeIds}
-              onChange={setSelectedEmployeeIds}
-              disabled={!allCompanyEmployees.length && !employees.length}
-            />
           </div>
         </div>
 
@@ -840,9 +835,10 @@ const OTHoursManagement = () => {
             <div className="bg-slate-50 p-4 border-b flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div>
                 <h2 className="text-base font-bold text-gray-800">
-                  {departments.find((d) => d.id === selectedDepartmentId)?.name ||
-                    departments.find((d) => d.id === selectedDepartmentId)?.departmentname ||
-                    "All Departments"}
+                  {(() => {
+                    const dept = departments.find((d) => String(d.id) === String(selectedDepartmentId));
+                    return dept?.acronym || dept?.departmentname || dept?.departmentName || dept?.name || "All Departments";
+                  })()}
                 </h2>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-xs font-semibold px-2.5 py-0.5 bg-blue-100 text-blue-800 rounded-full">
@@ -939,7 +935,7 @@ const OTHoursManagement = () => {
                             {emp.firstName}
                           </td>
                           <td className="p-3 text-sm text-gray-600">
-                            {emp.designation?.name || emp.designationName || "-"}
+                            {emp.designation?.acronym || emp.designation?.name || emp.designationName || "-"}
                           </td>
                           <td className="p-3">
                             <input

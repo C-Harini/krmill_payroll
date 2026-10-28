@@ -1232,7 +1232,7 @@ function SalaryTab({
                         {r.employee?.department?.acronym || r.employee?.department?.departmentname || "-"}
                       </td>
                       <td className="px-2 py-1.5 whitespace-nowrap text-slate-500">
-                        {r.employee?.designation?.acronym || r.employee?.designation?.name || "-"}
+                        {r.employee?.designation?.acronym || r.employee?.designationAcronym || (typeof r.employee?.designation === "string" ? r.employee.designation : r.employee?.designation?.name) || r.employee?.designationName || "-"}
                       </td>
                       <td className="px-2 py-1.5 text-right font-medium text-slate-700">
                         {displaySalary != null && displaySalary !== ""
@@ -1594,7 +1594,7 @@ function PayslipsTab({ list, loading, dlLoading, onDownload }) {
                       {r.employee?.department?.acronym || r.employee?.department?.departmentname || "-"}
                     </td>
                     <td className="px-3 py-2 text-xs text-slate-500">
-                      {r.employee?.designation?.acronym || r.employee?.designation?.name || "-"}
+                      {r.employee?.designation?.acronym || r.employee?.designationAcronym || (typeof r.employee?.designation === "string" ? r.employee.designation : r.employee?.designation?.name) || r.employee?.designationName || "-"}
                     </td>
                     <td className="px-3 py-2">
                       <span

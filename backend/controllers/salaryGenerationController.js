@@ -1309,8 +1309,8 @@ async function generateForMonth({
       const salaryMaster = await EmployeeSalaryMaster.findOne({
         where: {
           employeeId: emp.id,
-          status: "Active",
-          effectiveFrom: { [Op.lte]: payPeriodStart },
+          status: { [Op.in]: ["Active", "Revised"] },
+          effectiveFrom: { [Op.lte]: payPeriodEnd },
         },
         order: [["effectiveFrom", "DESC"]], // most recent revision first
         include: [
@@ -1322,19 +1322,19 @@ async function generateForMonth({
       });
 
       if (!salaryMaster) {
-        // Check if there's a future-dated Active master — helpful error message
+        // Check if there's a future-dated Active/Revised master — helpful error message
         const futureMaster = await EmployeeSalaryMaster.findOne({
           where: {
             employeeId: emp.id,
-            status: "Active",
-            effectiveFrom: { [Op.gt]: payPeriodStart },
+            status: { [Op.in]: ["Active", "Revised"] },
+            effectiveFrom: { [Op.gt]: payPeriodEnd },
           },
           order: [["effectiveFrom", "ASC"]],
         });
         if (futureMaster) {
           throw new Error(
-            `No salary master effective on or before ${payPeriodStart}. ` +
-              `Earliest active revision is dated ${moment(futureMaster.effectiveFrom).format("YYYY-MM-DD")}. ` +
+            `No salary master effective on or before ${payPeriodEnd}. ` +
+              `Earliest revision is dated ${moment(futureMaster.effectiveFrom).format("YYYY-MM-DD")}. ` +
               `Backdate the revision or use a later pay period.`,
           );
         }
@@ -1529,6 +1529,212 @@ async function generateForMonth({
     }
   }
 }
+
+exports.generateForMonth = generateForMonth;
+
+/**
+ * ═════════════════════════════════════════════════════════════════════
+ *  SINGLE EMPLOYEE AUTO-REGENERATION ENGINE
+ *  When salary assignment is modified (assigned, updated, revised):
+ *    1. Regenerates salary for this changed employee ONLY.
+ *    2. Regenerates strictly from the specified effectiveFrom date onwards.
+ *       (e.g., if effectiveFrom is 01.10.2026, months < Oct 2026 are NOT touched).
+ *    3. Skips already 'Paid' salaries.
+ * ═════════════════════════════════════════════════════════════════════
+ */
+exports.regenerateEmployeeSalaryFromDate = async (employeeId, effectiveFromDate, companyId) => {
+  if (!employeeId || !effectiveFromDate) {
+    console.warn("[RegenSalary] Missing employeeId or effectiveFromDate");
+    return { success: false, message: "Missing required parameters" };
+  }
+
+  const effMoment = moment(
+    effectiveFromDate,
+    ["YYYY-MM-DD", "DD-MM-YYYY", "DD.MM.YYYY", "YYYY/MM/DD", "DD/MM/YYYY", moment.ISO_8601]
+  );
+  if (!effMoment.isValid()) {
+    console.warn("[RegenSalary] Invalid effectiveFromDate:", effectiveFromDate);
+    return { success: false, message: "Invalid effectiveFromDate" };
+  }
+
+  const fromYear = effMoment.year();
+  const fromMonth = effMoment.month() + 1; // 1-12
+
+  console.log(
+    `[RegenSalary] Checking auto-regeneration for employee=${employeeId}, fromDate=${effectiveFromDate} (${fromMonth}/${fromYear})`
+  );
+
+  // 1. Fetch employee with required associations
+  const emp = await Employee.findOne({
+    where: { id: employeeId },
+    include: [
+      {
+        model: Designation,
+        as: "designation",
+        attributes: ["id", "name"],
+        required: false,
+      },
+      {
+        model: EmployerGrade,
+        as: "grade",
+        attributes: ["id", "name"],
+        required: false,
+      },
+      {
+        model: EmploymentType,
+        as: "employmentType",
+        attributes: ["id", "name"],
+        required: false,
+      },
+      {
+        model: Category,
+        as: "category",
+        attributes: ["id", "categoryName"],
+        required: false,
+      },
+      {
+        model: Department,
+        as: "department",
+        attributes: ["id", "departmentname"],
+        required: false,
+      },
+    ],
+  });
+
+  if (!emp) {
+    console.warn(`[RegenSalary] Employee ${employeeId} not found`);
+    return { success: false, message: "Employee not found" };
+  }
+
+  const compId = companyId || emp.companyId;
+  if (!compId) {
+    console.warn(`[RegenSalary] No companyId for employee ${employeeId}`);
+    return { success: false, message: "Company ID not found" };
+  }
+
+  // 2. Identify candidate months strictly on or after effectiveFrom date's month and year
+  // Months prior to fromYear/fromMonth are NEVER touched
+  const monthCondition = {
+    [Op.or]: [
+      { salaryYear: { [Op.gt]: fromYear } },
+      {
+        salaryYear: fromYear,
+        salaryMonth: { [Op.gte]: fromMonth },
+      },
+    ],
+  };
+
+  // Check existing SalaryGeneration records for this employee
+  const empGenerations = await SalaryGeneration.findAll({
+    where: {
+      employeeId,
+      ...monthCondition,
+    },
+    attributes: ["salaryMonth", "salaryYear", "status"],
+  });
+
+  // Check if company has generated salary for these months
+  const companyGenerations = await SalaryGeneration.findAll({
+    where: {
+      companyId: compId,
+      ...monthCondition,
+    },
+    attributes: ["salaryMonth", "salaryYear"],
+    group: ["salaryMonth", "salaryYear"],
+  });
+
+  const monthMap = new Map();
+  for (const row of empGenerations) {
+    // If already Paid, skip so it is never touched
+    if (row.status === "Paid") {
+      console.log(`[RegenSalary] Skipping ${row.salaryMonth}/${row.salaryYear} for emp ${employeeId} (already Paid)`);
+      continue;
+    }
+    const key = `${row.salaryYear}-${row.salaryMonth}`;
+    monthMap.set(key, { month: row.salaryMonth, year: row.salaryYear });
+  }
+
+  for (const row of companyGenerations) {
+    const key = `${row.salaryYear}-${row.salaryMonth}`;
+    if (!monthMap.has(key)) {
+      // Check if employee already has a Paid record for this month
+      const isPaid = empGenerations.some(
+        (g) => g.salaryMonth === row.salaryMonth && g.salaryYear === row.salaryYear && g.status === "Paid"
+      );
+      if (!isPaid) {
+        monthMap.set(key, { month: row.salaryMonth, year: row.salaryYear });
+      }
+    }
+  }
+
+  const targetMonths = Array.from(monthMap.values()).sort((a, b) => {
+    if (a.year !== b.year) return a.year - b.year;
+    return a.month - b.month;
+  });
+
+  if (targetMonths.length === 0) {
+    console.log(
+      `[RegenSalary] No existing unpaid generated salary periods found on or after ${fromMonth}/${fromYear}. Nothing to regenerate.`
+    );
+    return {
+      success: true,
+      regenerated: 0,
+      message: `No unpaid generated salary periods found on or after ${fromMonth}/${fromYear}`,
+    };
+  }
+
+  console.log(
+    `[RegenSalary] Found ${targetMonths.length} month(s) to regenerate for employee ${employeeId} (${emp.firstName}):`,
+    targetMonths
+  );
+
+  const results = { processed: 0, generated: 0, skipped: 0, errors: [] };
+
+  for (const { month: m, year: y } of targetMonths) {
+    const payPeriodStart = moment(`${y}-${String(m).padStart(2, "0")}-01`).format("YYYY-MM-DD");
+    const payPeriodEnd = moment(payPeriodStart).endOf("month").format("YYYY-MM-DD");
+
+    await generateForMonth({
+      filtered: [emp],
+      companyId: compId,
+      month: m,
+      year: y,
+      payPeriodStart,
+      payPeriodEnd,
+      results,
+    });
+  }
+
+  console.log(
+    `[RegenSalary] Completed auto-regeneration for emp ${employeeId}: generated=${results.generated}, skipped=${results.skipped}, errors=${results.errors.length}`
+  );
+  return { success: true, results };
+};
+
+/* ════════════════════════════════════════════════════════════════════
+   POST /api/salary-generation/regenerate-employee
+════════════════════════════════════════════════════════════════════ */
+exports.regenerateSingleEmployee = async (req, res) => {
+  const { employeeId, effectiveFrom, companyId } = req.body;
+  if (!employeeId || !effectiveFrom) {
+    return res.status(400).json({ message: "employeeId and effectiveFrom are required." });
+  }
+
+  try {
+    const result = await exports.regenerateEmployeeSalaryFromDate(
+      employeeId,
+      effectiveFrom,
+      companyId
+    );
+    return res.status(200).json({
+      message: "Employee salary regeneration completed.",
+      ...result,
+    });
+  } catch (error) {
+    console.error("[regenerateSingleEmployee] Error:", error);
+    return res.status(500).json({ message: "Server Error", error: error.message });
+  }
+};
 
 /* ════════════════════════════════════════════════════════════════════
    POST /api/salary-generation/generate

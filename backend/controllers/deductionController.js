@@ -1,4 +1,4 @@
-const { Deduction, Employee, Department, Company } = require('../models');
+const { Deduction, Employee, Department, Designation, Company } = require('../models');
 const { Op } = require('sequelize');
 
 // @desc    Get all deductions for a company (with optional filters)
@@ -24,7 +24,15 @@ exports.getDeductions = async (req, res) => {
         const deductions = await Deduction.findAll({
             where,
             include: [
-                { model: Employee, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode'] },
+                { 
+                    model: Employee, 
+                    as: 'employee', 
+                    attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode'],
+                    include: [
+                        { model: Designation, as: 'designation', attributes: ['id', 'name', 'acronym'] },
+                        { model: Department, as: 'department', attributes: ['id', 'departmentname', 'acronym'] }
+                    ]
+                },
                 { model: Department, as: 'department', attributes: ['id', 'departmentname', 'acronym'] },
             ],
             order: [['createdAt', 'DESC']],
@@ -91,7 +99,15 @@ exports.createDeduction = async (req, res) => {
         if (createdList.length === 1) {
             const deduction = await Deduction.findByPk(createdList[0].id, {
                 include: [
-                    { model: Employee, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode'] },
+                    { 
+                        model: Employee, 
+                        as: 'employee', 
+                        attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode'],
+                        include: [
+                            { model: Designation, as: 'designation', attributes: ['id', 'name', 'acronym'] },
+                            { model: Department, as: 'department', attributes: ['id', 'departmentname', 'acronym'] }
+                        ]
+                    },
                     { model: Department, as: 'department', attributes: ['id', 'departmentname', 'acronym'] },
                 ],
             });
@@ -146,7 +162,15 @@ exports.updateDeduction = async (req, res) => {
 
         const updated = await Deduction.findByPk(id, {
             include: [
-                { model: Employee, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode'] },
+                { 
+                    model: Employee, 
+                    as: 'employee', 
+                    attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode'],
+                    include: [
+                        { model: Designation, as: 'designation', attributes: ['id', 'name', 'acronym'] },
+                        { model: Department, as: 'department', attributes: ['id', 'departmentname', 'acronym'] }
+                    ]
+                },
                 { model: Department, as: 'department', attributes: ['id', 'departmentname', ['departmentname', 'name'], 'acronym'] },
             ],
         });
@@ -228,7 +252,9 @@ exports.getConsolidatedReport = async (req, res) => {
                     employeeName: d.employee.firstName,
                     departmentId: d.departmentId,
                     departmentName: d.department.name,
-                    departmentAcronym: d.department.acronym,
+                    departmentAcronym: d.department?.acronym || d.department?.departmentname || '',
+                    designationName: d.employee?.designation?.name || '',
+                    designationAcronym: d.employee?.designation?.acronym || d.employee?.designation?.name || '',
                     Mess: 0, Stores: 0, EB: 0, Others: 0, total: 0,
                 };
             }

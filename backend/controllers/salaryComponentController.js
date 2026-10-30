@@ -8,13 +8,12 @@ const formulaEvaluator = require('./formulaEvaluator');
 exports.getSalaryComponentsByCompany = async (req, res) => {
     const { companyId, type, status } = req.query;
 
-    if (!companyId) {
-        return res.status(400).json({ message: 'Company ID is required' });
-    }
-
     try {
         // Build where clause dynamically
-        const whereClause = { companyId };
+        const whereClause = {};
+        if (companyId) {
+            whereClause.companyId = companyId;
+        }
         
         if (type) {
             whereClause.type = type;

@@ -1,6 +1,6 @@
 module.exports = {
     // Database Name
-    database: process.env.DB_NAME || 'pay_sep',
+    database: process.env.DB_NAME || 'pay_21',
     // Database User
     username: process.env.DB_USER || 'root',
     // Database Password

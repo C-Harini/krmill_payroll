@@ -164,7 +164,8 @@ async function generateStrengthReportData(companyId, date) {
   });
 
   otRecords.forEach((ot) => {
-    const deptId = ot.workedDeptId || ot.departmentId || ot.employee?.departmentId;
+    // Assign HOT to employee's home department only, not worked department
+    const deptId = ot.employee?.departmentId || ot.departmentId;
     if (!deptId || !deptMap[deptId]) return;
 
     const shiftKey = resolveShiftKey(ot.shift?.name, ot.shiftId);

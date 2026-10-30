@@ -92,10 +92,10 @@ module.exports = (sequelize, DataTypes) => {
         },
         // Status
         status: {
-            type: DataTypes.ENUM('Draft', 'Active', 'Superseded', 'Cancelled'),
+            type: DataTypes.ENUM('Draft', 'Active', 'Superseded', 'Cancelled', 'Revised'),
             allowNull: false,
             defaultValue: 'Active',
-            comment: 'Active = current salary, Superseded = replaced by new revision',
+            comment: 'Active = current salary, Revised/Superseded = replaced by new revision',
         },
         // Metadata
         remarks: {

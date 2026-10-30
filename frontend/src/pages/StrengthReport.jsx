@@ -303,20 +303,51 @@ const StrengthReport = () => {
         ]);
 
         depts.forEach((dept) => {
+          const isMaster = dept.isGroupMaster;
+          const isChild = dept.isGroupChild;
+          const span = isMaster ? (dept.groupRowSpan || 1) : 1;
+
           const rowData = [
             { content: dept.departmentName, styles: { fontStyle: "bold", halign: "left" } },
-            { content: String(dept.dayStd || "-"), styles: { halign: "center" } },
           ];
+
+          if (!isChild) {
+            rowData.push({
+              content: String(dept.dayStd || "-"),
+              rowSpan: span,
+              styles: { halign: "center", valign: "middle" },
+            });
+          }
 
           ["shiftI", "shiftII", "shiftIII"].forEach((s) => {
             subCols.forEach((c) => {
-              const v = dept[s][c.key];
-              rowData.push({ content: String(cell(v)), styles: { halign: "center" } });
+              if (c.key === "total") {
+                if (!isChild) {
+                  rowData.push({
+                    content: String(cell(dept[s].total)),
+                    rowSpan: span,
+                    styles: { halign: "center", fontStyle: "bold", valign: "middle" },
+                  });
+                }
+              } else {
+                const v = dept[s][c.key];
+                rowData.push({ content: String(cell(v)), styles: { halign: "center" } });
+              }
             });
           });
 
-          rowData.push({ content: String(cell(dept.overallTotal)), styles: { halign: "center", fontStyle: "bold" } });
-          rowData.push({ content: String(diffDisplay(dept.diff)), styles: { halign: "center", fontStyle: "bold" } });
+          if (!isChild) {
+            rowData.push({
+              content: String(cell(dept.overallTotal)),
+              rowSpan: span,
+              styles: { halign: "center", fontStyle: "bold", valign: "middle" },
+            });
+            rowData.push({
+              content: String(diffDisplay(dept.diff)),
+              rowSpan: span,
+              styles: { halign: "center", fontStyle: "bold", valign: "middle" },
+            });
+          }
 
           bodyRows.push(rowData);
         });
@@ -694,30 +725,67 @@ const StrengthReport = () => {
 
                     {/* Department Rows */}
                     {depts.map((dept) => {
-                      // Render all departments regardless of employee/headcount data presence
+                      const isMaster = dept.isGroupMaster;
+                      const isChild = dept.isGroupChild;
+                      const span = isMaster ? (dept.groupRowSpan || 1) : 1;
+
                       return (
                         <tr key={dept.departmentId} style={styles.dataRow}>
                           <td style={styles.tdName}>{dept.departmentName}</td>
-                          <td style={styles.tdCenter}>{dept.dayStd || "-"}</td>
-                          {["shiftI", "shiftII", "shiftIII"].map((s) =>
-                            currentShiftCols.map((c) => (
-                              <td
-                                key={`${dept.departmentId}-${s}-${c.key}`}
-                                style={styles.tdCenter}
-                              >
-                                {cell(dept[s][c.key])}
-                              </td>
-                            )),
+                          {!isChild && (
+                            <td
+                              style={{ ...styles.tdCenter, verticalAlign: "middle" }}
+                              rowSpan={span}
+                            >
+                              {dept.dayStd || "-"}
+                            </td>
                           )}
-                          <td style={styles.tdBold}>{cell(dept.overallTotal)}</td>
-                          <td
-                            style={{
-                              ...styles.tdBold,
-                              color: diffColor(dept.diff),
-                            }}
-                          >
-                            {diffDisplay(dept.diff)}
-                          </td>
+                          {["shiftI", "shiftII", "shiftIII"].map((s) => (
+                            <React.Fragment key={`${dept.departmentId}-${s}`}>
+                              {currentShiftCols.map((c) => {
+                                if (c.key === "total") {
+                                  if (isChild) return null;
+                                  return (
+                                    <td
+                                      key={`${dept.departmentId}-${s}-${c.key}`}
+                                      style={{ ...styles.tdBold, verticalAlign: "middle" }}
+                                      rowSpan={span}
+                                    >
+                                      {cell(dept[s][c.key])}
+                                    </td>
+                                  );
+                                }
+                                return (
+                                  <td
+                                    key={`${dept.departmentId}-${s}-${c.key}`}
+                                    style={styles.tdCenter}
+                                  >
+                                    {cell(dept[s][c.key])}
+                                  </td>
+                                );
+                              })}
+                            </React.Fragment>
+                          ))}
+                          {!isChild && (
+                            <>
+                              <td
+                                style={{ ...styles.tdBold, verticalAlign: "middle" }}
+                                rowSpan={span}
+                              >
+                                {cell(dept.overallTotal)}
+                              </td>
+                              <td
+                                style={{
+                                  ...styles.tdBold,
+                                  color: diffColor(dept.diff),
+                                  verticalAlign: "middle",
+                                }}
+                                rowSpan={span}
+                              >
+                                {diffDisplay(dept.diff)}
+                              </td>
+                            </>
+                          )}
                         </tr>
                       );
                     })}

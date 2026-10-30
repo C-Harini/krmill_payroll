@@ -15,7 +15,13 @@ const generateTicketNo = () => {
 // ✅ GET All Additional Salaries
 exports.getAdditionalSalaries = async (req, res) => {
   try {
+    const { employeeId, companyId } = req.query;
+    const where = {};
+    if (employeeId) where.employeeId = employeeId;
+    if (companyId) where.companyId = companyId;
+
     const records = await AdditionalSalary.findAll({
+      where,
       include: [
         { model: Company, as: "company" },
         { model: Department, as: "department" },
@@ -28,14 +34,14 @@ exports.getAdditionalSalaries = async (req, res) => {
     return res.json({ records });
   } catch (error) {
     console.error("Error fetching additional salaries:", error);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
 // ✅ CREATE Additional Salary
 exports.createAdditionalSalary = async (req, res) => {
   try {
-    const {
+    let {
       companyId,
       departmentId,
       employeeId,
@@ -45,21 +51,28 @@ exports.createAdditionalSalary = async (req, res) => {
       amount,
     } = req.body;
 
-    if (
-      !companyId ||
-      !departmentId ||
-      !employeeId ||
-      !salaryMonth ||
-      !salaryComponentId
-    ) {
-      return res.status(400).json({ message: "Missing required fields" });
+    if (!employeeId || !salaryMonth || !salaryComponentId) {
+      return res.status(400).json({ message: "Employee, Salary Month, and Component are required" });
+    }
+
+    // Auto-fetch company and department from employee if not provided
+    if (!companyId || !departmentId) {
+      const emp = await Employee.findByPk(employeeId);
+      if (emp) {
+        if (!companyId) companyId = emp.companyId;
+        if (!departmentId) departmentId = emp.departmentId || null;
+      }
+    }
+
+    if (!companyId) {
+      return res.status(400).json({ message: "Employee does not have an assigned company. Please select a company." });
     }
 
     const ticketNo = generateTicketNo();
 
     const record = await AdditionalSalary.create({
       companyId,
-      departmentId,
+      departmentId: departmentId || null,
       employeeId,
       salaryMonth,
       salaryComponentId,
@@ -74,7 +87,7 @@ exports.createAdditionalSalary = async (req, res) => {
     });
   } catch (error) {
     console.error("Error creating additional salary:", error);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
@@ -88,7 +101,7 @@ exports.updateAdditionalSalary = async (req, res) => {
       return res.status(404).json({ message: "Additional Salary not found" });
     }
 
-    const {
+    let {
       companyId,
       departmentId,
       employeeId,
@@ -98,14 +111,23 @@ exports.updateAdditionalSalary = async (req, res) => {
       amount,
     } = req.body;
 
+    const empIdToUse = employeeId || record.employeeId;
+    if (!companyId || !departmentId) {
+      const emp = await Employee.findByPk(empIdToUse);
+      if (emp) {
+        if (!companyId) companyId = emp.companyId;
+        if (!departmentId) departmentId = emp.departmentId || record.departmentId;
+      }
+    }
+
     await record.update({
-      companyId,
-      departmentId,
-      employeeId,
-      salaryMonth,
-      salaryComponentId,
-      days: days || 0,
-      amount: amount || 0,
+      companyId: companyId || record.companyId,
+      departmentId: departmentId || record.departmentId,
+      employeeId: empIdToUse,
+      salaryMonth: salaryMonth || record.salaryMonth,
+      salaryComponentId: salaryComponentId || record.salaryComponentId,
+      days: days !== undefined && days !== "" ? Number(days) : record.days,
+      amount: amount !== undefined && amount !== "" ? Number(amount) : record.amount,
     });
 
     res.json({ message: "Updated successfully", record });

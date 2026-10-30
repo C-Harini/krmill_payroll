@@ -122,18 +122,33 @@ const getHolidayMap = async (companyId, startDate, endDate) => {
           as: "holidays",
           where: {
             date: { [Op.between]: [startDate, endDate] },
-            status: "Active",
           },
           required: false,
         },
       ],
     });
-    for (const list of lists)
-      for (const h of list.holidays || [])
-        map.set(
-          moment(h.date).format("YYYY-MM-DD"),
-          (h.holidayType || h.type || "H").toUpperCase(),
-        );
+    for (const list of lists) {
+      for (const h of list.holidays || []) {
+        const dStr = moment(h.date).format("YYYY-MM-DD");
+        const desc = (h.description || "").trim().toLowerCase();
+        let type = (h.holidayType || h.type || "").toUpperCase();
+
+        // Classify NH vs FH if type is generic ("HOLIDAY", "H", etc.)
+        if (type === "HOLIDAY" || !type || type === "H") {
+          const isNH =
+            desc.includes("national") ||
+            desc.includes("independ") ||
+            desc.includes("republic") ||
+            desc.includes("labour") ||
+            desc.includes("labor") ||
+            desc.includes("may day") ||
+            desc.includes("gandhi") ||
+            desc.startsWith("nh");
+          type = isNH ? "NH" : "FH";
+        }
+        map.set(dStr, type);
+      }
+    }
   } catch (err) {
     console.error("[getHolidayMap]", err.message);
   }
@@ -195,6 +210,7 @@ const getAttendanceMetrics = async (
   endDate,
   holidayMap = new Map(),
   empWeeklyOff = "Sunday",
+  isPf = true,
 ) => {
   const [attendance, leaveRequests] = await Promise.all([
     Attendance.findAll({
@@ -253,6 +269,11 @@ const getAttendanceMetrics = async (
     let daysWorked = 0;
     const ds = moment(rec.attendanceDate).format("YYYY-MM-DD");
     const hType = holidayMap.get(ds);
+    const isNHFH =
+      hType === "NH" ||
+      hType === "FH" ||
+      rec.status === "NH" ||
+      rec.status === "FH";
     const isWO = isEmployeeWeekOffDate(
       moment(rec.attendanceDate),
       offDaysList,
@@ -261,20 +282,17 @@ const getAttendanceMetrics = async (
 
     switch (rec.status) {
       case "Present":
-        presentDays += 1;
         daysWorked = 1;
         isPresent = true;
         break;
       case "Half Day":
       case "Present/Leave (P/L)":
       case "Present/Leave":
-        presentDays += 0.5;
         daysWorked = 0.5;
         isPresent = true;
         break;
       case "Present with Permission":
       case "Late Present":
-        presentDays += 1;
         daysWorked = 1;
         isPresent = true;
         break;
@@ -288,29 +306,43 @@ const getAttendanceMetrics = async (
         } else paidLeaveDays++;
         break;
       case "Week Off":
-        if (!offDaysList.includes(moment(rec.attendanceDate).format("dddd").toLowerCase())) {
+        if (
+          !offDaysList.includes(
+            moment(rec.attendanceDate).format("dddd").toLowerCase(),
+          )
+        ) {
           weekOffDays += 1;
         }
         break;
       case "Holiday":
         holidayDays += 1;
-        if (hType === "NH" || hType === "FH") {
-          nhFhDays++;
-          presentDays++;
-          daysWorked = 1;
+        if (toNum(rec.workingHours) > 0 || rec.firstCheckIn) {
+          daysWorked =
+            toNum(rec.workingHours) >= 4 && toNum(rec.workingHours) < 7
+              ? 0.5
+              : 1;
           isPresent = true;
         }
         break;
       case "NH":
       case "FH":
-        nhFhDays++;
-        holidayDays++;
-        presentDays++;
         daysWorked = 1;
         isPresent = true;
         break;
       default:
         break;
+    }
+
+    if (daysWorked > 0) {
+      if (isNHFH) {
+        nhFhDays += daysWorked;
+        if (rec.status !== "Holiday") {
+          holidayDays += daysWorked;
+        }
+        // Worked NH/FH days are credited to nhFhDays and reduced from normal presentDays
+      } else {
+        presentDays += daysWorked;
+      }
     }
 
     if (isWO && daysWorked > 0) {
@@ -323,17 +355,35 @@ const getAttendanceMetrics = async (
       if (remainingPermHrs > 0) {
         remainingPermHrs -= hrsLate;
         if (remainingPermHrs < 0 && isPresent) {
-          const ded = (rec.status === "Half Day" || rec.status === "Present/Leave (P/L)" || rec.status === "Present/Leave") ? 0.5 : 1;
+          const ded =
+            rec.status === "Half Day" ||
+            rec.status === "Present/Leave (P/L)" ||
+            rec.status === "Present/Leave"
+              ? 0.5
+              : 1;
           absentDays++;
-          presentDays -= ded;
+          if (isNHFH && daysWorked > 0) {
+            nhFhDays = Math.max(0, nhFhDays - ded);
+          } else {
+            presentDays = Math.max(0, presentDays - ded);
+          }
           if (isWO && daysWorked > 0) {
             weekOffWorkedDays = Math.max(0, weekOffWorkedDays - ded);
           }
         }
       } else if (isPresent) {
-        const ded = (rec.status === "Half Day" || rec.status === "Present/Leave (P/L)" || rec.status === "Present/Leave") ? 0.5 : 1;
+        const ded =
+          rec.status === "Half Day" ||
+          rec.status === "Present/Leave (P/L)" ||
+          rec.status === "Present/Leave"
+            ? 0.5
+            : 1;
         absentDays++;
-        presentDays -= ded;
+        if (isNHFH && daysWorked > 0) {
+          nhFhDays = Math.max(0, nhFhDays - ded);
+        } else {
+          presentDays = Math.max(0, presentDays - ded);
+        }
         if (isWO && daysWorked > 0) {
           weekOffWorkedDays = Math.max(0, weekOffWorkedDays - ded);
         }
@@ -342,6 +392,12 @@ const getAttendanceMetrics = async (
     if (rec.isEarlyExit) earlyExitCount++;
     if (rec.overtimeHours) overtimeHours += toNum(rec.overtimeHours);
   });
+
+  if (!isPf && nhFhDays > 0) {
+    // For Non-PF employees, worked NH/FH days reduce presentDays by an additional day per NH/FH worked day
+    // (e.g. 27 worked days with 1 NH/FH => 25 present days, 1 NH/FH day; with 2 NH/FH => 23 present days, 2 NH/FH days)
+    presentDays = Math.max(0, presentDays - nhFhDays);
+  }
 
   return {
     presentDays: Math.max(0, presentDays),
@@ -393,7 +449,7 @@ const getAttendanceIncentive = async (employeeId, month, year, att = null) => {
         attributes: ["attendanceDate", "status", "shiftId", "shiftName"],
       }),
       AttendanceIncentiveCondition.findAll({
-        where: { status: "Active" },
+        where: { status: "Active", gradeKey: { [Op.ne]: "HOSTEL" } },
       }),
       ShiftType.findAll({ attributes: ["id", "name"] }),
     ]);
@@ -422,6 +478,26 @@ const getAttendanceIncentive = async (employeeId, month, year, att = null) => {
     }
 
     const categoryName = emp.category?.categoryName || "";
+    const isHostelCategory = categoryName.toUpperCase().includes("HOSTEL");
+
+    if (isHostelCategory) {
+      const { calculateHostelIncentive } = require("./hostelAttendanceIncentiveController");
+      const hostelConditions = await AttendanceIncentiveCondition.findAll({
+        where: { status: "Active", gradeKey: "HOSTEL" },
+      });
+      const calc = calculateHostelIncentive({
+        employee: emp,
+        shiftMap,
+        categoryName,
+        adjustedDays: rawDays,
+        slabDays: 0,
+        explicitRawDays: rawDays,
+        eightEightDays: 0,
+        dbConditions: hostelConditions,
+      });
+      return toNum(calc?.totalIncentive) || 0;
+    }
+
     const calc = calculateIncentive(emp, shiftMap, categoryName, null, null, 0, rawDays, dbConditions);
     return toNum(calc?.incentive) || 0;
   } catch (err) {
@@ -750,7 +826,7 @@ const calcWorkerDailyPF = ({
     leaveDeduction: 0,
     attnIncentive,
     components,
-    workedDays: totalWorkedDays,
+    workedDays: totalWorkedDays + toNum(att.nhFhDays),
     perDay: null,
   };
 };
@@ -781,9 +857,15 @@ const calcWorkerDailyNPF = ({
   const basicEarned = Math.round(wagesPerDay * regularWorkedDays);
   const weekOffWage = Math.round(wagesPerDay * weekOffWorkedDays);
   const convEarned = convFixed + weekOffWage;
+  const nhFhWages = Math.round(wagesPerDay * 2 * att.nhFhDays);
 
   const grossEarned =
-    basicEarned + convEarned + hraFixed + attnIncentive + additionalSalary.total;
+    basicEarned +
+    convEarned +
+    hraFixed +
+    nhFhWages +
+    attnIncentive +
+    additionalSalary.total;
   const components = [
     {
       componentId: null,
@@ -829,6 +911,18 @@ const calcWorkerDailyNPF = ({
       formula: convFormula,
     });
   }
+  if (nhFhWages > 0)
+    components.push({
+      componentId: null,
+      componentName: "NH/FH Wages",
+      componentType: "Earning",
+      calculationType: "NHFHDouble",
+      baseAmount: nhFhWages,
+      calculatedAmount: nhFhWages,
+      isProrated: false,
+      proratedAmount: nhFhWages,
+      formula: `${wagesPerDay} × 2 × ${att.nhFhDays}d`,
+    });
   if (attnIncentive > 0)
     components.push({
       componentId: null,
@@ -843,7 +937,7 @@ const calcWorkerDailyNPF = ({
     });
   components.push(...additionalSalary.components);
   console.log(
-    `[WorkerDailyNPF] wpd=₹${wagesPerDay} regDays=${regularWorkedDays} woDays=${weekOffWorkedDays} basic=₹${basicEarned} conv=₹${convEarned} gross=₹${grossEarned}`,
+    `[WorkerDailyNPF] wpd=₹${wagesPerDay} regDays=${regularWorkedDays} woDays=${weekOffWorkedDays} nhDays=${att.nhFhDays} basic=₹${basicEarned} conv=₹${convEarned} nhWage=₹${nhFhWages} gross=₹${grossEarned}`,
   );
   return {
     basicSalary: basicEarned,
@@ -855,7 +949,7 @@ const calcWorkerDailyNPF = ({
     leaveDeduction: 0,
     attnIncentive,
     components,
-    workedDays: totalWorkedDays,
+    workedDays: totalWorkedDays + toNum(att.nhFhDays),
     perDay: null,
   };
 };
@@ -871,8 +965,9 @@ const calcWorkerMonthlyPF = ({
   const totalDays = daysInMonth(year, month);
   const weekOffWorkedDays = toNum(att.weekOffWorkedDays);
   const regularPresentDays = Math.max(0, att.presentDays - weekOffWorkedDays);
-  const paidDays = regularPresentDays + att.weekOffDays;
-  const factor = totalDays > 0 ? paidDays / totalDays : 0;
+  const paidDays =
+    regularPresentDays + toNum(att.nhFhDays) + att.weekOffDays;
+  const factor = totalDays > 0 ? Math.min(1, paidDays / totalDays) : 0;
   const wagesPerDay = toNum(
     salaryMaster.wagesPerDay ||
       salaryMaster.monthlySalary ||
@@ -983,7 +1078,9 @@ const calcWorkerMonthlyNPF = ({
   const totalDays = daysInMonth(year, month);
   const weekOffWorkedDays = toNum(att.weekOffWorkedDays);
   const regularPresentDays = Math.max(0, att.presentDays - weekOffWorkedDays);
-  const paidDays = regularPresentDays + att.weekOffDays;
+  const paidDays =
+    regularPresentDays + toNum(att.nhFhDays) * 2 + att.weekOffDays;
+  const factor = totalDays > 0 ? Math.min(1, paidDays / totalDays) : 0;
   const wagesPerDay = toNum(
     salaryMaster.wagesPerDay ||
       salaryMaster.monthlySalary ||
@@ -1257,6 +1354,7 @@ async function generateForMonth({
         payPeriodEnd,
         holidayMap,
         emp.weeklyOff,
+        isPf,
       );
       console.log(
         `  att: present=${att.presentDays} paid_leave=${att.paidLeaveDays} absent=${att.absentDays} weekoff=${att.weekOffDays} weekoff_worked=${att.weekOffWorkedDays} nhfh=${att.nhFhDays}`,

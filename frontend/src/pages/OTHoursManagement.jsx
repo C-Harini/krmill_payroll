@@ -1,5 +1,216 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { format } from "date-fns";
+
+// ─── Employee Multi-Select Component (Search by name, cur/new code; selected sorted to top) ───
+const EmployeeMultiSelect = ({
+  label = "Employee (Dropdown)",
+  employees = [],
+  selected = [],
+  onChange,
+  disabled = false,
+  compact = false,
+}) => {
+  const [open, setOpen] = useState(false);
+  const [searchTxt, setSearchTxt] = useState("");
+  const [openSelectedSnapshot, setOpenSelectedSnapshot] = useState([]);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      setOpenSelectedSnapshot(selected);
+    }
+  }, [open]);
+
+  const filtered = useMemo(() => {
+    let list = employees;
+    if (searchTxt.trim()) {
+      const q = searchTxt.toLowerCase().trim();
+      list = employees.filter((e) => {
+        const name = String(e.firstName || e.name || "").toLowerCase();
+        const curCode = String(e.curEmployeeCode || e.employeeCode || e.ticketNo || "").toLowerCase();
+        const newCode = String(e.newEmployeeCode || "").toLowerCase();
+        const desig = String(e.designation?.name || e.designationName || "").toLowerCase();
+        return (
+          name.includes(q) ||
+          curCode.includes(q) ||
+          newCode.includes(q) ||
+          desig.includes(q)
+        );
+      });
+    }
+
+    // Sort already selected to top upon opening
+    return [...list].sort((a, b) => {
+      const aSel = openSelectedSnapshot.includes(String(a.id));
+      const bSel = openSelectedSnapshot.includes(String(b.id));
+      if (aSel && !bSel) return -1;
+      if (!aSel && bSel) return 1;
+      return 0;
+    });
+  }, [employees, searchTxt, openSelectedSnapshot]);
+
+  const toggle = (id) => {
+    const sid = String(id);
+    onChange(
+      selected.includes(sid)
+        ? selected.filter((s) => s !== sid)
+        : [...selected, sid]
+    );
+  };
+
+  const toggleAll = () => {
+    if (searchTxt.trim()) {
+      const filteredIds = filtered.map((e) => String(e.id));
+      const allFilteredSelected = filteredIds.length > 0 && filteredIds.every((id) => selected.includes(id));
+      if (allFilteredSelected) {
+        onChange(selected.filter((id) => !filteredIds.includes(id)));
+      } else {
+        onChange(Array.from(new Set([...selected, ...filteredIds])));
+      }
+    } else {
+      if (selected.length === employees.length && employees.length > 0) {
+        onChange([]);
+      } else {
+        onChange(employees.map((e) => String(e.id)));
+      }
+    }
+  };
+
+  const isAllSelected = searchTxt.trim()
+    ? filtered.length > 0 && filtered.every((e) => selected.includes(String(e.id)))
+    : selected.length === employees.length && employees.length > 0;
+
+  const displayText = () => {
+    if (!selected.length) return `All Employees (${employees.length})`;
+    if (selected.length === 1) {
+      const found = employees.find((e) => String(e.id) === selected[0]);
+      if (found) {
+        const code = found.curEmployeeCode || found.employeeCode || found.ticketNo || "";
+        const name = found.firstName || found.employeeName || found.name || "";
+        return `${name}${code ? ` (${code})` : ""}`;
+      }
+      return "1 selected";
+    }
+    return `${selected.length} Employees Selected`;
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      {label && (
+        <label className="block text-sm font-semibold mb-2 text-gray-700">
+          {label}
+        </label>
+      )}
+      <div
+        onClick={() => !disabled && setOpen(!open)}
+        className={`w-full border border-gray-300 rounded-lg text-sm bg-white flex justify-between items-center select-none ${
+          compact ? "px-3 py-2 min-h-[38px]" : "p-2 min-h-[42px]"
+        } ${
+          disabled
+            ? "bg-gray-100 cursor-not-allowed text-gray-400"
+            : "cursor-pointer hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        }`}
+      >
+        <span className={`truncate text-sm ${!selected.length ? "text-gray-500" : "text-gray-800 font-medium"}`}>
+          {displayText()}
+        </span>
+        <div className="flex items-center gap-1.5 ml-1 shrink-0">
+          {!disabled && selected.length > 0 && (
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange([]);
+              }}
+              className="text-gray-400 hover:text-gray-600 text-xs font-bold px-1 cursor-pointer"
+              title="Clear selection"
+            >
+              ✕
+            </span>
+          )}
+          <span className="text-gray-400 text-xs">{open ? "▲" : "▼"}</span>
+        </div>
+      </div>
+      {open && !disabled && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-[280px] overflow-hidden">
+          {/* Internal search input */}
+          <div className="p-2 border-b border-gray-100 bg-gray-50">
+            <input
+              type="text"
+              placeholder="Search name, cur/new code..."
+              value={searchTxt}
+              onChange={(e) => setSearchTxt(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+              autoFocus
+            />
+          </div>
+          {/* Select all bar */}
+          <div
+            onClick={toggleAll}
+            className="flex items-center justify-between px-3 py-2 cursor-pointer border-b border-gray-100 hover:bg-gray-50 bg-gray-50/50 text-xs"
+          >
+            <span className="font-semibold text-gray-700">
+              {isAllSelected ? "Deselect All" : "Select All"}
+            </span>
+            <span className="text-[11px] text-gray-500">
+              {selected.length} / {employees.length}
+            </span>
+          </div>
+          {/* Options list */}
+          <div className="max-h-60 overflow-y-auto divide-y divide-gray-50">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-3 text-xs text-gray-400 text-center">
+                No matching employees
+              </div>
+            ) : (
+              filtered.map((e) => {
+                const sid = String(e.id);
+                const isChecked = selected.includes(sid);
+                const curCode = e.curEmployeeCode || e.employeeCode || e.ticketNo || "";
+                return (
+                  <div
+                    key={e.id}
+                    onClick={() => toggle(e.id)}
+                    className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-blue-50/60 transition-colors text-xs ${
+                      isChecked ? "bg-blue-50 text-blue-900 font-medium" : "text-gray-700"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => {}}
+                      className="rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 pointer-events-none"
+                    />
+                    <div className="truncate flex-1">
+                      <span className="font-medium">
+                        {e.firstName || e.employeeName || e.name}
+                      </span>
+                      {curCode && (
+                        <span className="text-gray-500 ml-1 font-mono text-[11px]">
+                          ({curCode})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const OTHoursManagement = () => {
   const BASE_URL = import.meta.env.VITE_API_URL;
@@ -8,7 +219,8 @@ const OTHoursManagement = () => {
   // Dropdown data
   const [companies, setCompanies] = useState([]);
   const [departments, setDepartments] = useState([]);
-  const [employees, setEmployees] = useState([]);
+  const [allCompanyEmployees, setAllCompanyEmployees] = useState([]); // All active employees of company (no connection with department)
+  const [employees, setEmployees] = useState([]); // Department employees
   const [shifts, setShifts] = useState([]);
 
   // Form data
@@ -18,7 +230,7 @@ const OTHoursManagement = () => {
 
   // Employee filter & search states
   const [employeeSearch, setEmployeeSearch] = useState("");
-  const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState("");
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([]);
 
   // Employee OT hours data
   const [otHours, setOtHours] = useState({});
@@ -78,7 +290,7 @@ const OTHoursManagement = () => {
       setSelectedDepartmentId(""); // Reset department when company changes
       setEmployees([]); // Clear employees
       setOtHours({}); // Clear OT hours
-      setSelectedEmployeeFilter("");
+      setSelectedEmployeeIds([]);
       setEmployeeSearch("");
     } catch (err) {
       console.error("Error fetching departments:", err);
@@ -104,15 +316,35 @@ const OTHoursManagement = () => {
     }
   };
 
+  // ================== FETCH ALL COMPANY EMPLOYEES ==================
+  const fetchAllCompanyEmployees = async (companyId) => {
+    if (!companyId) {
+      setAllCompanyEmployees([]);
+      return;
+    }
+    try {
+      const res = await fetch(`${BASE_URL}/employees?companyId=${companyId}&status=Active`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : data.employees || data.data || [];
+      setAllCompanyEmployees(list);
+    } catch (err) {
+      console.error("Error fetching all company employees:", err);
+      setAllCompanyEmployees([]);
+    }
+  };
+
   // ================== FETCH EXISTING OT HOURS ==================
   const fetchExistingOTHours = async (companyId, departmentId, date) => {
     try {
-      const res = await fetch(
-        `${BASE_URL}/ot-hours/filter?companyId=${companyId}&departmentId=${departmentId}&date=${date}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      let url = `${BASE_URL}/ot-hours/filter?companyId=${companyId}&date=${date}`;
+      if (departmentId) {
+        url += `&departmentId=${departmentId}`;
+      }
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await res.json();
       const records = Array.isArray(data.records) ? data.records : [];
 
@@ -133,30 +365,29 @@ const OTHoursManagement = () => {
     }
   };
 
-  // ================== FETCH EMPLOYEES ==================
+  // ================== FETCH EMPLOYEES (FOR DEPARTMENT OR COMPANY) ==================
   const fetchEmployees = async (companyId, departmentId) => {
-    if (!companyId || !departmentId) {
+    if (!companyId) {
       setEmployees([]);
       setOtHours({});
-      setSelectedEmployeeFilter("");
+      setSelectedEmployeeIds([]);
       setEmployeeSearch("");
       return;
     }
 
     setLoading(true);
     setError("");
-    setSelectedEmployeeFilter("");
-    setEmployeeSearch("");
 
     try {
-      const res = await fetch(
-        `${BASE_URL}/employees?companyId=${companyId}&departmentId=${departmentId}&status=Active`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      let url = `${BASE_URL}/employees?companyId=${companyId}&status=Active`;
+      if (departmentId) {
+        url += `&departmentId=${departmentId}`;
+      }
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await res.json();
-      const empList = Array.isArray(data) ? data : data.employees || [];
+      const empList = Array.isArray(data) ? data : data.employees || data.data || [];
       setEmployees(empList);
 
       // Initialize OT hours for each employee
@@ -195,41 +426,49 @@ const OTHoursManagement = () => {
     if (selectedCompanyId) {
       fetchDepartments(selectedCompanyId);
       fetchShifts(selectedCompanyId);
+      fetchAllCompanyEmployees(selectedCompanyId);
+      fetchEmployees(selectedCompanyId, selectedDepartmentId);
+    } else {
+      setAllCompanyEmployees([]);
+      setDepartments([]);
+      setEmployees([]);
     }
   }, [selectedCompanyId]);
 
   // ================== WHEN DEPARTMENT CHANGES ==================
   useEffect(() => {
-    if (selectedCompanyId && selectedDepartmentId) {
+    if (selectedCompanyId) {
       fetchEmployees(selectedCompanyId, selectedDepartmentId);
     }
-  }, [selectedCompanyId, selectedDepartmentId]);
+  }, [selectedDepartmentId]);
+
+  // Department-scoped employees (filtered according to department)
+  const departmentEmployees = useMemo(() => {
+    const source = allCompanyEmployees.length ? allCompanyEmployees : employees;
+    if (!selectedDepartmentId) return source;
+    return source.filter((e) => {
+      const dId = e.departmentId !== undefined && e.departmentId !== null ? e.departmentId : e.department?.id;
+      return String(dId) === String(selectedDepartmentId);
+    });
+  }, [allCompanyEmployees, employees, selectedDepartmentId]);
 
   // ================== WHEN DATE CHANGES ==================
   useEffect(() => {
-    if (selectedCompanyId && selectedDepartmentId && selectedDate && employees.length > 0) {
-      // Fetch existing OT hours for the new date
+    if (selectedCompanyId && selectedDate) {
       const loadOTHoursForDate = async () => {
         const existingOtHours = await fetchExistingOTHours(selectedCompanyId, selectedDepartmentId, selectedDate);
-
-        // Initialize with empty values first
         const initialOtHours = {};
         employees.forEach((emp) => {
           initialOtHours[emp.id] = "";
         });
-
-        // Merge existing data
-        const mergedOtHours = {
+        setOtHours({
           ...initialOtHours,
           ...existingOtHours,
-        };
-
-        setOtHours(mergedOtHours);
+        });
       };
-
       loadOTHoursForDate();
     }
-  }, [selectedDate, selectedCompanyId, selectedDepartmentId, employees]);
+  }, [selectedDate, selectedCompanyId, selectedDepartmentId]);
 
   // ================== HELPER TO FORMAT DATETIME FOR INPUT ==================
   const formatDateTimeLocal = (dateVal) => {
@@ -403,12 +642,6 @@ const OTHoursManagement = () => {
         return;
       }
 
-      if (!selectedDepartmentId) {
-        setError("Please select a department");
-        setSaving(false);
-        return;
-      }
-
       if (!selectedDate) {
         setError("Please select a date");
         setSaving(false);
@@ -416,7 +649,7 @@ const OTHoursManagement = () => {
       }
 
       if (employees.length === 0) {
-        setError("No employees found in this department");
+        setError("No employees found");
         setSaving(false);
         return;
       }
@@ -432,7 +665,7 @@ const OTHoursManagement = () => {
       // Prepare payload
       const payload = {
         companyId: selectedCompanyId,
-        departmentId: selectedDepartmentId,
+        departmentId: selectedDepartmentId || undefined,
         date: selectedDate,
         entries: employees
           .filter((emp) => otHours[emp.id] !== "" && otHours[emp.id] !== null && otHours[emp.id] !== undefined)
@@ -465,7 +698,7 @@ const OTHoursManagement = () => {
       setSelectedDate(format(new Date(), "yyyy-MM-dd"));
       setSelectedDepartmentId("");
       setEmployees([]);
-      setSelectedEmployeeFilter("");
+      setSelectedEmployeeIds([]);
       setEmployeeSearch("");
     } catch (err) {
       setError(err.message || "An error occurred while saving OT hours");
@@ -476,23 +709,32 @@ const OTHoursManagement = () => {
   };
 
   // Filtered employees based on search query (typing) and dropdown filter
-  const filteredEmployees = employees.filter((emp) => {
-    // Dropdown filter
-    if (selectedEmployeeFilter && String(emp.id) !== String(selectedEmployeeFilter)) {
-      return false;
+  const filteredEmployees = useMemo(() => {
+    // If department is selected, start with department employees; else all company employees
+    let list = selectedDepartmentId ? departmentEmployees : (allCompanyEmployees.length ? allCompanyEmployees : employees);
+
+    if (selectedEmployeeIds.length > 0) {
+      const selectedSet = new Set(selectedEmployeeIds);
+      if (selectedDepartmentId) {
+        const inDept = departmentEmployees.filter((e) => selectedSet.has(String(e.id)));
+        list = inDept.length > 0 ? inDept : allCompanyEmployees.filter((e) => selectedSet.has(String(e.id)));
+      } else {
+        list = (allCompanyEmployees.length ? allCompanyEmployees : employees).filter((e) => selectedSet.has(String(e.id)));
+      }
     }
 
-    // Typing filter
     if (employeeSearch.trim()) {
       const term = employeeSearch.trim().toLowerCase();
-      const code = String(emp.employeeCode || emp.ticketNo || emp.id || "").toLowerCase();
-      const name = (emp.firstName || "").toLowerCase();
-      const designation = String(emp.designation?.name || emp.designationName || "").toLowerCase();
-      return code.includes(term) || name.includes(term) || designation.includes(term);
+      list = list.filter((emp) => {
+        const code = String(emp.curEmployeeCode || emp.employeeCode || emp.ticketNo || emp.id || "").toLowerCase();
+        const newCode = String(emp.newEmployeeCode || "").toLowerCase();
+        const name = (emp.firstName || "").toLowerCase();
+        return code.includes(term) || newCode.includes(term) || name.includes(term);
+      });
     }
 
-    return true;
-  });
+    return list;
+  }, [selectedDepartmentId, departmentEmployees, allCompanyEmployees, employees, selectedEmployeeIds, employeeSearch]);
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -536,19 +778,21 @@ const OTHoursManagement = () => {
               </select>
             </div>
 
-            {/* Department Dropdown */}
+            {/* Department Dropdown (OPTIONAL) */}
             <div>
               <label className="block text-sm font-semibold mb-2 text-gray-700">
-                Department <span className="text-red-500">*</span>
+                Department
               </label>
               <select
                 value={selectedDepartmentId}
-                onChange={(e) => setSelectedDepartmentId(e.target.value)}
+                onChange={(e) => {
+                  setSelectedDepartmentId(e.target.value);
+                  setSelectedEmployeeIds([]);
+                }}
                 disabled={!selectedCompanyId}
                 className="w-full border border-gray-300 rounded-lg p-2 disabled:bg-gray-100 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                required
               >
-                <option value="">Select Department</option>
+                <option value="">All Departments</option>
                 {departments.map((dept) => (
                   <option key={dept.id} value={dept.id}>
                     {dept.departmentname || dept.departmentName || dept.name}
@@ -571,25 +815,14 @@ const OTHoursManagement = () => {
               />
             </div>
 
-            {/* Employee Dropdown Filter */}
-            <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">
-                Employee (Dropdown)
-              </label>
-              <select
-                value={selectedEmployeeFilter}
-                onChange={(e) => setSelectedEmployeeFilter(e.target.value)}
-                disabled={!employees.length}
-                className="w-full border border-gray-300 rounded-lg p-2 disabled:bg-gray-100 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="">All Employees ({employees.length})</option>
-                {employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.employeeCode || emp.ticketNo || emp.id} - {emp.firstName} {emp.designation?.name ? `(${emp.designation.name})` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Direct Employee Select Filter (ALWAYS ALL COMPANY EMPLOYEES) */}
+            <EmployeeMultiSelect
+              label="Direct Employee Select"
+              employees={allCompanyEmployees.length ? allCompanyEmployees : employees}
+              selected={selectedEmployeeIds}
+              onChange={setSelectedEmployeeIds}
+              disabled={!allCompanyEmployees.length && !employees.length}
+            />
           </div>
         </div>
 
@@ -609,18 +842,18 @@ const OTHoursManagement = () => {
                 <h2 className="text-base font-bold text-gray-800">
                   {departments.find((d) => d.id === selectedDepartmentId)?.name ||
                     departments.find((d) => d.id === selectedDepartmentId)?.departmentname ||
-                    "Selected Department"}
+                    "All Departments"}
                 </h2>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-xs font-semibold px-2.5 py-0.5 bg-blue-100 text-blue-800 rounded-full">
                     Showing {filteredEmployees.length} of {employees.length} employees
                   </span>
-                  {(employeeSearch || selectedEmployeeFilter) && (
+                  {(employeeSearch || selectedEmployeeIds.length > 0) && (
                     <button
                       type="button"
                       onClick={() => {
                         setEmployeeSearch("");
-                        setSelectedEmployeeFilter("");
+                        setSelectedEmployeeIds([]);
                       }}
                       className="text-xs text-red-600 hover:text-red-800 font-semibold underline ml-1"
                     >
@@ -630,9 +863,19 @@ const OTHoursManagement = () => {
                 </div>
               </div>
 
-              {/* Employee Typing Search Filter */}
-              <div className="flex items-center gap-2">
-                <div className="relative w-full md:w-80">
+              {/* Toolbar Controls: Employee Dropdown near Search Bar (ACCORDING TO DEPARTMENT) */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+                <div className="w-full sm:w-64">
+                  <EmployeeMultiSelect
+                    label=""
+                    employees={departmentEmployees}
+                    selected={selectedEmployeeIds}
+                    onChange={setSelectedEmployeeIds}
+                    disabled={!departmentEmployees.length}
+                    compact
+                  />
+                </div>
+                <div className="relative w-full sm:w-72">
                   <input
                     type="text"
                     placeholder="Search employee name, code, designation..."
@@ -677,7 +920,7 @@ const OTHoursManagement = () => {
                           type="button"
                           onClick={() => {
                             setEmployeeSearch("");
-                            setSelectedEmployeeFilter("");
+                            setSelectedEmployeeIds([]);
                           }}
                           className="mt-3 px-4 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold hover:bg-blue-100 transition"
                         >
@@ -691,7 +934,7 @@ const OTHoursManagement = () => {
                       return (
                         <tr key={emp.id} className="hover:bg-blue-50/40 border-b transition-colors">
                           <td className="p-3 text-sm text-gray-500 font-mono">{index + 1}</td>
-                          <td className="p-3 text-sm font-semibold text-gray-700 font-mono">{emp.employeeCode || emp.ticketNo || emp.id}</td>
+                          <td className="p-3 text-sm font-semibold text-gray-700 font-mono">{emp.curEmployeeCode || emp.employeeCode || emp.ticketNo || emp.id}</td>
                           <td className="p-3 text-sm font-semibold text-gray-900">
                             {emp.firstName}
                           </td>
@@ -751,19 +994,19 @@ const OTHoursManagement = () => {
         )}
 
         {/* No Employees Found */}
-        {!loading && employees.length === 0 && selectedDepartmentId && (
+        {!loading && employees.length === 0 && selectedCompanyId && (
           <div className="bg-white shadow rounded-lg p-8 text-center">
             <p className="text-gray-500 text-lg">
-              No employees found in the selected department. Please select a different department.
+              No employees found. Please check company or department selection.
             </p>
           </div>
         )}
 
-        {/* Initial State - No Department Selected */}
-        {!loading && employees.length === 0 && !selectedDepartmentId && (
+        {/* Initial State - No Company Selected */}
+        {!loading && employees.length === 0 && !selectedCompanyId && (
           <div className="bg-white shadow rounded-lg p-8 text-center">
             <p className="text-gray-500 text-lg">
-              Select a company and department above to view employees and enter OT hours.
+              Select a company above to view employees and enter OT hours.
             </p>
           </div>
         )}
@@ -796,7 +1039,7 @@ const OTHoursManagement = () => {
                   <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Emp. Code</label>
                   <input
                     type="text"
-                    value={editEmployee.employeeCode || editEmployee.id || ""}
+                    value={editEmployee.curEmployeeCode || editEmployee.employeeCode || editEmployee.id || ""}
                     disabled
                     className="w-full px-3 py-2 bg-slate-200 border border-slate-300 rounded-xl text-slate-800 text-xs font-bold font-mono"
                   />

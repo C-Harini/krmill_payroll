@@ -2843,7 +2843,8 @@ const getLiveDashboardData = async (companyId, date) => {
     dash.employees.push({
       employeeId: emp.id,
       employeeName: emp.firstName,
-      employeeCode: emp.employeeCode,
+      curEmployeeCode: emp.curEmployeeCode,
+      employeeCode: emp.curEmployeeCode || emp.employeeCode,
       employeeType: emp.employmentType?.name || "N/A",
       shiftName: shiftK,
       punchInTime: rec?.firstCheckIn || null,

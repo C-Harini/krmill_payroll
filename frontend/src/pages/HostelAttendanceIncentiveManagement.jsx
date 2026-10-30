@@ -30,7 +30,7 @@ const GRADE_LABELS = {
   },
   HOSTEL: {
     label: "Hostel",
-    color: "bg-pink-100   text-pink-700   border-pink-200",
+    color: "bg-blue-100   text-blue-700   border-blue-200",
   },
   STAFF_MONTHLY: {
     label: "Staff Monthly",
@@ -71,7 +71,7 @@ const TierBadge = ({ tier }) => {
 const GradePill = ({ gradeKey }) => {
   const info = GRADE_LABELS[gradeKey] || {
     label: (gradeKey || "Hostel").toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-    color: "bg-pink-100 text-pink-700 border-pink-200",
+    color: "bg-blue-100 text-blue-700 border-blue-200",
   };
   return (
     <span
@@ -98,6 +98,112 @@ const ShiftBreakdown = ({ breakdown }) => {
     </div>
   );
 };
+
+const ShiftMultiSelectDropdown = ({ selectedShifts = [], onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const SHIFT_OPTIONS = [
+    { key: "I", label: "Shift I" },
+    { key: "II", label: "Shift II" },
+    { key: "III", label: "Shift III" },
+  ];
+
+  const toggleShift = (key) => {
+    let updated;
+    if (selectedShifts.includes(key)) {
+      updated = selectedShifts.filter((s) => s !== key);
+    } else {
+      updated = [...selectedShifts, key].sort((a, b) => {
+        const order = { I: 1, II: 2, III: 3 };
+        return (order[a] || 0) - (order[b] || 0);
+      });
+    }
+    onChange(updated);
+  };
+
+  const displayText =
+    selectedShifts.length > 0
+      ? selectedShifts.map((s) => `Shift ${s}`).join(", ")
+      : "-- Select Shift(s) --";
+
+  return (
+    <div className="relative inline-block w-full" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-xs font-semibold rounded-lg border transition ${selectedShifts.length > 0
+          ? "bg-white border-blue-300 text-blue-900 shadow-sm"
+          : "bg-white border-amber-300 text-amber-600"
+          } focus:outline-none focus:ring-2 focus:ring-blue-500`}
+      >
+        <div className="flex items-center gap-1.5 truncate">
+          <span className="text-slate-400">🕒</span>
+          <span className="truncate">{displayText}</span>
+        </div>
+        <svg
+          className={`w-3.5 h-3.5 text-slate-500 flex-shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-xl py-1 animate-in fade-in zoom-in-95 duration-100">
+          <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 flex items-center justify-between">
+            <span>Select Shift(s)</span>
+            <span className="text-[10px] text-blue-600 font-normal">Multiple selectable</span>
+          </div>
+          <div className="py-1">
+            {SHIFT_OPTIONS.map((opt) => {
+              const isChecked = selectedShifts.includes(opt.key);
+              return (
+                <label
+                  key={opt.key}
+                  className="flex items-center gap-2.5 px-3 py-2 text-xs hover:bg-blue-50 cursor-pointer select-none transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => toggleShift(opt.key)}
+                    className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                  />
+                  <span className={`font-medium ${isChecked ? "text-blue-700 font-bold" : "text-slate-700"}`}>
+                    {opt.label}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          <div className="px-2 pt-1 pb-1 border-t border-slate-100 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold px-2 py-0.5 rounded hover:bg-blue-50"
+            >
+              Done ✓
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 
 const DayAdjuster = ({ rawDays, adjustedDays, onChange }) => {
   const diff = adjustedDays - rawDays;
@@ -310,7 +416,33 @@ export default function HostelAttendanceIncentiveManagement() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [tableSearch, setTableSearch] = useState("");
-  const [activeTab, setActiveTab] = useState("calculate"); // "calculate" or "registration"
+  const [activeTab, setActiveTab] = useState("calculate"); // "calculate", "registration", or "hostel_conditions"
+
+  // ---------------- HOSTEL CONDITIONS STATE ----------------
+  const [conditions, setConditions] = useState([]);
+  const [conditionsLoading, setConditionsLoading] = useState(false);
+  const [conditionSearch, setConditionSearch] = useState("");
+  const [showConditionModal, setShowConditionModal] = useState(false);
+  const [editingCondition, setEditingCondition] = useState(null);
+  const [conditionForm, setConditionForm] = useState({
+    selectedDepartments: ["ALL"],
+    shiftTypeId: "",
+    gender: "ALL",
+    gradeKey: "HOSTEL",
+    gradeName: "Hostel - All Departments",
+    shiftRuleKey: "SHIFT_I",
+    shiftLabel: "Day Shift Only",
+    minDays: 22,
+    lowTierDays: 23,
+    lowTierRate: 15,
+    highTierDays: 24,
+    highTierRate: 20,
+    minComboDays: 12,
+    maleExpOverride: false,
+    maleExpThreshold: 3,
+    remarks: "",
+  });
+  const [conditionCombos, setConditionCombos] = useState([]);
 
   // ---------------- REGISTRATION STATE ----------------
   const [showForm, setShowForm] = useState(false);
@@ -366,10 +498,10 @@ export default function HostelAttendanceIncentiveManagement() {
       if (departmentId) url += `&departmentId=${departmentId}`;
       const data = await apiRequest(url);
       const list = Array.isArray(data) ? data : data.employees || [];
-      // Filter for hostel category
+      // Filter purely for hostel category
       const filtered = list.filter((emp) => {
         const catName = (emp.category?.categoryName || "").toUpperCase();
-        return catName.includes("HOSTEL") || emp.isHostel === true;
+        return catName.includes("HOSTEL");
       });
       setHostelEmployeesList(
         filtered.map((e) => ({
@@ -432,7 +564,12 @@ export default function HostelAttendanceIncentiveManagement() {
       let url = `/employees?companyId=${companyId}`;
       if (departmentId) url += `&departmentId=${departmentId}`;
       const data = await apiRequest(url);
-      setRegEmployees(Array.isArray(data) ? data : data.employees || []);
+      const list = Array.isArray(data) ? data : data.employees || [];
+      const hostelList = list.filter((emp) => {
+        const catName = (emp.category?.categoryName || "").toUpperCase();
+        return catName.includes("HOSTEL");
+      });
+      setRegEmployees(hostelList);
     } catch (e) {
       console.error("Error fetching reg employees:", e);
       setRegEmployees([]);
@@ -450,13 +587,407 @@ export default function HostelAttendanceIncentiveManagement() {
     }
   }, [filters.companyId, filters.departmentId, fetchDepartments, fetchHostelEmployees]);
 
+  const fetchConditions = useCallback(async () => {
+    setConditionsLoading(true);
+    try {
+      const q = filters.companyId ? `?companyId=${filters.companyId}` : "";
+      const res = await apiRequest(`/hostel-attendance-incentives/conditions${q}`);
+      if (res && res.conditions) {
+        setConditions(res.conditions);
+      }
+    } catch (e) {
+      console.error("Error fetching hostel conditions:", e);
+    } finally {
+      setConditionsLoading(false);
+    }
+  }, [filters.companyId]);
+
   useEffect(() => {
     if (activeTab === "calculate" && filters.companyId) {
       fetchCalculations();
     } else if (activeTab === "registration") {
       fetchRegRecords();
+    } else if (activeTab === "hostel_conditions") {
+      fetchConditions();
     }
-  }, [activeTab, filters.companyId, filters.departmentId, filters.month, filters.year, fetchCalculations, fetchRegRecords]);
+  }, [activeTab, filters.companyId, filters.departmentId, filters.month, filters.year, fetchCalculations, fetchRegRecords, fetchConditions]);
+
+  // ---------------- HOSTEL CONDITIONS HELPERS ----------------
+  const parseShiftRuleKeyToCombos = (ruleKey, minComboDays) => {
+    if (!ruleKey) {
+      return [{
+        id: String(Math.random()),
+        conditions: [{ id: String(Math.random()), shifts: ["I"], minDays: "12" }],
+      }];
+    }
+
+    if (ruleKey.startsWith("[") || ruleKey.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(ruleKey);
+        if (Array.isArray(parsed)) {
+          return parsed.map((combo) => {
+            if (Array.isArray(combo.conditions) && combo.conditions.length > 0) {
+              return {
+                id: String(Math.random()),
+                conditions: combo.conditions.map((c) => ({
+                  id: String(Math.random()),
+                  shifts: Array.isArray(c.shifts) && c.shifts.length > 0 ? c.shifts : ["I"],
+                  minDays: c.minDays !== undefined && c.minDays !== null ? String(c.minDays) : "12",
+                })),
+              };
+            }
+
+            const conds = [];
+            if (Object.prototype.hasOwnProperty.call(combo, "I")) {
+              conds.push({
+                id: String(Math.random()),
+                shifts: ["I"],
+                minDays: String(combo.I || "12"),
+              });
+            }
+            if (Object.prototype.hasOwnProperty.call(combo, "II")) {
+              conds.push({
+                id: String(Math.random()),
+                shifts: ["II"],
+                minDays: String(combo.II || "12"),
+              });
+            }
+            if (Object.prototype.hasOwnProperty.call(combo, "III")) {
+              conds.push({
+                id: String(Math.random()),
+                shifts: ["III"],
+                minDays: String(combo.III || "12"),
+              });
+            }
+
+            if (conds.length === 0) {
+              conds.push({
+                id: String(Math.random()),
+                shifts: ["I"],
+                minDays: minComboDays ? String(minComboDays) : "12",
+              });
+            }
+
+            return {
+              id: String(Math.random()),
+              conditions: conds,
+            };
+          });
+        }
+      } catch (e) {
+        console.error("Error parsing ruleKey JSON:", e);
+      }
+    }
+
+    const fallbackMin = minComboDays ? String(minComboDays) : "12";
+    const upper = (ruleKey || "").toUpperCase();
+
+    if (upper.includes("ALL_SHIFTS") || upper.includes("ANY")) {
+      return [{
+        id: String(Math.random()),
+        conditions: [{
+          id: String(Math.random()),
+          shifts: ["I", "II", "III"],
+          minDays: fallbackMin,
+        }],
+      }];
+    }
+
+    const selectedShifts = [];
+    if (upper.includes("SHIFT_I") || upper.includes("_I_") || upper.startsWith("I_")) {
+      selectedShifts.push("I");
+    }
+    if (upper.includes("SHIFT_II") || upper.includes("_II") || upper.includes("II_")) {
+      selectedShifts.push("II");
+    }
+    if (upper.includes("SHIFT_III") || upper.includes("_III")) {
+      selectedShifts.push("III");
+    }
+
+    return [{
+      id: String(Math.random()),
+      conditions: [{
+        id: String(Math.random()),
+        shifts: selectedShifts.length > 0 ? selectedShifts : ["I"],
+        minDays: fallbackMin,
+      }],
+    }];
+  };
+
+  const serializeCombosToRuleKeyAndLabel = (combos) => {
+    const activeCombos = [];
+    const labelParts = [];
+
+    for (const c of combos) {
+      const activeConditions = [];
+      const conditionLabels = [];
+
+      for (const cond of (c.conditions || [])) {
+        if (cond.shifts && cond.shifts.length > 0) {
+          const min = cond.minDays !== "" && !isNaN(cond.minDays) ? parseInt(cond.minDays, 10) : 1;
+          activeConditions.push({
+            shifts: cond.shifts,
+            minDays: min,
+          });
+          const shiftStr = cond.shifts.map((s) => `Shift ${s}`).join(" + ");
+          conditionLabels.push(`${shiftStr} >= ${min}d`);
+        }
+      }
+
+      if (activeConditions.length > 0) {
+        const comboObj = {
+          conditions: activeConditions,
+        };
+        for (const cond of activeConditions) {
+          if (cond.shifts.length === 1) {
+            comboObj[cond.shifts[0]] = cond.minDays;
+          }
+        }
+        activeCombos.push(comboObj);
+        labelParts.push(
+          conditionLabels.length > 1
+            ? `(${conditionLabels.join(" & ")})`
+            : conditionLabels[0]
+        );
+      }
+    }
+
+    return {
+      shiftRuleKey: JSON.stringify(activeCombos),
+      shiftLabel: labelParts.join(" or ") || "No Shift Combo Configured",
+    };
+  };
+
+  const handleAddConditionCombo = () => {
+    setConditionCombos((prev) => [
+      ...prev,
+      {
+        id: String(Date.now()) + Math.random().toString(36).substr(2, 4),
+        conditions: [
+          {
+            id: String(Date.now()) + Math.random().toString(36).substr(2, 4),
+            shifts: ["I"],
+            minDays: "12",
+          },
+        ],
+      },
+    ]);
+  };
+
+  const handleRemoveConditionCombo = (id) => {
+    setConditionCombos((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  const handleAddShiftCondition = (comboId) => {
+    setConditionCombos((prev) =>
+      prev.map((c) => {
+        if (c.id === comboId) {
+          return {
+            ...c,
+            conditions: [
+              ...(c.conditions || []),
+              {
+                id: String(Date.now()) + Math.random().toString(36).substr(2, 4),
+                shifts: ["II"],
+                minDays: "12",
+              },
+            ],
+          };
+        }
+        return c;
+      })
+    );
+  };
+
+  const handleRemoveShiftCondition = (comboId, conditionId) => {
+    setConditionCombos((prev) =>
+      prev.map((c) => {
+        if (c.id === comboId) {
+          if ((c.conditions || []).length <= 1) return c;
+          return {
+            ...c,
+            conditions: c.conditions.filter((cond) => cond.id !== conditionId),
+          };
+        }
+        return c;
+      })
+    );
+  };
+
+  const handleUpdateConditionShifts = (comboId, conditionId, newShifts) => {
+    setConditionCombos((prev) =>
+      prev.map((c) => {
+        if (c.id === comboId) {
+          return {
+            ...c,
+            conditions: (c.conditions || []).map((cond) =>
+              cond.id === conditionId ? { ...cond, shifts: newShifts } : cond
+            ),
+          };
+        }
+        return c;
+      })
+    );
+  };
+
+  const handleUpdateConditionMinDays = (comboId, conditionId, value) => {
+    setConditionCombos((prev) =>
+      prev.map((c) => {
+        if (c.id === comboId) {
+          return {
+            ...c,
+            conditions: (c.conditions || []).map((cond) =>
+              cond.id === conditionId ? { ...cond, minDays: value } : cond
+            ),
+          };
+        }
+        return c;
+      })
+    );
+  };
+
+  const handleOpenAddCondition = () => {
+    setEditingCondition(null);
+    setConditionForm({
+      shiftTypeId: "",
+      gender: "ALL",
+      gradeKey: "HOSTEL",
+      gradeName: "Hostel",
+      shiftRuleKey: "SHIFT_I",
+      shiftLabel: "Day Shift Only",
+      minDays: 22,
+      lowTierDays: 23,
+      lowTierRate: 15,
+      highTierDays: 24,
+      highTierRate: 20,
+      minComboDays: 12,
+      maleExpOverride: false,
+      maleExpThreshold: 3,
+      remarks: "",
+    });
+    setConditionCombos([
+      {
+        id: "default",
+        conditions: [
+          {
+            id: "default-1",
+            shifts: ["I"],
+            minDays: "12",
+          },
+        ],
+      },
+    ]);
+    setShowConditionModal(true);
+  };
+
+  const handleOpenEditCondition = (cond) => {
+    setEditingCondition(cond);
+    setConditionForm({
+      shiftTypeId: cond.shiftTypeId || "",
+      gender: cond.gender || "ALL",
+      gradeKey: "HOSTEL",
+      gradeName: cond.gradeName || "Hostel",
+      shiftRuleKey: cond.shiftRuleKey,
+      shiftLabel: cond.shiftLabel,
+      minDays: cond.minDays ?? 22,
+      lowTierDays: cond.lowTierDays ?? 23,
+      lowTierRate: cond.lowTierRate ?? 15,
+      highTierDays: cond.highTierDays ?? 24,
+      highTierRate: cond.highTierRate ?? 20,
+      minComboDays: cond.minComboDays ?? 12,
+      maleExpOverride: !!cond.maleExpOverride,
+      maleExpThreshold: cond.maleExpThreshold ?? 3,
+      remarks: cond.remarks || "",
+    });
+    setConditionCombos(parseShiftRuleKeyToCombos(cond.shiftRuleKey, cond.minComboDays));
+    setShowConditionModal(true);
+  };
+
+  const handleSaveConditionSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    if (!conditionCombos || conditionCombos.length === 0) {
+      setError("Please configure at least one active shift combination rule.");
+      return;
+    }
+
+    for (let i = 0; i < conditionCombos.length; i++) {
+      const combo = conditionCombos[i];
+      if (!combo.conditions || combo.conditions.length === 0) {
+        setError(`Combo #${i + 1}: Please add at least one shift condition.`);
+        return;
+      }
+      for (let j = 0; j < combo.conditions.length; j++) {
+        const cond = combo.conditions[j];
+        if (!cond.shifts || cond.shifts.length === 0) {
+          setError(`Combo #${i + 1}, Condition #${j + 1}: Please select at least one shift (Shift I, II, or III).`);
+          return;
+        }
+        if (!cond.minDays || Number(cond.minDays) < 1) {
+          setError(`Combo #${i + 1}, Condition #${j + 1}: Please enter minimum required days (at least 1 day).`);
+          return;
+        }
+      }
+    }
+
+    const { shiftRuleKey, shiftLabel } = serializeCombosToRuleKeyAndLabel(conditionCombos);
+    if (!shiftRuleKey || shiftRuleKey === "[]") {
+      setError("Please configure at least one active shift combination rule.");
+      return;
+    }
+
+    const finalGradeName = conditionForm.gradeName?.trim() || "Hostel";
+
+    try {
+      const payload = {
+        ...conditionForm,
+        categoryId: null, // Automatically for hostel category
+        departmentId: null, // Automatically applies to all departments
+        departmentIds: null,
+        gradeName: finalGradeName,
+        gradeKey: "HOSTEL",
+        shiftRuleKey,
+        shiftLabel,
+        companyId: filters.companyId || null,
+      };
+
+      if (editingCondition) {
+        await apiRequest(`/hostel-attendance-incentives/conditions/${editingCondition.id}`, {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        });
+        setSuccess("Hostel incentive condition updated successfully.");
+      } else {
+        await apiRequest("/hostel-attendance-incentives/conditions", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        setSuccess("Hostel incentive condition added successfully.");
+      }
+      setShowConditionModal(false);
+      fetchConditions();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleDeleteCondition = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this hostel incentive condition rule?")) return;
+    setError(null);
+    setSuccess(null);
+    try {
+      await apiRequest(`/hostel-attendance-incentives/conditions/${id}`, {
+        method: "DELETE",
+      });
+      setSuccess("Hostel condition deleted successfully.");
+      fetchConditions();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
 
   // ---------------- DAY ADJUSTMENT & RECALCULATION ----------------
   const handleAdjust = (empId, newAdjustedDays) => {
@@ -601,7 +1132,6 @@ export default function HostelAttendanceIncentiveManagement() {
   const total88Pay = records.reduce((s, r) => s + (r.eightEightPay || 0), 0);
   const totalRegularPay = records.reduce((s, r) => s + (r.regularIncentive || 0), 0);
   const eligible = records.filter((r) => (r.incentive || 0) > 0).length;
-  const notEligible = records.length - eligible;
   const hasAdjustments = Object.keys(adjustments).length > 0;
 
   const categoryBreakdown = records.reduce((acc, r) => {
@@ -880,7 +1410,6 @@ export default function HostelAttendanceIncentiveManagement() {
     // Summary Statistics Cards
     const sumIncentive = dataToExport.reduce((s, r) => s + (parseFloat(r.incentive) || 0), 0);
     const sumEligible = dataToExport.filter((r) => (parseFloat(r.incentive) || 0) > 0).length;
-    const sumIneligible = dataToExport.length - sumEligible;
     const sum88Days = dataToExport.reduce((s, r) => s + (r.eightEightDays || 0), 0);
     const sum88Pay = dataToExport.reduce((s, r) => s + (r.eightEightPay || 0), 0);
     const sumRegPay = dataToExport.reduce((s, r) => s + (r.regularIncentive || 0), 0);
@@ -892,7 +1421,7 @@ export default function HostelAttendanceIncentiveManagement() {
     doc.setFontSize(9);
     doc.setFont("helvetica", "bold");
     doc.text(`Total Hostel Employees: ${dataToExport.length}`, 20, 32);
-    doc.setTextColor(190, 24, 93); // Pink
+    doc.setTextColor(37, 99, 235); // Blue
     doc.text(`8-8 Days: ${sum88Days} (Rs. ${sum88Pay.toLocaleString("en-IN")})`, 85, 32);
     doc.setTextColor(16, 185, 129); // Emerald
     doc.text(`Eligible: ${sumEligible}`, 155, 32);
@@ -1035,7 +1564,7 @@ export default function HostelAttendanceIncentiveManagement() {
         halign: "right",
       },
       margin: { left: 14, right: 14, bottom: 15 },
-      didDrawPage: (data) => {
+      didDrawPage: () => {
         doc.setFontSize(8);
         doc.setTextColor(148, 163, 184);
         doc.text(`Page ${doc.internal.getNumberOfPages()}`, pageW / 2, pageH - 8, { align: "center" });
@@ -1130,18 +1659,23 @@ export default function HostelAttendanceIncentiveManagement() {
         {/* Top Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
-            <h1
-              style={{
-                fontFamily: "'DM Sans', sans-serif",
-                fontWeight: 700,
-                letterSpacing: "-0.03em",
-              }}
-              className="text-3xl text-slate-800"
-            >
-              Hostel Attendance Incentive
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1
+                style={{
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontWeight: 700,
+                  letterSpacing: "-0.03em",
+                }}
+                className="text-3xl text-slate-800"
+              >
+                Hostel Attendance Incentive
+              </h1>
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700 border border-blue-200 uppercase tracking-wide">
+                Purely Category Hostel
+              </span>
+            </div>
             <p className="text-slate-500 text-sm mt-0.5">
-              Calculate & manage hostel employee incentives (8-8 entry days @ ₹100/day + conditional remaining days)
+              Allocated purely for the Hostel Category employees (8-8 entry days @ ₹100/day + conditional remaining days)
             </p>
           </div>
 
@@ -1194,7 +1728,7 @@ export default function HostelAttendanceIncentiveManagement() {
               setSuccess(null);
             }}
             className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${activeTab === "calculate"
-              ? "bg-white text-blue-600 shadow-sm border border-slate-100"
+              ? "bg-white text-blue-600 shadow-sm border border-slate-100 font-bold"
               : "text-slate-500 hover:text-slate-700 hover:bg-slate-100/50"
               }`}
           >
@@ -1208,11 +1742,25 @@ export default function HostelAttendanceIncentiveManagement() {
               setSuccess(null);
             }}
             className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${activeTab === "registration"
-              ? "bg-white text-blue-600 shadow-sm border border-slate-100"
+              ? "bg-white text-blue-600 shadow-sm border border-slate-100 font-bold"
               : "text-slate-500 hover:text-slate-700 hover:bg-slate-100/50"
               }`}
           >
             📋 Hostel Employee Registrations
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("hostel_conditions");
+              setError(null);
+              setSuccess(null);
+            }}
+            className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${activeTab === "hostel_conditions"
+              ? "bg-white text-blue-600 shadow-sm border border-slate-100 font-bold"
+              : "text-slate-500 hover:text-slate-700 hover:bg-slate-100/50"
+              }`}
+          >
+            🏷️ Hostel Incentive Conditions
           </button>
         </div>
 
@@ -1404,7 +1952,7 @@ export default function HostelAttendanceIncentiveManagement() {
                     label="8-8 Entry Days"
                     value={`${total88Days} d`}
                     sub={`Pay: ₹${total88Pay.toLocaleString("en-IN")}`}
-                    colorClass="bg-pink-700 text-white"
+                    colorClass="bg-blue-700 text-white"
                   />
                   <StatCard
                     label="Regular Incentive"
@@ -1437,7 +1985,7 @@ export default function HostelAttendanceIncentiveManagement() {
                     {Object.entries(categoryBreakdown).map(([cat, count]) => (
                       <span
                         key={cat}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-semibold bg-pink-50 text-pink-700 border-pink-200"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-semibold bg-blue-50 text-blue-700 border-blue-200"
                       >
                         {cat} <span className="opacity-60">× {count}</span>
                       </span>
@@ -1568,7 +2116,7 @@ export default function HostelAttendanceIncentiveManagement() {
                               {rec.departmentName || "—"}
                             </td>
                             <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap font-medium">
-                              <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-pink-50 text-pink-700 border border-pink-200">
+                              <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
                                 {rec.categoryName || "HOSTEL"}
                               </span>
                             </td>
@@ -1598,7 +2146,7 @@ export default function HostelAttendanceIncentiveManagement() {
                             {/* 8-8 Days */}
                             <td className="px-3 py-3 text-center font-mono">
                               {rec.eightEightDays > 0 ? (
-                                <span className="inline-block px-2 py-0.5 rounded-full font-bold bg-pink-100 text-pink-800 text-xs border border-pink-200">
+                                <span className="inline-block px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800 text-xs border border-blue-200">
                                   {rec.eightEightDays}d
                                 </span>
                               ) : (
@@ -1607,7 +2155,7 @@ export default function HostelAttendanceIncentiveManagement() {
                             </td>
 
                             {/* 8-8 Pay */}
-                            <td className="px-3 py-3 font-mono text-xs text-pink-700 font-semibold">
+                            <td className="px-3 py-3 font-mono text-xs text-blue-700 font-semibold">
                               {rec.eightEightPay ? `₹${rec.eightEightPay}` : "—"}
                             </td>
 
@@ -1691,10 +2239,10 @@ export default function HostelAttendanceIncentiveManagement() {
                           >
                             Total ({filteredRecords.length} employees)
                           </td>
-                          <td className="px-3 py-3 text-center font-mono font-bold text-pink-700 text-xs bg-slate-100">
+                          <td className="px-3 py-3 text-center font-mono font-bold text-blue-700 text-xs bg-slate-100">
                             {filteredRecords.reduce((s, r) => s + (r.eightEightDays || 0), 0)}d
                           </td>
-                          <td className="px-3 py-3 font-mono font-bold text-pink-700 text-xs bg-slate-100">
+                          <td className="px-3 py-3 font-mono font-bold text-blue-700 text-xs bg-slate-100">
                             ₹{filteredRecords.reduce((s, r) => s + (r.eightEightPay || 0), 0).toLocaleString("en-IN")}
                           </td>
                           <td colSpan={4} className="bg-slate-100" />
@@ -1957,7 +2505,542 @@ export default function HostelAttendanceIncentiveManagement() {
             </div>
           </>
         )}
-      </div>
-    </div>
+
+        {/* ─── TAB 3: HOSTEL INCENTIVE CONDITIONS & RULES ────────────────────── */}
+        {activeTab === "hostel_conditions" && (
+          <div className="space-y-6">
+            {/* Top Toolbar */}
+            <div className="bg-white rounded-xl shadow-sm border border-blue-100 p-6 mb-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-slate-800 text-lg">🏨 Hostel Incentive Conditions & Rules</h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700 border border-blue-200">
+                      Hostel Only
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Configure condition rules, shift combinations, and payout slabs exclusively for Hostel employees.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <input
+                    type="text"
+                    placeholder="Search shift, dept, or notes…"
+                    value={conditionSearch}
+                    onChange={(e) => setConditionSearch(e.target.value)}
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 w-64"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleOpenAddCondition}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition shadow-sm flex items-center gap-1.5 active:scale-95"
+                  >
+                    <span>➕</span> Add Hostel Rule
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Conditions Slabs Table */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <div>
+                  <h3 className="font-bold text-slate-800 text-base">Active Hostel Incentive Calculation Conditions & Slabs</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">These rules determine daily rates and payout tiers during hostel monthly attendance incentive calculations.</p>
+                </div>
+                <span className="text-xs font-semibold px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full font-mono">
+                  {conditions.length} hostel rules configured
+                </span>
+              </div>
+
+              {conditionsLoading ? (
+                <div className="flex items-center justify-center h-48 text-slate-400">
+                  <svg className="animate-spin w-6 h-6 mr-2 text-blue-600" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  Loading hostel conditions…
+                </div>
+              ) : conditions.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-52 text-slate-400">
+                  <div className="text-3xl mb-2">🏨</div>
+                  <p className="text-sm font-semibold text-slate-600">No custom hostel incentive condition rules found.</p>
+                  <p className="text-xs mt-1 text-slate-400">Default fallback: 22d min (Low: ₹15/d, High: ₹20/d for Day; Combo: ₹20/d & ₹30/d).</p>
+                  <button
+                    type="button"
+                    onClick={handleOpenAddCondition}
+                    className="mt-3 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition shadow-sm"
+                  >
+                    Add First Hostel Rule
+                  </button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
+                  <table className="w-full text-left text-sm text-slate-600 border-collapse">
+                    <thead className="sticky top-0 z-20 shadow-sm">
+                      <tr className="bg-gradient-to-r from-slate-800 via-slate-800 to-blue-950 text-white text-xs font-semibold uppercase tracking-wider">
+                        <th className="px-5 py-4 w-12 text-left bg-slate-800 sticky top-0 z-20">#</th>
+                        <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">Grade</th>
+                        <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">Shift Pattern</th>
+                        <th className="px-5 py-4 text-center bg-slate-800 sticky top-0 z-20">Gender</th>
+                        <th className="px-5 py-4 text-center bg-slate-800 sticky top-0 z-20">Min Days</th>
+                        <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">Low Tier Slab</th>
+                        <th className="px-5 py-4 text-left bg-slate-800 sticky top-0 z-20">High Tier Slab</th>
+                        <th className="px-5 py-4 text-center bg-slate-800 sticky top-0 z-20">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {conditions
+                        .filter((c) => {
+                          const matchesSearch =
+                            !conditionSearch ||
+                            (c.gradeName || c.gradeKey || "").toLowerCase().includes(conditionSearch.toLowerCase()) ||
+                            (c.shiftLabel || c.shiftRuleKey || "").toLowerCase().includes(conditionSearch.toLowerCase()) ||
+                            (c.remarks || "").toLowerCase().includes(conditionSearch.toLowerCase());
+                          return matchesSearch;
+                        })
+                        .map((cond, idx) => (
+                          <tr key={cond.id} className="hover:bg-blue-50/30 transition">
+                            <td className="px-5 py-4 text-slate-400 text-xs font-mono">{idx + 1}</td>
+                            <td className="px-5 py-4">
+                              <span className="text-sm font-semibold text-slate-800">
+                                {cond.gradeName || "Hostel"}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4">
+                              <span className="font-semibold text-slate-800">{cond.shiftLabel || "—"}</span>
+                            </td>
+                            <td className="px-5 py-4 text-center">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cond.gender === "MALE"
+                                ? "bg-blue-50 text-blue-700"
+                                : cond.gender === "FEMALE"
+                                  ? "bg-pink-50 text-pink-700"
+                                  : "bg-slate-100 text-slate-600"
+                                }`}>
+                                {cond.gender || "ALL"}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4 text-center font-bold text-slate-700">
+                              {cond.minDays ?? 22}d
+                            </td>
+                            <td className="px-5 py-4">
+                              <div className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-800 px-2.5 py-1 rounded-lg text-xs font-semibold">
+                                <span>{cond.lowTierDays}d</span>
+                                <span>→</span>
+                                <span className="font-bold font-mono">₹{parseFloat(cond.lowTierRate || 0).toFixed(2)}/d</span>
+                              </div>
+                            </td>
+                            <td className="px-5 py-4">
+                              <div className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 px-2.5 py-1 rounded-lg text-xs font-semibold">
+                                <span>{cond.highTierDays}d+</span>
+                                <span>→</span>
+                                <span className="font-bold font-mono">₹{parseFloat(cond.highTierRate || 0).toFixed(2)}/d</span>
+                              </div>
+                            </td>
+                            <td className="px-5 py-4 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditCondition(cond)}
+                                  className="p-2 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+                                  title="Edit Condition"
+                                >
+                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                                  </svg>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteCondition(cond.id)}
+                                  className="p-2 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
+                                  title="Delete Condition"
+                                >
+                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </td>
+                          </tr >
+                        ))
+                      }
+                    </tbody >
+                  </table >
+                </div >
+              )}
+            </div >
+
+            {/* Condition Modal (Add / Edit) exclusively for Hostel */}
+            {
+              showConditionModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+                  <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 animate-in fade-in zoom-in-95 duration-200 my-8 max-h-[85vh] overflow-y-auto border border-blue-100">
+                    <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-slate-800 text-lg">
+                            {editingCondition ? "✏️ Edit Hostel Incentive Rule" : "➕ Add Hostel Incentive Rule"}
+                          </h3>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-blue-100 text-blue-700 border border-blue-200 uppercase tracking-wider">
+                            Hostel Only
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Exclusively for hostel category employees. Automatically applies across all departments.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowConditionModal(false)}
+                        className="text-slate-400 hover:text-slate-600 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-slate-100"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    {error && (
+                      <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-start gap-2">
+                        <span className="text-red-400 mt-0.5">✕</span>
+                        <span>{error}</span>
+                      </div>
+                    )}
+
+                    <form onSubmit={handleSaveConditionSubmit} className="space-y-4">
+                      {/* Scope Banner: Universal for all departments */}
+                      <div className="p-3.5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl flex items-center gap-3 shadow-xs">
+                        <div className="w-9 h-9 rounded-lg bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 text-lg flex-shrink-0">
+                          🏨
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-blue-900">
+                              Universal Hostel Scope
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-blue-200 text-blue-800 uppercase tracking-wide">
+                              All Departments
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-blue-700 mt-0.5 leading-relaxed">
+                            This rule automatically applies to all workers in the <strong>Hostel</strong> category, regardless of which department they work in.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Row: Display Name & Target Gender */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                            Rule / Grade Display Name <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={conditionForm.gradeName}
+                            onChange={(e) => setConditionForm((p) => ({
+                              ...p,
+                              gradeName: e.target.value,
+                            }))}
+                            placeholder="e.g. Hostel - Day Shift Rule"
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-medium"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                            Target Gender
+                          </label>
+                          <select
+                            value={conditionForm.gender || "ALL"}
+                            onChange={(e) => setConditionForm((p) => ({ ...p, gender: e.target.value }))}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-medium"
+                          >
+                            <option value="ALL">All Genders</option>
+                            <option value="MALE">Male Only</option>
+                            <option value="FEMALE">Female Only</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Row 3: Shift Selection & Custom Combo */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between pb-1 border-b border-slate-200">
+                          <div>
+                            <span className="text-xs font-bold text-slate-700">
+                              Active Shift Combinations (Satisfied if ANY combo matches)
+                            </span>
+                            <p className="text-[11px] text-slate-500">
+                              Configure alternative shift combinations. Inside each combo, conditions are combined together.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleAddConditionCombo}
+                            className="text-xs text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg shadow-sm transition"
+                          >
+                            <span>➕</span>
+                            <span>Add Shift Combo</span>
+                          </button>
+                        </div>
+
+                        <div className="space-y-4">
+                          {conditionCombos.map((combo, idx) => (
+                            <div key={combo.id} className="space-y-2">
+                              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 relative shadow-sm">
+                                {/* Combo Header */}
+                                <div className="flex items-center justify-between mb-3 border-b border-slate-200/80 pb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800">
+                                      Combo #{idx + 1}
+                                    </span>
+                                    <span className="text-[11px] text-slate-500 font-medium">
+                                      ({combo.conditions?.length || 0} {combo.conditions?.length === 1 ? "condition" : "conditions"})
+                                    </span>
+                                  </div>
+                                  {conditionCombos.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveConditionCombo(combo.id)}
+                                      className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded font-semibold transition flex items-center gap-1"
+                                    >
+                                      <span>🗑</span>
+                                      <span>Remove Combo</span>
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Shift Conditions under this combo */}
+                                <div className="space-y-2.5">
+                                  {combo.conditions?.map((cond, cIdx) => (
+                                    <div
+                                      key={cond.id}
+                                      className="flex flex-wrap sm:flex-nowrap items-center gap-3 bg-white p-2.5 rounded-lg border border-slate-200 shadow-sm"
+                                    >
+                                      <div className="flex items-center gap-1 text-xs font-bold text-slate-500 min-w-[85px]">
+                                        <span>Condition {cIdx + 1}</span>
+                                      </div>
+
+                                      {/* Dropdown list box with Shift I, Shift II, Shift III (multi-selectable) */}
+                                      <div className="flex-1 min-w-[200px]">
+                                        <ShiftMultiSelectDropdown
+                                          selectedShifts={cond.shifts || []}
+                                          onChange={(newShifts) =>
+                                            handleUpdateConditionShifts(combo.id, cond.id, newShifts)
+                                          }
+                                        />
+                                      </div>
+
+                                      {/* Number box for min days */}
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-xs text-slate-600 font-medium whitespace-nowrap">
+                                          Min Days:
+                                        </span>
+                                        <input
+                                          type="number"
+                                          min="1"
+                                          max="31"
+                                          placeholder="Days"
+                                          value={cond.minDays}
+                                          onChange={(e) =>
+                                            handleUpdateConditionMinDays(combo.id, cond.id, e.target.value)
+                                          }
+                                          className="w-20 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-800 text-center"
+                                        />
+                                      </div>
+
+                                      {/* Remove condition button (if > 1) */}
+                                      {combo.conditions.length > 1 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveShiftCondition(combo.id, cond.id)}
+                                          className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition"
+                                          title="Remove this shift condition"
+                                        >
+                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                          </svg>
+                                        </button>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {/* Add Shift Condition button */}
+                                <div className="pt-2.5 flex items-center justify-between border-t border-slate-200/60 mt-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddShiftCondition(combo.id)}
+                                    className="text-xs text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-sm"
+                                  >
+                                    <span>➕</span>
+                                    <span>Add Shift Condition</span>
+                                  </button>
+                                  <span className="text-[11px] text-slate-400">
+                                    Conditions within this combo are combined together (Addition)
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* OR divider between combos */}
+                              {idx < conditionCombos.length - 1 && (
+                                <div className="flex items-center justify-center py-1">
+                                  <div className="border-t border-dashed border-slate-300 flex-1"></div>
+                                  <span className="mx-3 px-3 py-0.5 text-[10px] font-extrabold text-slate-500 uppercase tracking-widest bg-slate-200/70 rounded-full border border-slate-300">
+                                    OR
+                                  </span>
+                                  <div className="border-t border-dashed border-slate-300 flex-1"></div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Row 4: Day Thresholds & Rates */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                            Min Days Required (Threshold)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="31"
+                            value={conditionForm.minDays}
+                            onChange={(e) => setConditionForm((p) => ({ ...p, minDays: e.target.value }))}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-semibold"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                            Low Tier Days
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="31"
+                            value={conditionForm.lowTierDays}
+                            onChange={(e) => setConditionForm((p) => ({ ...p, lowTierDays: e.target.value }))}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-semibold"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                            Low Tier Rate (₹/day) <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            required
+                            value={conditionForm.lowTierRate}
+                            onChange={(e) => setConditionForm((p) => ({ ...p, lowTierRate: e.target.value }))}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-mono font-bold text-amber-700"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Row 5: High Tier Days & Rate */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                            High Tier Days
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="31"
+                            value={conditionForm.highTierDays}
+                            onChange={(e) => setConditionForm((p) => ({ ...p, highTierDays: e.target.value }))}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-semibold"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                            High Tier Rate (₹/day) <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            required
+                            value={conditionForm.highTierRate}
+                            onChange={(e) => setConditionForm((p) => ({ ...p, highTierRate: e.target.value }))}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-mono font-bold text-emerald-700"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Row 6: Experience Override Settings */}
+                      <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
+                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={conditionForm.maleExpOverride}
+                            onChange={(e) => setConditionForm((p) => ({ ...p, maleExpOverride: e.target.checked }))}
+                            className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
+                          />
+                          <span>Enable Experience Override (e.g. Male worker experience rule)</span>
+                        </label>
+                        {conditionForm.maleExpOverride && (
+                          <div className="pl-6 pt-1 flex items-center gap-3">
+                            <div>
+                              <label className="block text-xs text-slate-500 mb-1">
+                                Experience Threshold (Years)
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={conditionForm.maleExpThreshold}
+                                onChange={(e) => setConditionForm((p) => ({ ...p, maleExpThreshold: e.target.value }))}
+                                className="w-32 border border-slate-200 rounded-lg px-2.5 py-1 text-sm bg-white"
+                              />
+                            </div>
+                            <span className="text-xs text-slate-400 mt-4">
+                              Workers exceeding this experience receive the base Day Shift rate.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Row 7: Remarks */}
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">
+                          Remarks / Rule Description
+                        </label>
+                        <input
+                          type="text"
+                          value={conditionForm.remarks}
+                          onChange={(e) => setConditionForm((p) => ({ ...p, remarks: e.target.value }))}
+                          placeholder="e.g. Hostel Shift I Only or Combo shift rules"
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => setShowConditionModal(false)}
+                          className="px-4 py-2 border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-lg text-sm font-semibold transition"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition shadow-sm font-semibold"
+                        >
+                          {editingCondition ? "Update Hostel Rule" : "Save Hostel Rule"}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )
+            }
+          </div >
+        )}
+      </div >
+    </div >
   );
 }

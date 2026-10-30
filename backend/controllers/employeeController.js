@@ -8,11 +8,12 @@ const fs = require('fs');
 // @access  Private
 exports.getEmployeesByCompany = async (req, res) => {
   const { companyId, departmentId, status, isTrainee } = req.query;
-  if (!companyId)
-    return res.status(400).json({ message: "Company ID is required" });
 
   try {
-    const whereClause = { companyId };
+    const whereClause = {};
+    if (companyId) {
+      whereClause.companyId = companyId;
+    }
     if (departmentId) {
       whereClause.departmentId = departmentId;
     }
@@ -30,6 +31,7 @@ exports.getEmployeesByCompany = async (req, res) => {
     const employees = await Employee.findAll({
       where: whereClause,
       include: [
+        { model: Company, as: "company", attributes: ["id", "name"] },
         { model: Department, as: "department", attributes: ["id", "departmentname"] },
         { model: Designation, as: "designation", attributes: ["id", "name"] },
         { model: EmployerGrade, as: "grade", attributes: ["id", "name"] },
@@ -47,6 +49,8 @@ exports.getEmployeesByCompany = async (req, res) => {
       empData.age = emp.getAge();
       empData.retirementDate = emp.getRetirementDate();
       empData.fullName = emp.getFullName();
+      empData.employeeName = empData.fullName || empData.firstName;
+      empData.employeeCode = empData.curEmployeeCode || empData.employeeCode;
       return empData;
     });
 

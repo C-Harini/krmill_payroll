@@ -33,6 +33,8 @@ const Company = db.Company;
 const Designation = db.Designation;
 const EmployerGrade = db.EmployerGrade;
 const EmployeeSalaryMaster = db.EmployeeSalaryMaster;
+const Attendance = db.Attendance;
+const moment = require("moment");
 
 /* ================================================================
    HELPERS
@@ -64,6 +66,115 @@ const SALARY_REPORT_TYPES = [
   "without_weekoff",
 ];
 
+const DAY_MAP = {
+  SUNDAY: 0,
+  MONDAY: 1,
+  TUESDAY: 2,
+  WEDNESDAY: 3,
+  THURSDAY: 4,
+  FRIDAY: 5,
+  SATURDAY: 6,
+};
+
+/**
+ * Calculate week-off days worked for a list of salary records.
+ * Returns a Map: employeeId -> weekOffDaysWorked
+ */
+const getWeekOffWorkedMap = async (records, month, year) => {
+  const map = new Map();
+  if (!records || records.length === 0) return map;
+
+  const employeeIds = [
+    ...new Set(
+      records
+        .map((r) => r.employeeId || r.employee?.id)
+        .filter(Boolean),
+    ),
+  ];
+  if (employeeIds.length === 0) return map;
+
+  const m = parseInt(month) || records[0]?.salaryMonth || 1;
+  const y = parseInt(year) || records[0]?.salaryYear || new Date().getFullYear();
+
+  const start = moment({ year: y, month: m - 1, day: 1 })
+    .startOf("month")
+    .format("YYYY-MM-DD");
+  const end = moment({ year: y, month: m - 1, day: 1 })
+    .endOf("month")
+    .format("YYYY-MM-DD");
+
+  const empOffDays = new Map();
+  records.forEach((r) => {
+    const emp = r.employee;
+    const offStr = (emp?.weeklyOff || "Sunday").trim().toUpperCase();
+    const offDays = [];
+    offStr.split(",").forEach((d) => {
+      const trimmed = d.trim();
+      if (DAY_MAP[trimmed] !== undefined) {
+        offDays.push(DAY_MAP[trimmed]);
+      }
+    });
+    const empId = r.employeeId || emp?.id;
+    if (empId) {
+      empOffDays.set(empId, offDays.length > 0 ? offDays : [0]);
+    }
+  });
+
+  try {
+    const attRecords = await Attendance.findAll({
+      where: {
+        employeeId: { [Op.in]: employeeIds },
+        attendanceDate: { [Op.between]: [start, end] },
+        [Op.or]: [
+          {
+            status: {
+              [Op.in]: [
+                "Present",
+                "Present with Permission",
+                "Present/Leave (P/L)",
+                "Present/Leave",
+                "Half Day",
+                "Late Present",
+              ],
+            },
+          },
+          {
+            status: "Week Off",
+            workingHours: { [Op.gt]: 0 },
+          },
+        ],
+      },
+      attributes: ["employeeId", "attendanceDate", "status", "workingHours"],
+      raw: true,
+    });
+
+    attRecords.forEach((att) => {
+      const offDays = empOffDays.get(att.employeeId) || [0];
+      const dayOfWeek = moment(att.attendanceDate).day();
+      const isWO = offDays.includes(dayOfWeek) || att.status === "Week Off";
+      if (isWO) {
+        let daysWorked = 1;
+        if (
+          att.status === "Half Day" ||
+          att.status === "Present/Leave (P/L)" ||
+          att.status === "Present/Leave"
+        ) {
+          daysWorked = 0.5;
+        } else if (att.status === "Week Off") {
+          const hrs = parseFloat(att.workingHours || 0);
+          daysWorked = hrs >= 4 && hrs < 7 ? 0.5 : 1;
+        }
+        const prev = map.get(att.employeeId) || 0;
+        map.set(att.employeeId, prev + daysWorked);
+      }
+    });
+  } catch (err) {
+    console.error("[getWeekOffWorkedMap] error:", err.message);
+  }
+
+  return map;
+};
+
 /**
  * Compute the "grand total days" for a salary record depending on
  * the selected report type.
@@ -71,8 +182,8 @@ const SALARY_REPORT_TYPES = [
  * salary_report  → presentDays (base, no adjustment)
  * with_el        → presentDays + paidLeaveDays
  * without_el     → presentDays  (EL shown in separate col, not added)
- * with_weekoff   → presentDays + weekOffDays
- * without_weekoff → Math.max(0, presentDays - weekOffDays)
+ * with_weekoff   → presentDays + weekOffDays (regular worked + worked WO)
+ * without_weekoff → presentDays (regular worked without worked WO)
  */
 const computeGrandTotal = (r, reportType) => {
   const present = toNum(r.presentDays);
@@ -84,9 +195,9 @@ const computeGrandTotal = (r, reportType) => {
     case "without_el":
       return present; // EL column separate
     case "with_weekoff":
-      return present + wo;
+      return present + wo; // regularPresent + workedWO
     case "without_weekoff":
-      return Math.max(0, present - wo);
+      return Math.max(0, present - wo); // fullPresent - workedWO
     default:
       return present; // salary_report
   }
@@ -261,7 +372,20 @@ const salaryIncludes = (empWhere = {}) => [
   { model: SalaryGenerationDetail, as: "details", required: false },
 ];
 
-const baseOrder = [["employeeId", "ASC"]];
+const baseOrder = [
+  [{ model: Employee, as: "employee" }, "firstName", "ASC"],
+  ["employeeId", "ASC"],
+];
+
+const sortByNameAsc = (records) => {
+  if (!Array.isArray(records)) return records;
+  return records.sort((a, b) => {
+    const nameA = (a.employee?.firstName || a.employee?.fullName || a.employee?.name || "").trim().toLowerCase();
+    const nameB = (b.employee?.firstName || b.employee?.fullName || b.employee?.name || "").trim().toLowerCase();
+    if (nameA !== nameB) return nameA.localeCompare(nameB);
+    return (a.employee?.curEmployeeCode || a.employee?.employeeCode || "").localeCompare(b.employee?.curEmployeeCode || b.employee?.employeeCode || "");
+  });
+};
 
 const enrichWithDeptDesig = async (records) => {
   const empIds = [...new Set(records.map((r) => r.employeeId).filter(Boolean))];
@@ -274,13 +398,13 @@ const enrichWithDeptDesig = async (records) => {
       {
         model: Department,
         as: "department",
-        attributes: ["id", "departmentname"],
+        attributes: ["id", "departmentname", "acronym"],
         required: false,
       },
       {
         model: Designation,
         as: "designation",
-        attributes: ["id", "name"],
+        attributes: ["id", "name", "acronym"],
         required: false,
       },
       {
@@ -404,10 +528,13 @@ const buildWhere = (query) => {
 const groupByDept = (rows) => {
   const map = {};
   rows.forEach((r) => {
-    const dept = r.employee?.department?.departmentname || "Unassigned";
+    const dept = r.employee?.department?.acronym || r.employee?.department?.departmentname || "Unassigned";
     if (!map[dept]) map[dept] = { records: [], total: 0 };
     map[dept].records.push(r);
     map[dept].total += toNum(r.netSalary);
+  });
+  Object.values(map).forEach((d) => {
+    sortByNameAsc(d.records);
   });
   return map;
 };
@@ -463,13 +590,36 @@ exports.getSalaryReport = async (req, res) => {
     const showWO =
       reportType === "with_weekoff" || reportType === "without_weekoff";
 
+    const woWorkedMap = showWO
+      ? await getWeekOffWorkedMap(enrichedRows, month, year)
+      : new Map();
+
     const enriched = enrichedRows.map((r) => {
       const { earnings, deductions } = buildBreakdown(
         r.details || [],
         r.attnIncentive,
       );
 
-      const grandTotalDays = computeGrandTotal(r, reportType);
+      const totalPresentDays = toNum(r.presentDays);
+      let presentDays = totalPresentDays;
+      let weekOffDays = toNum(r.weekOffDays);
+      let grandTotalDays = totalPresentDays;
+
+      if (reportType === "with_weekoff") {
+        const woWorked = woWorkedMap.get(r.employeeId) || 0;
+        presentDays = Math.max(0, totalPresentDays - woWorked);
+        weekOffDays = woWorked;
+        grandTotalDays = presentDays + weekOffDays;
+      } else if (reportType === "without_weekoff") {
+        const woWorked = woWorkedMap.get(r.employeeId) || 0;
+        presentDays = totalPresentDays;
+        weekOffDays = woWorked;
+        grandTotalDays = Math.max(0, totalPresentDays - woWorked);
+      } else if (reportType === "with_el") {
+        grandTotalDays = totalPresentDays + toNum(r.paidLeaveDays);
+      } else {
+        grandTotalDays = totalPresentDays;
+      }
 
       const isDaily =
         (r.empSalaryType || "").toLowerCase() === "daily" ||
@@ -500,11 +650,11 @@ exports.getSalaryReport = async (req, res) => {
         empSalaryType: r.empSalaryType,
         empPfType: r.empPfType,
         workingDays: r.workingDays,
-        presentDays: toNum(r.presentDays),
+        presentDays,
         absentDays: toNum(r.absentDays),
         paidLeaveDays: toNum(r.paidLeaveDays), // EL days
         unpaidLeaveDays: toNum(r.unpaidLeaveDays),
-        weekOffDays: toNum(r.weekOffDays),
+        weekOffDays,
         nhFhDays: toNum(r.nhFhDays),
         grandTotalDays, // adjusted total
         dailyWage: computedDailyWage,
@@ -529,6 +679,8 @@ exports.getSalaryReport = async (req, res) => {
         company: r.company,
       };
     });
+
+    sortByNameAsc(enriched);
 
     const grouped = groupByDept(enriched);
 
@@ -661,16 +813,48 @@ exports.downloadSalaryReportExcel = async (req, res) => {
 
     const enrichedRows = await enrichWithDeptDesig(rows);
 
+    const showEL = reportType === "with_el" || reportType === "without_el";
+    const showWO =
+      reportType === "with_weekoff" || reportType === "without_weekoff";
+
+    const woWorkedMap = showWO
+      ? await getWeekOffWorkedMap(enrichedRows, month, year)
+      : new Map();
+
     const records = enrichedRows.map((r) => {
       const { earnings, deductions } = buildBreakdown(
         r.details || [],
         r.attnIncentive,
       );
+
+      const totalPresentDays = toNum(r.presentDays);
+      let presentDays = totalPresentDays;
+      let weekOffDays = toNum(r.weekOffDays);
+      let grandTotalDays = totalPresentDays;
+
+      if (reportType === "with_weekoff") {
+        const woWorked = woWorkedMap.get(r.employeeId) || 0;
+        presentDays = Math.max(0, totalPresentDays - woWorked);
+        weekOffDays = woWorked;
+        grandTotalDays = presentDays + weekOffDays;
+      } else if (reportType === "without_weekoff") {
+        const woWorked = woWorkedMap.get(r.employeeId) || 0;
+        presentDays = totalPresentDays;
+        weekOffDays = woWorked;
+        grandTotalDays = Math.max(0, totalPresentDays - woWorked);
+      } else if (reportType === "with_el") {
+        grandTotalDays = totalPresentDays + toNum(r.paidLeaveDays);
+      } else {
+        grandTotalDays = totalPresentDays;
+      }
+
       return {
         ...r.toJSON(),
+        presentDays,
+        weekOffDays,
+        grandTotalDays,
         earnings,
         deductions,
-        grandTotalDays: computeGrandTotal(r, reportType),
         employee: {
           ...r.toJSON().employee,
           department: r.employee?.department || null,
@@ -680,12 +864,10 @@ exports.downloadSalaryReportExcel = async (req, res) => {
       };
     });
 
+    sortByNameAsc(records);
+
     const name = rows[0]?.company?.name || "Company";
     const monthLabel = `${getMonthName(month)} ${year}`;
-
-    const showEL = reportType === "with_el" || reportType === "without_el";
-    const showWO =
-      reportType === "with_weekoff" || reportType === "without_weekoff";
 
     const mgmtIds = await getManagementGradeIds();
     const isMgmtRecord = (r) => {
@@ -854,18 +1036,6 @@ function addStaffSheet(
   const { showEL, showWO, reportType } = opts;
   const ws = wb.addWorksheet(sheetName);
 
-  ws.mergeCells("A1:Z1");
-  setCell(ws, "A1", name, { bold: true, size: 13 }, "center");
-  ws.mergeCells("A2:Z2");
-  setCell(
-    ws,
-    "A2",
-    `Salary for the month of ${monthLabel} [${reportTypeLabel(reportType)}]`,
-    { size: 11 },
-    "center",
-  );
-  ws.addRow([]);
-
   // Build extra column for EL or WO
   const elCol = showEL
     ? [reportType === "with_el" ? "EL Days (+)" : "EL Days"]
@@ -879,6 +1049,7 @@ function addStaffSheet(
     "S. No",
     "Name",
     "T. No",
+    "Dept",
     "Desig",
     "Per Month Salary",
     "W.Days",
@@ -891,7 +1062,7 @@ function addStaffSheet(
     "HRA",
     "Spl. Allo",
     "Conv",
-    ...(isMgmt ? ["Ent. Allo"] : []),
+    "Ent. Allo",
     "NH/FH Salary",
     "Attn Incentive",
     "Earnings",
@@ -909,15 +1080,29 @@ function addStaffSheet(
     "Net",
   ];
 
+  const lastColLetter = colToLetter(headers.length);
+  ws.mergeCells(`A1:${lastColLetter}1`);
+  setCell(ws, "A1", name, { bold: true, size: 13 }, "center");
+  ws.mergeCells(`A2:${lastColLetter}2`);
+  setCell(
+    ws,
+    "A2",
+    `Salary for the month of ${monthLabel} [${reportTypeLabel(reportType)}]`,
+    { size: 11 },
+    "center",
+  );
+  ws.addRow([]);
+
   const headerRow = ws.addRow(headers);
   styleHeaderRow(headerRow, "#1F3864");
   ws.getRow(4).height = 22;
   ws.getColumn(1).width = 6;
   ws.getColumn(2).width = 24;
   ws.getColumn(3).width = 8;
-  ws.getColumn(4).width = 14;
+  ws.getColumn(4).width = 16;
   ws.getColumn(5).width = 14;
-  for (let i = 6; i <= headers.length; i++) ws.getColumn(i).width = 11;
+  ws.getColumn(6).width = 14;
+  for (let i = 7; i <= headers.length; i++) ws.getColumn(i).width = 11;
 
   let sno = 1;
   records.forEach((r) => {
@@ -928,7 +1113,7 @@ function addStaffSheet(
       (e.hra || 0) +
       (e.spl || 0) +
       (e.conv || 0) +
-      (isMgmt ? e.ent || 0 : 0) +
+      (e.ent || 0) +
       (e.nhfh || 0) +
       (e.incentive || 0);
     const totalDedu =
@@ -966,7 +1151,8 @@ function addStaffSheet(
       sno++,
       r.employee?.firstName || "",
       r.employee?.newEmployeeCode ? `${r.employee.curEmployeeCode || ''} / ${r.employee.newEmployeeCode}` : (r.employee?.curEmployeeCode || r.employee?.employeeCode || ""),
-      r.employee?.designation?.name || "",
+      r.employee?.department?.acronym || r.employee?.department?.departmentname || "",
+      r.employee?.designation?.acronym || r.employee?.designation?.name || "",
       salaryVal,
       toNum(r.presentDays),
       toNum(r.nhFhDays),
@@ -978,7 +1164,7 @@ function addStaffSheet(
       e.hra || 0,
       e.spl || 0,
       e.conv || 0,
-      ...(isMgmt ? [e.ent || 0] : []),
+      e.ent || 0,
       e.nhfh || 0,
       e.incentive || 0,
       earnings,
@@ -998,11 +1184,11 @@ function addStaffSheet(
     const row = ws.addRow(rowData);
     styleDataRow(row, sno % 2 === 0);
     row.eachCell((cell, colNum) => {
-      if (colNum >= 5) cell.alignment = { horizontal: "right" };
+      if (colNum >= 6) cell.alignment = { horizontal: "right" };
     });
 
     // Colour-code EL / WO cells
-    const baseColCount = 26 + (isMgmt ? 1 : 0);
+    const baseColCount = 28;
     if (showEL) {
       const elCellIdx = baseColCount + 1;
       row.getCell(elCellIdx).fill = {
@@ -1035,7 +1221,7 @@ function addStaffSheet(
 
   const dataEnd = ws.rowCount;
   const totalRow = ws.addRow(["Total", ...Array(headers.length - 1).fill("")]);
-  for (let col = 5; col <= headers.length; col++) {
+  for (let col = 6; col <= headers.length; col++) {
     const letter = colToLetter(col);
     totalRow.getCell(col).value = {
       formula: `SUM(${letter}5:${letter}${dataEnd})`,
@@ -1046,7 +1232,7 @@ function addStaffSheet(
 
   const grandNet = records.reduce((s, r) => s + toNum(r.netSalary), 0);
   const wordsRow = ws.addRow([numberToWords(grandNet) + " ONLY"]);
-  ws.mergeCells(`A${ws.rowCount}:Z${ws.rowCount}`);
+  ws.mergeCells(`A${ws.rowCount}:${lastColLetter}${ws.rowCount}`);
   wordsRow.getCell(1).font = { italic: true, size: 9 };
 }
 
@@ -1054,18 +1240,6 @@ function addStaffSheet(
 function addWorkerSheet(wb, sheetName, records, name, monthLabel, opts = {}) {
   const { showEL, showWO, reportType } = opts;
   const ws = wb.addWorksheet(sheetName);
-
-  ws.mergeCells("A1:AC1");
-  setCell(ws, "A1", name, { bold: true, size: 13 }, "center");
-  ws.mergeCells("A2:AC2");
-  setCell(
-    ws,
-    "A2",
-    `Worker wages for the month of ${monthLabel} [${reportTypeLabel(reportType)}]`,
-    { size: 11 },
-    "center",
-  );
-  ws.addRow([]);
 
   const elCol = showEL
     ? [reportType === "with_el" ? "EL Days (+)" : "EL Days"]
@@ -1091,6 +1265,7 @@ function addWorkerSheet(wb, sheetName, records, name, monthLabel, opts = {}) {
     "HRA",
     "Spl. Allo",
     "Conv",
+    "Ent. Allo",
     "NH/FH Salary",
     "Attn Incentive",
     "Earnings",
@@ -1108,6 +1283,19 @@ function addWorkerSheet(wb, sheetName, records, name, monthLabel, opts = {}) {
     "Net",
     "Net (Round)",
   ];
+
+  const lastColLetter = colToLetter(headers.length);
+  ws.mergeCells(`A1:${lastColLetter}1`);
+  setCell(ws, "A1", name, { bold: true, size: 13 }, "center");
+  ws.mergeCells(`A2:${lastColLetter}2`);
+  setCell(
+    ws,
+    "A2",
+    `Worker wages for the month of ${monthLabel} [${reportTypeLabel(reportType)}]`,
+    { size: 11 },
+    "center",
+  );
+  ws.addRow([]);
 
   const headerRow = ws.addRow(headers);
   styleHeaderRow(headerRow, "#1F3864");
@@ -1127,6 +1315,7 @@ function addWorkerSheet(wb, sheetName, records, name, monthLabel, opts = {}) {
       (e.hra || 0) +
       (e.spl || 0) +
       (e.conv || 0) +
+      (e.ent || 0) +
       (e.nhfh || 0) +
       (e.incentive || 0) +
       (e.arrears || 0);
@@ -1159,7 +1348,7 @@ function addWorkerSheet(wb, sheetName, records, name, monthLabel, opts = {}) {
       sno++,
       r.employee?.firstName || "",
       r.employee?.newEmployeeCode ? `${r.employee.curEmployeeCode || ''} / ${r.employee.newEmployeeCode}` : (r.employee?.curEmployeeCode || r.employee?.employeeCode || ""),
-      r.employee?.department?.departmentname || "",
+      r.employee?.department?.acronym || r.employee?.department?.departmentname || "",
       wagesPerDay,
       toNum(r.presentDays),
       toNum(r.nhFhDays),
@@ -1171,6 +1360,7 @@ function addWorkerSheet(wb, sheetName, records, name, monthLabel, opts = {}) {
       e.hra || 0,
       e.spl || 0,
       e.conv || 0,
+      e.ent || 0,
       e.nhfh || 0,
       e.incentive || 0,
       earnings,
@@ -1194,7 +1384,7 @@ function addWorkerSheet(wb, sheetName, records, name, monthLabel, opts = {}) {
       if (colNum >= 5) cell.alignment = { horizontal: "right" };
     });
 
-    const baseColCount = 28;
+    const baseColCount = 29;
     if (showEL) {
       const elCellIdx = baseColCount + 1;
       row.getCell(elCellIdx).fill = {
@@ -1241,7 +1431,7 @@ function addWorkerSheet(wb, sheetName, records, name, monthLabel, opts = {}) {
     0,
   );
   const wordsRow = ws.addRow([numberToWords(grandNet) + " ONLY"]);
-  ws.mergeCells(`A${ws.rowCount}:AC${ws.rowCount}`);
+  ws.mergeCells(`A${ws.rowCount}:${lastColLetter}${ws.rowCount}`);
   wordsRow.getCell(1).font = { italic: true, size: 9 };
 }
 
@@ -1276,16 +1466,48 @@ exports.downloadSalaryReportPDF = async (req, res) => {
 
     const enrichedRows = await enrichWithDeptDesig(rows);
 
+    const showEL = reportType === "with_el" || reportType === "without_el";
+    const showWO =
+      reportType === "with_weekoff" || reportType === "without_weekoff";
+
+    const woWorkedMap = showWO
+      ? await getWeekOffWorkedMap(enrichedRows, month, year)
+      : new Map();
+
     const records = enrichedRows.map((r) => {
       const { earnings, deductions } = buildBreakdown(
         r.details || [],
         r.attnIncentive,
       );
+
+      const totalPresentDays = toNum(r.presentDays);
+      let presentDays = totalPresentDays;
+      let weekOffDays = toNum(r.weekOffDays);
+      let grandTotalDays = totalPresentDays;
+
+      if (reportType === "with_weekoff") {
+        const woWorked = woWorkedMap.get(r.employeeId) || 0;
+        presentDays = Math.max(0, totalPresentDays - woWorked);
+        weekOffDays = woWorked;
+        grandTotalDays = presentDays + weekOffDays;
+      } else if (reportType === "without_weekoff") {
+        const woWorked = woWorkedMap.get(r.employeeId) || 0;
+        presentDays = totalPresentDays;
+        weekOffDays = woWorked;
+        grandTotalDays = Math.max(0, totalPresentDays - woWorked);
+      } else if (reportType === "with_el") {
+        grandTotalDays = totalPresentDays + toNum(r.paidLeaveDays);
+      } else {
+        grandTotalDays = totalPresentDays;
+      }
+
       return {
         ...r.toJSON(),
+        presentDays,
+        weekOffDays,
+        grandTotalDays,
         earnings,
         deductions,
-        grandTotalDays: computeGrandTotal(r, reportType),
         employee: {
           ...r.toJSON().employee,
           department: r.employee?.department || null,
@@ -1294,9 +1516,7 @@ exports.downloadSalaryReportPDF = async (req, res) => {
       };
     });
 
-    const showEL = reportType === "with_el" || reportType === "without_el";
-    const showWO =
-      reportType === "with_weekoff" || reportType === "without_weekoff";
+    sortByNameAsc(records);
 
     const name = rows[0]?.company?.name || "Company";
     const doc = new PDFDocument({
@@ -1322,19 +1542,21 @@ exports.downloadSalaryReportPDF = async (req, res) => {
     // Build column definitions dynamically
     const baseCols = [
       { label: "S.No", width: 26 },
-      { label: "Name", width: 105 },
-      { label: "T.No", width: 42 },
-      { label: "Desig/Dept", width: 68 },
-      { label: "Sal/Day", width: 52 },
+      { label: "Name", width: 100 },
+      { label: "T.No", width: 44 },
+      { label: "Dept", width: 68 },
+      { label: "Desig", width: 55 },
+      { label: "Sal/Day", width: 50 },
       { label: "W.Days", width: 38 },
       { label: "NH/FH", width: 34 },
       { label: "EL", width: 26 },
       { label: "AB", width: 26 },
       { label: "WH", width: 26 },
-      { label: "Basic", width: 52 },
-      { label: "HRA", width: 42 },
-      { label: "Spl", width: 48 },
-      { label: "Conv", width: 42 },
+      { label: "Basic", width: 50 },
+      { label: "HRA", width: 40 },
+      { label: "Spl", width: 46 },
+      { label: "Conv", width: 40 },
+      { label: "Ent", width: 40 },
       { label: "Earnings", width: 55 },
       { label: "PF", width: 40 },
       { label: "ESI", width: 36 },
@@ -1423,150 +1645,129 @@ exports.downloadSalaryReportPDF = async (req, res) => {
 
     drawHeader();
 
-    const grouped = groupByDept(records);
     let sno = 1;
     let grandNet = 0;
 
-    Object.entries(grouped).forEach(([dept, { records: dRec }]) => {
+    records.forEach((r) => {
       if (y > 510) drawHeader(true);
-      doc
-        .fontSize(7.5)
-        .font("Helvetica-Bold")
-        .fillColor("#1F3864")
-        .text(`Department: ${dept}`, 25, y + 2);
-      y += 13;
+      const e = r.earnings || {};
+      const d = r.deductions || {};
+      const earnings =
+        (e.basic || 0) +
+        (e.hra || 0) +
+        (e.spl || 0) +
+        (e.conv || 0) +
+        (e.ent || 0) +
+        (e.nhfh || 0) +
+        (e.incentive || 0);
+      const totalDedu =
+        (d.pf || 0) +
+        (d.esi || 0) +
+        (d.adv || 0) +
+        (d.mess || 0) +
+        (d.store || 0) +
+        (d.other || 0) +
+        (d.eb || 0) +
+        (d.loan || 0);
 
-      dRec.forEach((r) => {
-        if (y > 510) drawHeader(true);
-        const e = r.earnings || {};
-        const d = r.deductions || {};
-        const earnings =
-          (e.basic || 0) +
-          (e.hra || 0) +
-          (e.spl || 0) +
-          (e.conv || 0) +
-          (e.nhfh || 0) +
-          (e.incentive || 0);
-        const totalDedu =
-          (d.pf || 0) +
-          (d.esi || 0) +
-          (d.adv || 0) +
-          (d.mess || 0) +
-          (d.store || 0) +
-          (d.other || 0) +
-          (d.eb || 0) +
-          (d.loan || 0);
+      const isDaily =
+        (r.empCategory || "").toLowerCase() === "worker" ||
+        (r.empSalaryType || "").toLowerCase() === "daily" ||
+        (r.employee?.workingType || "").toLowerCase() === "daily";
+      const workedDays = toNum(r.presentDays) + toNum(r.paidLeaveDays);
+      const earnedBasicSpl = toNum(r.basicSalary) + toNum(e.spl || 0);
+      const dailyWageVal =
+        toNum(r.salaryMaster?.grossSalary) ||
+        toNum(r.salaryMaster?.basicSalary) ||
+        toNum(r.employee?.basicSalary) ||
+        (workedDays > 0 ? Math.round(earnedBasicSpl / workedDays) : 0);
+      const monthlySalVal =
+        toNum(r.salaryMaster?.grossSalary) ||
+        toNum(r.salaryMaster?.monthlySalary) ||
+        toNum(r.employee?.basicSalary) ||
+        toNum(r.totalEarnings);
+      const salaryVal = isDaily ? dailyWageVal : monthlySalVal;
 
-        const isDaily =
-          (r.empCategory || "").toLowerCase() === "worker" ||
-          (r.empSalaryType || "").toLowerCase() === "daily" ||
-          (r.employee?.workingType || "").toLowerCase() === "daily";
-        const workedDays = toNum(r.presentDays) + toNum(r.paidLeaveDays);
-        const earnedBasicSpl = toNum(r.basicSalary) + toNum(e.spl || 0);
-        const dailyWageVal =
-          toNum(r.salaryMaster?.grossSalary) ||
-          toNum(r.salaryMaster?.basicSalary) ||
-          toNum(r.employee?.basicSalary) ||
-          (workedDays > 0 ? Math.round(earnedBasicSpl / workedDays) : 0);
-        const monthlySalVal =
-          toNum(r.salaryMaster?.grossSalary) ||
-          toNum(r.salaryMaster?.monthlySalary) ||
-          toNum(r.employee?.basicSalary) ||
-          toNum(r.totalEarnings);
-        const salaryVal = isDaily ? dailyWageVal : monthlySalVal;
-
-        const baseCells = [
-          sno,
-          r.employee?.firstName || "",
-          r.employee?.newEmployeeCode ? `${r.employee.curEmployeeCode || ''} / ${r.employee.newEmployeeCode}` : (r.employee?.curEmployeeCode || r.employee?.employeeCode || ""),
-          r.employee?.designation?.name ||
-            r.employee?.department?.departmentname ||
-            "",
-          salaryVal,
-          toNum(r.presentDays),
-          toNum(r.nhFhDays),
-          toNum(r.paidLeaveDays),
-          toNum(r.absentDays),
-          toNum(r.weekOffDays),
-          e.basic || 0,
-          e.hra || 0,
-          e.spl || 0,
-          e.conv || 0,
-          earnings,
-          d.pf || 0,
-          d.esi || 0,
-          d.adv || 0,
-          d.mess || 0,
-          d.store || 0,
-          (d.other || 0) + (d.loan || 0),
-          d.eb || 0,
-          totalDedu,
-        ];
-        const extraVals = extraCols.map((ec) => {
-          if (ec.type === "el") return toNum(r.paidLeaveDays);
-          if (ec.type === "wo") return toNum(r.weekOffDays);
-          if (ec.type === "adj") return toNum(r.grandTotalDays);
-          return "";
-        });
-        const cells = [...baseCells, ...extraVals, toNum(r.netSalary)];
-
-        const bg = sno % 2 === 0 ? "#F0F4FF" : "#FFFFFF";
-        let x = 25;
-        doc.fontSize(6.5).font("Helvetica");
-        cells.forEach((val, ci) => {
-          const col = cols[ci];
-          const isEl = col?.type === "el";
-          const isWo = col?.type === "wo";
-          const cellBg = isEl
-            ? reportType === "with_el"
-              ? "#D1FAE5"
-              : "#FFF7ED"
-            : isWo
-              ? reportType === "with_weekoff"
-                ? "#EDE9FE"
-                : "#FEF3C7"
-              : bg;
-
-          doc.rect(x, y, col.width, 13).fillAndStroke(cellBg, "#D0D0D0");
-          doc
-            .fillColor(
-              isEl
-                ? reportType === "with_el"
-                  ? "#065F46"
-                  : "#92400E"
-                : isWo
-                  ? reportType === "with_weekoff"
-                    ? "#5B21B6"
-                    : "#92400E"
-                  : "black",
-            )
-            .text(
-              ci <= 3
-                ? String(val)
-                : val !== 0
-                  ? val.toLocaleString("en-IN")
-                  : "-",
-              x + 2,
-              y + 3,
-              { width: col.width - 4, align: ci <= 3 ? "left" : "right" },
-            );
-          x += col.width;
-        });
-        y += 13;
-        sno++;
-        grandNet += toNum(r.netSalary);
+      const baseCells = [
+        sno,
+        r.employee?.firstName || "",
+        r.employee?.newEmployeeCode ? `${r.employee.curEmployeeCode || ''} / ${r.employee.newEmployeeCode}` : (r.employee?.curEmployeeCode || r.employee?.employeeCode || ""),
+        r.employee?.department?.acronym || r.employee?.department?.departmentname || "",
+        r.employee?.designation?.acronym || r.employee?.designation?.name || "",
+        salaryVal,
+        toNum(r.presentDays),
+        toNum(r.nhFhDays),
+        toNum(r.paidLeaveDays),
+        toNum(r.absentDays),
+        toNum(r.weekOffDays),
+        e.basic || 0,
+        e.hra || 0,
+        e.spl || 0,
+        e.conv || 0,
+        e.ent || 0,
+        earnings,
+        d.pf || 0,
+        d.esi || 0,
+        d.adv || 0,
+        d.mess || 0,
+        d.store || 0,
+        (d.other || 0) + (d.loan || 0),
+        d.eb || 0,
+        totalDedu,
+      ];
+      const extraVals = extraCols.map((ec) => {
+        if (ec.type === "el") return toNum(r.paidLeaveDays);
+        if (ec.type === "wo") return toNum(r.weekOffDays);
+        if (ec.type === "adj") return toNum(r.grandTotalDays);
+        return "";
       });
+      const cells = [...baseCells, ...extraVals, toNum(r.netSalary)];
 
-      const dTotal = dRec.reduce((s, r) => s + toNum(r.netSalary), 0);
-      if (y > 510) drawHeader(true);
-      doc
-        .fontSize(7)
-        .font("Helvetica-Bold")
-        .fillColor("#000")
-        .text(`Dept Total: ₹${dTotal.toLocaleString("en-IN")}`, 25, y + 2, {
-          align: "right",
-        });
-      y += 15;
+      const bg = sno % 2 === 0 ? "#F0F4FF" : "#FFFFFF";
+      let x = 25;
+      doc.fontSize(6.5).font("Helvetica");
+      cells.forEach((val, ci) => {
+        const col = cols[ci];
+        const isEl = col?.type === "el";
+        const isWo = col?.type === "wo";
+        const cellBg = isEl
+          ? reportType === "with_el"
+            ? "#D1FAE5"
+            : "#FFF7ED"
+          : isWo
+            ? reportType === "with_weekoff"
+              ? "#EDE9FE"
+              : "#FEF3C7"
+            : bg;
+
+        doc.rect(x, y, col.width, 13).fillAndStroke(cellBg, "#D0D0D0");
+        doc
+          .fillColor(
+            isEl
+              ? reportType === "with_el"
+                ? "#065F46"
+                : "#92400E"
+              : isWo
+                ? reportType === "with_weekoff"
+                  ? "#5B21B6"
+                  : "#92400E"
+                : "black",
+          )
+          .text(
+            ci <= 4
+              ? String(val)
+              : val !== 0
+                ? val.toLocaleString("en-IN")
+                : "-",
+            x + 2,
+            y + 3,
+            { width: col.width - 4, align: ci <= 4 ? "left" : "right" },
+          );
+        x += col.width;
+      });
+      y += 13;
+      sno++;
+      grandNet += toNum(r.netSalary);
     });
 
     if (y > 510) {
@@ -1629,6 +1830,8 @@ exports.getBankStatement = async (req, res) => {
         designation: r.employee?.designation || null,
       },
     }));
+
+    sortByNameAsc(records);
 
     const grouped = groupByDept(records);
     const grandTotal = records.reduce((s, r) => s + r.netRounded, 0);
@@ -1734,6 +1937,8 @@ exports.downloadBankStatementPDF = async (req, res) => {
         department: r.employee?.department || null,
       },
     }));
+
+    sortByNameAsc(mappedRows);
 
     const grouped = groupByDept(mappedRows);
     let sno = 1,
@@ -1882,6 +2087,8 @@ exports.downloadBankStatementExcel = async (req, res) => {
         department: r.employee?.department || null,
       },
     }));
+
+    sortByNameAsc(mappedRows);
 
     const grouped = groupByDept(mappedRows);
     let sno = 1,
@@ -2244,6 +2451,7 @@ exports.getPayslipList = async (req, res) => {
     });
 
     const enrichedRows = await enrichWithDeptDesig(rows);
+    sortByNameAsc(enrichedRows);
     return res.json({ success: true, salaries: enrichedRows });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });

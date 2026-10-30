@@ -16,7 +16,7 @@ exports.testRoute = (req, res) => {
 
 // Get all salary structures
 exports.getEmployeeSalaries = async (req, res) => {
-    const { companyId, employeeId, status } = req.query;
+    const { companyId, employeeId, status, currentOnly } = req.query;
 
     if (!companyId) {
         return res.status(400).json({ message: 'Company ID is required' });
@@ -43,8 +43,26 @@ exports.getEmployeeSalaries = async (req, res) => {
                     include: [{ model: SalaryComponent, attributes: ['id', 'name', 'code', 'type'] }]
                 }
             ],
-            order: [['effectiveFrom', 'DESC'], ['createdAt', 'DESC']]
+            order: [['effectiveFrom', 'DESC'], ['id', 'DESC']]
         });
+
+        // When currentOnly is true (default for management view):
+        // Return only 1 salary structure per employee:
+        // Prefers status === 'Active', or the latest one by effectiveFrom & id.
+        if (currentOnly === 'true' || currentOnly === true) {
+            const employeeMap = new Map();
+            for (const sal of salaries) {
+                if (!employeeMap.has(sal.employeeId)) {
+                    employeeMap.set(sal.employeeId, sal);
+                } else {
+                    const existing = employeeMap.get(sal.employeeId);
+                    if (sal.status === 'Active' && existing.status !== 'Active') {
+                        employeeMap.set(sal.employeeId, sal);
+                    }
+                }
+            }
+            return res.status(200).json(Array.from(employeeMap.values()));
+        }
 
         res.status(200).json(salaries);
     } catch (error) {
@@ -58,7 +76,7 @@ exports.getCurrentSalary = async (req, res) => {
     const { employeeId } = req.params;
 
     try {
-        const salary = await EmployeeSalaryMaster.findOne({
+        let salary = await EmployeeSalaryMaster.findOne({
             where: { employeeId, status: 'Active', effectiveTo: null },
             include: [
                 { 
@@ -73,11 +91,34 @@ exports.getCurrentSalary = async (req, res) => {
                         attributes: ['id', 'name', 'code', 'type', 'calculationType'] 
                     }]
                 }
-            ]
+            ],
+            order: [['effectiveFrom', 'DESC'], ['id', 'DESC']]
         });
 
         if (!salary) {
-            return res.status(404).json({ message: 'No active salary found for this employee' });
+            // Fallback to latest salary record for this employee
+            salary = await EmployeeSalaryMaster.findOne({
+                where: { employeeId },
+                include: [
+                    { 
+                        model: Employee, 
+                        attributes: ['id', 'firstName', 'lastName', 'curEmployeeCode', 'newEmployeeCode', 'officialEmail']
+                    },
+                    { model: Company, attributes: ['id', 'name'] },
+                    {
+                        model: EmployeeSalaryComponent,
+                        include: [{ 
+                            model: SalaryComponent, 
+                            attributes: ['id', 'name', 'code', 'type', 'calculationType'] 
+                        }]
+                    }
+                ],
+                order: [['effectiveFrom', 'DESC'], ['id', 'DESC']]
+            });
+        }
+
+        if (!salary) {
+            return res.status(404).json({ message: 'No salary found for this employee' });
         }
 
         res.status(200).json(salary);
@@ -429,7 +470,8 @@ exports.reviseSalary = async (req, res) => {
 
     try {
         const currentSalary = await EmployeeSalaryMaster.findOne({
-            where: { employeeId, status: 'Active', effectiveTo: null },
+            where: { employeeId, status: 'Active' },
+            order: [['effectiveFrom', 'DESC'], ['id', 'DESC']],
             include: [{ model: EmployeeSalaryComponent }],
             transaction
         });
@@ -439,13 +481,23 @@ exports.reviseSalary = async (req, res) => {
             return res.status(404).json({ message: 'No active salary found for this employee' });
         }
 
-        const effectiveToDate = new Date(effectiveFrom);
-        effectiveToDate.setDate(effectiveToDate.getDate() - 1);
+        // Calculate day before effectiveFrom as YYYY-MM-DD
+        const effDateParts = effectiveFrom.split('-').map(Number);
+        const effDateUtc = new Date(Date.UTC(effDateParts[0], effDateParts[1] - 1, effDateParts[2]));
+        effDateUtc.setUTCDate(effDateUtc.getUTCDate() - 1);
+        const effectiveToDateStr = effDateUtc.toISOString().slice(0, 10);
         
-        await currentSalary.update({
-            effectiveTo: effectiveToDate,
-            status: 'Superseded'
-        }, { transaction });
+        // Update all previous active records to Revised
+        await EmployeeSalaryMaster.update({
+            effectiveTo: effectiveToDateStr,
+            status: 'Revised'
+        }, {
+            where: {
+                employeeId,
+                status: 'Active'
+            },
+            transaction
+        });
 
         const calculationResult = await calculateSalaryTotals(components, companyId || currentSalary.companyId, employeeId, transaction);
 

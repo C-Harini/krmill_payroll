@@ -46,6 +46,20 @@ const GRADE_LABELS = {
   },
 };
 
+/**
+ * Round off incentive amount: round off happens only if .5 or above.
+ * Fraction < 0.5 -> floor (e.g. 857.49 -> 857)
+ * Fraction >= 0.5 -> ceil (e.g. 857.50 -> 858)
+ */
+const roundIncentiveAmount = (val) => {
+  const num = parseFloat(val);
+  if (isNaN(num)) return 0;
+  const rounded2 = Math.round(num * 100) / 100;
+  const intPart = Math.floor(rounded2);
+  const fracPart = Math.round((rounded2 - intPart) * 100) / 100;
+  return fracPart >= 0.5 ? intPart + 1 : intPart;
+};
+
 const TierBadge = ({ tier }) => {
   if (!tier) return <span className="text-gray-400 text-xs">—</span>;
   return (
@@ -682,7 +696,7 @@ export default function AttendanceIncentiveManagement() {
         if (r.selected) {
           const bags = numBags;
           const threshold = r.minBagsThreshold || 45;
-          const incentiveAmount = bags >= threshold ? bags * (r.ratePerBag || rate) : 0;
+          const incentiveAmount = bags >= threshold ? roundIncentiveAmount(bags * (r.ratePerBag || rate)) : 0;
           return { ...r, bagsPacked: bags, incentiveAmount };
         }
         return r;
@@ -701,7 +715,7 @@ export default function AttendanceIncentiveManagement() {
           }
           const rate = parseFloat(r.ratePerBag) || 1.0;
           const threshold = r.minBagsThreshold || 45;
-          const incentiveAmount = bags >= threshold ? bags * rate : 0;
+          const incentiveAmount = bags >= threshold ? roundIncentiveAmount(bags * rate) : 0;
           return {
             ...r,
             selected: nextSelected,
@@ -724,7 +738,7 @@ export default function AttendanceIncentiveManagement() {
         }
         const rate = parseFloat(r.ratePerBag) || 1.0;
         const threshold = r.minBagsThreshold || 45;
-        const incentiveAmount = bags >= threshold ? bags * rate : 0;
+        const incentiveAmount = bags >= threshold ? roundIncentiveAmount(bags * rate) : 0;
         return {
           ...r,
           selected: checkAll,
@@ -744,7 +758,7 @@ export default function AttendanceIncentiveManagement() {
             const bags = parseInt(field === "bagsPacked" ? value : updated.bagsPacked, 10) || 0;
             const rate = parseFloat(field === "ratePerBag" ? value : updated.ratePerBag) || 1.0;
             const threshold = updated.minBagsThreshold || 45;
-            updated.incentiveAmount = bags >= threshold ? bags * rate : 0;
+            updated.incentiveAmount = bags >= threshold ? roundIncentiveAmount(bags * rate) : 0;
           }
           return updated;
         }
@@ -1714,7 +1728,7 @@ export default function AttendanceIncentiveManagement() {
         r.adjustedDays !== undefined ? r.adjustedDays : (r.totalDays || 0),
         escapeCsv(r.tier ? (r.tier === "high" ? "High" : "Low") : (r.incentive > 0 ? "Eligible" : "—")),
         r.ratePerDay || 0,
-        r.incentive || 0,
+        roundIncentiveAmount(r.incentive || 0),
         escapeCsv(r.note || (r.incentive === 0 ? "Not eligible" : "Eligible"))
       ].join(",");
     });
@@ -1724,7 +1738,7 @@ export default function AttendanceIncentiveManagement() {
 
     const summaryRows = [
       "",
-      `"TOTAL EMPLOYEES: ${dataToExport.length}","","","","","","","","","","ELIGIBLE: ${sumEligible}","TOTAL INCENTIVE: INR",${sumIncentive},""`
+      `"TOTAL EMPLOYEES: ${dataToExport.length}","","","","","","","","","","ELIGIBLE: ${sumEligible}","TOTAL INCENTIVE: INR",${roundIncentiveAmount(sumIncentive)},""`
     ];
 
     const csvContent = [
@@ -1789,7 +1803,7 @@ export default function AttendanceIncentiveManagement() {
     const sumIncentive = dataToExport.reduce((s, r) => s + (parseFloat(r.incentive) || 0), 0);
     const sumEligible = dataToExport.filter((r) => (parseFloat(r.incentive) || 0) > 0).length;
     const sumIneligible = dataToExport.length - sumEligible;
-    const avgIncentive = sumEligible ? Math.round(sumIncentive / sumEligible) : 0;
+    const avgIncentive = sumEligible ? roundIncentiveAmount(sumIncentive / sumEligible) : 0;
 
     doc.setFillColor(241, 245, 249); // Slate-100
     doc.roundedRect(14, 24, pageW - 28, 14, 2, 2, "F");
@@ -1803,9 +1817,9 @@ export default function AttendanceIncentiveManagement() {
     doc.setTextColor(239, 68, 68); // Red
     doc.text(`Ineligible: ${sumIneligible}`, 140, 32);
     doc.setTextColor(79, 70, 229); // Indigo
-    doc.text(`Total Incentive: Rs. ${sumIncentive.toLocaleString("en-IN")}`, 195, 32);
+    doc.text(`Total Incentive: Rs. ${roundIncentiveAmount(sumIncentive).toLocaleString("en-IN")}`, 195, 32);
     doc.setTextColor(124, 58, 237); // Violet
-    doc.text(`Avg/Eligible: Rs. ${avgIncentive.toLocaleString("en-IN")}`, pageW - 20, 32, { align: "right" });
+    doc.text(`Avg/Eligible: Rs. ${roundIncentiveAmount(avgIncentive).toLocaleString("en-IN")}`, pageW - 20, 32, { align: "right" });
 
     // Table rows
     const tableRows = dataToExport.map((r, idx) => {
@@ -1826,7 +1840,7 @@ export default function AttendanceIncentiveManagement() {
         r.adjustedDays !== undefined ? String(r.adjustedDays) : "0",
         r.tier ? (r.tier === "high" ? "High" : "Low") : "—",
         r.ratePerDay ? `Rs. ${r.ratePerDay}` : "—",
-        r.incentive ? `Rs. ${Number(r.incentive).toLocaleString("en-IN")}` : "0",
+        r.incentive ? `Rs. ${roundIncentiveAmount(r.incentive).toLocaleString("en-IN")}` : "0",
       ];
     });
 
@@ -2227,14 +2241,14 @@ export default function AttendanceIncentiveManagement() {
                   />
                   <StatCard
                     label="Total Incentive"
-                    value={`₹${totalIncentive.toLocaleString("en-IN")}`}
+                    value={`₹${roundIncentiveAmount(totalIncentive).toLocaleString("en-IN")}`}
                     colorClass="bg-indigo-600 text-white"
                   />
                   <StatCard
                     label="Avg per Employee"
                     value={
                       eligible
-                        ? `₹${Math.round(totalIncentive / eligible).toLocaleString("en-IN")}`
+                        ? `₹${roundIncentiveAmount(totalIncentive / eligible).toLocaleString("en-IN")}`
                         : "—"
                     }
                     colorClass="bg-violet-600 text-white"
@@ -2440,7 +2454,7 @@ export default function AttendanceIncentiveManagement() {
                               ) : (
                                 <div>
                                   <span className="font-bold text-emerald-700 font-mono text-sm">
-                                    ₹{rec.incentive.toLocaleString("en-IN")}
+                                    ₹{roundIncentiveAmount(rec.incentive).toLocaleString("en-IN")}
                                   </span>
                                   {rec.slabDays > 0 && (
                                     <div className="text-[11px] text-slate-500 font-medium font-mono">
@@ -2481,9 +2495,9 @@ export default function AttendanceIncentiveManagement() {
                           </td>
                           <td className="px-3 py-3 font-bold text-emerald-700 font-mono text-sm whitespace-nowrap bg-slate-100">
                             ₹
-                            {filteredRecords
-                              .reduce((s, r) => s + (r.incentive || 0), 0)
-                              .toLocaleString("en-IN")}
+                            {roundIncentiveAmount(
+                              filteredRecords.reduce((s, r) => s + (r.incentive || 0), 0)
+                            ).toLocaleString("en-IN")}
                           </td>
                           <td className="bg-slate-100" />
                         </tr>
@@ -3117,7 +3131,7 @@ export default function AttendanceIncentiveManagement() {
                                     : "text-slate-400"
                                     }`}
                                 >
-                                  ₹{parseFloat(rec.incentiveAmount || 0).toFixed(2)}
+                                  ₹{roundIncentiveAmount(rec.incentiveAmount || 0).toLocaleString("en-IN")}
                                 </span>
                               </td>
                               <td className="px-4 py-3">
@@ -3182,14 +3196,15 @@ export default function AttendanceIncentiveManagement() {
                         Total Packaging Incentive:{" "}
                         <strong className="text-emerald-700 text-sm">
                           ₹
-                          {pkgRecords
-                            .filter((r) => r.selected)
-                            .reduce(
-                              (sum, r) =>
-                                sum + (parseFloat(r.incentiveAmount) || 0),
-                              0
-                            )
-                            .toFixed(2)}
+                          {roundIncentiveAmount(
+                            pkgRecords
+                              .filter((r) => r.selected)
+                              .reduce(
+                                (sum, r) =>
+                                  sum + (parseFloat(r.incentiveAmount) || 0),
+                                0
+                              )
+                          ).toLocaleString("en-IN")}
                         </strong>
                       </div>
                     </div>

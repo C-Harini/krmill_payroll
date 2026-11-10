@@ -20,6 +20,20 @@ const Attendance = db.Attendance;
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Round off incentive amount: round off happens only if .5 or above.
+ * Fraction < 0.5 -> floor (e.g. 857.49 -> 857)
+ * Fraction >= 0.5 -> ceil (e.g. 857.50 -> 858)
+ */
+const roundIncentiveAmount = (val) => {
+  const num = parseFloat(val);
+  if (isNaN(num)) return 0;
+  const rounded2 = Math.round(num * 100) / 100;
+  const intPart = Math.floor(rounded2);
+  const fracPart = Math.round((rounded2 - intPart) * 100) / 100;
+  return fracPart >= 0.5 ? intPart + 1 : intPart;
+};
+
 const resolveHostelShiftKey = (shiftMap) => {
   const shiftI =
     (shiftMap["I"] || 0) +
@@ -176,7 +190,7 @@ const calculateHostelIncentive = ({
 
   // 8-8 days pay is fixed at 100 per day
   const effective88Days = Number(eightEightDays) || 0;
-  const eightEightPay = Math.round(effective88Days * 100 * 100) / 100;
+  const eightEightPay = roundIncentiveAmount(effective88Days * 100);
 
   // Remaining days for condition-based regular calculation
   const remainingDays = Math.max(0, payableDays - effective88Days);
@@ -263,10 +277,10 @@ const calculateHostelIncentive = ({
       tier = "low";
       ratePerDay = lowTierRate;
     }
-    regularIncentive = Math.round(remainingDays * ratePerDay * 100) / 100;
+    regularIncentive = roundIncentiveAmount(remainingDays * ratePerDay);
   }
 
-  const totalIncentive = Math.round((eightEightPay + regularIncentive) * 100) / 100;
+  const totalIncentive = roundIncentiveAmount(eightEightPay + regularIncentive);
 
   if (effective88Days > 0 && regularIncentive > 0) {
     note = `8-8 Days: ${effective88Days}d × ₹100 = ₹${eightEightPay} + Regular: ${remainingDays}d × ₹${ratePerDay} = ₹${regularIncentive}`;
@@ -567,8 +581,8 @@ exports.getHostelIncentiveCalculations = async (req, res) => {
         shiftLabel: saved && saved.shiftLabel ? saved.shiftLabel : calc.shiftLabel,
         tier: saved && saved.tier ? saved.tier : calc.tier,
         ratePerDay: saved && parseFloat(saved.ratePerDay) > 0 ? parseFloat(saved.ratePerDay) : calc.ratePerDay,
-        regularIncentive: calc.regularIncentive,
-        incentive: saved && parseFloat(saved.incentive) > 0 ? parseFloat(saved.incentive) : calc.totalIncentive,
+        regularIncentive: roundIncentiveAmount(calc.regularIncentive),
+        incentive: saved && parseFloat(saved.incentive) > 0 ? roundIncentiveAmount(saved.incentive) : roundIncentiveAmount(calc.totalIncentive),
         note: calc.note,
         isSaved: !!(saved && (saved.shiftKey || parseFloat(saved.incentive) > 0)),
       };
@@ -577,9 +591,9 @@ exports.getHostelIncentiveCalculations = async (req, res) => {
     const summary = {
       totalEmployees: records.length,
       total88Days: records.reduce((s, r) => s + (r.eightEightDays || 0), 0),
-      total88Pay: records.reduce((s, r) => s + (r.eightEightPay || 0), 0),
-      totalRegularPay: records.reduce((s, r) => s + (r.regularIncentive || 0), 0),
-      totalIncentive: records.reduce((s, r) => s + (r.incentive || 0), 0),
+      total88Pay: roundIncentiveAmount(records.reduce((s, r) => s + (r.eightEightPay || 0), 0)),
+      totalRegularPay: roundIncentiveAmount(records.reduce((s, r) => s + (r.regularIncentive || 0), 0)),
+      totalIncentive: roundIncentiveAmount(records.reduce((s, r) => s + (r.incentive || 0), 0)),
       eligibleRegular: records.filter((r) => (r.regularIncentive || 0) > 0).length,
     };
 
@@ -727,7 +741,7 @@ exports.bulkSaveHostelIncentives = async (req, res) => {
         year: parseInt(year, 10),
         adjustedDays: r.adjustedDays,
         slabDays: r.slabDays || 0,
-        incentive: r.incentive,
+        incentive: roundIncentiveAmount(r.incentive),
         ratePerDay: r.ratePerDay,
         shiftKey: r.shiftKey,
         shiftLabel: r.shiftLabel || null,
@@ -834,4 +848,5 @@ exports.remove = async (req, res) => {
   }
 };
 
+exports.roundIncentiveAmount = roundIncentiveAmount;
 exports.calculateHostelIncentive = calculateHostelIncentive;

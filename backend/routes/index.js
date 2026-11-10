@@ -46,6 +46,7 @@ const deductionRoutes = require('./deductionRoutes');
 const reportRoutes = require('./reportRoutes');
 const holidaySalaryRoutes = require('./holidaySalaryRoutes');
 const attendanceReportRoutes = require('./attendanceReportRoutes');
+const bonusReportRoutes = require('./bonusReportRoutes');
 const lunchRoutes = require('./lunchRoutes');
 const attendanceLockRoutes = require('./attendanceLockRoutes');
 
@@ -100,6 +101,7 @@ router.use('/reports', reportRoutes);
 router.use('/holiday-salary', holidaySalaryRoutes);
 router.use('/lunch', lunchRoutes);
 router.use('/attendance-report', attendanceReportRoutes);
+router.use('/bonus-report', bonusReportRoutes);
 
 // router.use('/import', importRoutes);
 router.get('/test', (req, res) => {

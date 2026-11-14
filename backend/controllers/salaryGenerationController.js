@@ -393,12 +393,6 @@ const getAttendanceMetrics = async (
     if (rec.overtimeHours) overtimeHours += toNum(rec.overtimeHours);
   });
 
-  if (!isPf && nhFhDays > 0) {
-    // For Non-PF employees, worked NH/FH days reduce presentDays by an additional day per NH/FH worked day
-    // (e.g. 27 worked days with 1 NH/FH => 25 present days, 1 NH/FH day; with 2 NH/FH => 23 present days, 2 NH/FH days)
-    presentDays = Math.max(0, presentDays - nhFhDays);
-  }
-
   return {
     presentDays: Math.max(0, presentDays),
     absentDays: Math.max(0, absentDays),
@@ -414,13 +408,22 @@ const getAttendanceMetrics = async (
   };
 };
 
+const roundIncentiveAmount = (val) => {
+  const num = parseFloat(val);
+  if (isNaN(num)) return 0;
+  const rounded2 = Math.round(num * 100) / 100;
+  const intPart = Math.floor(rounded2);
+  const fracPart = Math.round((rounded2 - intPart) * 100) / 100;
+  return fracPart >= 0.5 ? intPart + 1 : intPart;
+};
+
 const getAttendanceIncentive = async (employeeId, month, year, att = null) => {
   try {
     const rows = await AttendanceIncentive.findAll({
       where: { employeeId, month: +month, year: +year },
     });
     const sum = rows.reduce((s, r) => s + toNum(r.incentive), 0);
-    if (sum > 0 || rows.length > 0) return sum;
+    if (sum > 0 || rows.length > 0) return roundIncentiveAmount(sum);
   } catch {
     // continue to fallback
   }
@@ -495,11 +498,11 @@ const getAttendanceIncentive = async (employeeId, month, year, att = null) => {
         eightEightDays: 0,
         dbConditions: hostelConditions,
       });
-      return toNum(calc?.totalIncentive) || 0;
+      return roundIncentiveAmount(toNum(calc?.totalIncentive) || 0);
     }
 
     const calc = calculateIncentive(emp, shiftMap, categoryName, null, null, 0, rawDays, dbConditions);
-    return toNum(calc?.incentive) || 0;
+    return roundIncentiveAmount(toNum(calc?.incentive) || 0);
   } catch (err) {
     console.error(`Dynamic incentive calculation error for emp ${employeeId}:`, err.message);
     return 0;
@@ -721,7 +724,7 @@ const calcWorkerDailyPF = ({
   const convEarned = convFixed + weekOffWage;
 
   const shiftNh = gradeName.toUpperCase().includes("MIX");
-  const nhFhWages = shiftNh ? 0 : Math.round(wagesPerDay * 2 * att.nhFhDays);
+  const nhFhWages = shiftNh ? 0 : Math.round(wagesPerDay * att.nhFhDays);
   const grossEarned =
     basicEarned +
     splEarned +
@@ -793,12 +796,12 @@ const calcWorkerDailyPF = ({
       componentId: null,
       componentName: "NH/FH Wages",
       componentType: "Earning",
-      calculationType: "NHFHDouble",
+      calculationType: "PerDay",
       baseAmount: nhFhWages,
       calculatedAmount: nhFhWages,
       isProrated: false,
       proratedAmount: nhFhWages,
-      formula: `${wagesPerDay} × 2 × ${att.nhFhDays}d`,
+      formula: `${wagesPerDay} × ${att.nhFhDays}d`,
     });
   if (attnIncentive > 0)
     components.push({
@@ -857,7 +860,7 @@ const calcWorkerDailyNPF = ({
   const basicEarned = Math.round(wagesPerDay * regularWorkedDays);
   const weekOffWage = Math.round(wagesPerDay * weekOffWorkedDays);
   const convEarned = convFixed + weekOffWage;
-  const nhFhWages = Math.round(wagesPerDay * 2 * att.nhFhDays);
+  const nhFhWages = Math.round(wagesPerDay * att.nhFhDays);
 
   const grossEarned =
     basicEarned +
@@ -916,12 +919,12 @@ const calcWorkerDailyNPF = ({
       componentId: null,
       componentName: "NH/FH Wages",
       componentType: "Earning",
-      calculationType: "NHFHDouble",
+      calculationType: "PerDay",
       baseAmount: nhFhWages,
       calculatedAmount: nhFhWages,
       isProrated: false,
       proratedAmount: nhFhWages,
-      formula: `${wagesPerDay} × 2 × ${att.nhFhDays}d`,
+      formula: `${wagesPerDay} × ${att.nhFhDays}d`,
     });
   if (attnIncentive > 0)
     components.push({
@@ -1079,7 +1082,7 @@ const calcWorkerMonthlyNPF = ({
   const weekOffWorkedDays = toNum(att.weekOffWorkedDays);
   const regularPresentDays = Math.max(0, att.presentDays - weekOffWorkedDays);
   const paidDays =
-    regularPresentDays + toNum(att.nhFhDays) * 2 + att.weekOffDays;
+    regularPresentDays + toNum(att.nhFhDays) + att.weekOffDays;
   const factor = totalDays > 0 ? Math.min(1, paidDays / totalDays) : 0;
   const wagesPerDay = toNum(
     salaryMaster.wagesPerDay ||

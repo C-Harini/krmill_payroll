@@ -12,6 +12,16 @@ const CONFIG = {
   MALE_EXP_THRESHOLD: 3,
 };
 
+// Round off only if fractional part is 0.5 or above
+const roundIncentiveAmount = (val) => {
+  const num = parseFloat(val);
+  if (isNaN(num)) return 0;
+  const rounded2 = Math.round(num * 100) / 100;
+  const intPart = Math.floor(rounded2);
+  const fracPart = Math.round((rounded2 - intPart) * 100) / 100;
+  return fracPart >= 0.5 ? intPart + 1 : intPart;
+};
+
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December"
@@ -1004,8 +1014,8 @@ export default function HostelAttendanceIncentiveManagement() {
           const isEligible = newAdjustedDays >= minDays;
           const tier = isEligible ? (newAdjustedDays >= highTierDays ? "high" : "low") : null;
           const ratePerDay = isEligible ? (tier === "high" ? 20 : 15) : 0;
-          const regularIncentive = isEligible ? Math.round(remainingDays * ratePerDay * 100) / 100 : 0;
-          const totalIncentive = Math.round((eightEightPay + regularIncentive) * 100) / 100;
+          const regularIncentive = isEligible ? roundIncentiveAmount(remainingDays * ratePerDay) : 0;
+          const totalIncentive = roundIncentiveAmount(eightEightPay + regularIncentive);
 
           return {
             ...r,
@@ -1127,10 +1137,10 @@ export default function HostelAttendanceIncentiveManagement() {
   }, [records, tableSearch]);
 
   // Statistics
-  const totalIncentive = records.reduce((s, r) => s + (r.incentive || 0), 0);
+  const totalIncentive = roundIncentiveAmount(records.reduce((s, r) => s + (r.incentive || 0), 0));
   const total88Days = records.reduce((s, r) => s + (r.eightEightDays || 0), 0);
-  const total88Pay = records.reduce((s, r) => s + (r.eightEightPay || 0), 0);
-  const totalRegularPay = records.reduce((s, r) => s + (r.regularIncentive || 0), 0);
+  const total88Pay = roundIncentiveAmount(records.reduce((s, r) => s + (r.eightEightPay || 0), 0));
+  const totalRegularPay = roundIncentiveAmount(records.reduce((s, r) => s + (r.regularIncentive || 0), 0));
   const eligible = records.filter((r) => (r.incentive || 0) > 0).length;
   const hasAdjustments = Object.keys(adjustments).length > 0;
 
@@ -1201,22 +1211,22 @@ export default function HostelAttendanceIncentiveManagement() {
         shiftStr,
         r.shiftLabel || r.shiftKey || "",
         r.eightEightDays || 0,
-        r.eightEightPay || 0,
+        roundIncentiveAmount(r.eightEightPay || 0),
         r.remainingDays !== undefined ? r.remainingDays : 0,
         r.rawDays || 0,
         r.adjustedDays !== undefined ? r.adjustedDays : (r.rawDays || 0),
         r.tier ? (r.tier === "high" ? "High" : "Low") : (r.regularIncentive > 0 ? "Eligible" : "—"),
         r.ratePerDay || 0,
-        r.regularIncentive || 0,
-        r.incentive || 0,
+        roundIncentiveAmount(r.regularIncentive || 0),
+        roundIncentiveAmount(r.incentive || 0),
         r.note || (r.incentive === 0 ? "Not eligible" : "Eligible"),
       ];
     });
 
-    const sumIncentive = dataToExport.reduce((s, r) => s + (parseFloat(r.incentive) || 0), 0);
+    const sumIncentive = roundIncentiveAmount(dataToExport.reduce((s, r) => s + (parseFloat(r.incentive) || 0), 0));
     const sum88 = dataToExport.reduce((s, r) => s + (r.eightEightDays || 0), 0);
-    const sum88Pay = dataToExport.reduce((s, r) => s + (r.eightEightPay || 0), 0);
-    const sumReg = dataToExport.reduce((s, r) => s + (r.regularIncentive || 0), 0);
+    const sum88Pay = roundIncentiveAmount(dataToExport.reduce((s, r) => s + (r.eightEightPay || 0), 0));
+    const sumReg = roundIncentiveAmount(dataToExport.reduce((s, r) => s + (r.regularIncentive || 0), 0));
     const sumEligible = dataToExport.filter((r) => (parseFloat(r.incentive) || 0) > 0).length;
 
     const summaryRows = [
@@ -1408,11 +1418,11 @@ export default function HostelAttendanceIncentiveManagement() {
     doc.text(`Generated: ${new Date().toLocaleDateString("en-IN")}`, pageW - 14, 15, { align: "right" });
 
     // Summary Statistics Cards
-    const sumIncentive = dataToExport.reduce((s, r) => s + (parseFloat(r.incentive) || 0), 0);
+    const sumIncentive = roundIncentiveAmount(dataToExport.reduce((s, r) => s + (parseFloat(r.incentive) || 0), 0));
     const sumEligible = dataToExport.filter((r) => (parseFloat(r.incentive) || 0) > 0).length;
     const sum88Days = dataToExport.reduce((s, r) => s + (r.eightEightDays || 0), 0);
-    const sum88Pay = dataToExport.reduce((s, r) => s + (r.eightEightPay || 0), 0);
-    const sumRegPay = dataToExport.reduce((s, r) => s + (r.regularIncentive || 0), 0);
+    const sum88Pay = roundIncentiveAmount(dataToExport.reduce((s, r) => s + (r.eightEightPay || 0), 0));
+    const sumRegPay = roundIncentiveAmount(dataToExport.reduce((s, r) => s + (r.regularIncentive || 0), 0));
 
     doc.setFillColor(241, 245, 249); // Slate-100
     doc.roundedRect(14, 24, pageW - 28, 14, 2, 2, "F");
@@ -1449,13 +1459,13 @@ export default function HostelAttendanceIncentiveManagement() {
         shiftStr,
         r.shiftLabel || "I Shift only",
         r.eightEightDays ? `${r.eightEightDays}d` : "0",
-        r.eightEightPay ? `Rs.${r.eightEightPay}` : "0",
+        r.eightEightPay ? `Rs.${roundIncentiveAmount(r.eightEightPay)}` : "0",
         r.remainingDays !== undefined ? r.remainingDays : 0,
         r.adjustedDays !== undefined ? r.adjustedDays : (r.rawDays || 0),
         r.tier ? (r.tier === "high" ? "High" : "Low") : "—",
         r.ratePerDay ? `Rs.${r.ratePerDay}` : "—",
-        r.regularIncentive ? `Rs.${r.regularIncentive}` : "0",
-        `Rs. ${r.incentive || 0}`,
+        r.regularIncentive ? `Rs.${roundIncentiveAmount(r.regularIncentive)}` : "0",
+        `Rs. ${roundIncentiveAmount(r.incentive || 0)}`,
         r.note || "—",
       ];
     });
@@ -2156,7 +2166,7 @@ export default function HostelAttendanceIncentiveManagement() {
 
                             {/* 8-8 Pay */}
                             <td className="px-3 py-3 font-mono text-xs text-blue-700 font-semibold">
-                              {rec.eightEightPay ? `₹${rec.eightEightPay}` : "—"}
+                              {rec.eightEightPay ? `₹${roundIncentiveAmount(rec.eightEightPay)}` : "—"}
                             </td>
 
                             {/* Remaining Days */}
@@ -2185,7 +2195,7 @@ export default function HostelAttendanceIncentiveManagement() {
 
                             {/* Regular Pay */}
                             <td className="px-3 py-3 font-mono text-xs text-blue-700 font-semibold">
-                              ₹{rec.regularIncentive || 0}
+                              ₹{roundIncentiveAmount(rec.regularIncentive || 0)}
                             </td>
 
                             {/* Incentive */}
@@ -2197,11 +2207,11 @@ export default function HostelAttendanceIncentiveManagement() {
                               ) : (
                                 <div>
                                   <span className="font-bold text-emerald-700 font-mono text-sm">
-                                    ₹{rec.incentive.toLocaleString("en-IN")}
+                                    ₹{roundIncentiveAmount(rec.incentive || 0).toLocaleString("en-IN")}
                                   </span>
                                   {rec.eightEightDays > 0 && rec.regularIncentive > 0 && (
                                     <div className="text-[11px] text-slate-500 font-medium font-mono">
-                                      (8-8: ₹{rec.eightEightPay} + Reg: ₹{rec.regularIncentive})
+                                      (8-8: ₹{roundIncentiveAmount(rec.eightEightPay)} + Reg: ₹{roundIncentiveAmount(rec.regularIncentive)})
                                     </div>
                                   )}
                                 </div>
@@ -2243,14 +2253,14 @@ export default function HostelAttendanceIncentiveManagement() {
                             {filteredRecords.reduce((s, r) => s + (r.eightEightDays || 0), 0)}d
                           </td>
                           <td className="px-3 py-3 font-mono font-bold text-blue-700 text-xs bg-slate-100">
-                            ₹{filteredRecords.reduce((s, r) => s + (r.eightEightPay || 0), 0).toLocaleString("en-IN")}
+                            ₹{roundIncentiveAmount(filteredRecords.reduce((s, r) => s + (r.eightEightPay || 0), 0)).toLocaleString("en-IN")}
                           </td>
                           <td colSpan={4} className="bg-slate-100" />
                           <td className="px-3 py-3 font-bold text-blue-700 font-mono text-sm whitespace-nowrap bg-slate-100">
-                            ₹{filteredRecords.reduce((s, r) => s + (r.regularIncentive || 0), 0).toLocaleString("en-IN")}
+                            ₹{roundIncentiveAmount(filteredRecords.reduce((s, r) => s + (r.regularIncentive || 0), 0)).toLocaleString("en-IN")}
                           </td>
                           <td className="px-3 py-3 font-bold text-emerald-700 font-mono text-sm whitespace-nowrap bg-slate-100">
-                            ₹{filteredRecords.reduce((s, r) => s + (r.incentive || 0), 0).toLocaleString("en-IN")}
+                            ₹{roundIncentiveAmount(filteredRecords.reduce((s, r) => s + (r.incentive || 0), 0)).toLocaleString("en-IN")}
                           </td>
                           <td className="bg-slate-100" />
                         </tr>

@@ -65,6 +65,7 @@ import ShiftReport from "./pages//ShiftReportPage";
 import HolidaySalary from "./pages/HolidaySalary";
 import AttendanceReport from "./pages/AttendanceReport";
 import DiscrepancyReport from "./pages/DiscrepancyReport";
+import BonusReport from "./pages/BonusReport";
 import WorkloadManagement from "./pages/WorkloadManagement";
 
 function NotFound() {
@@ -192,6 +193,7 @@ function App() {
           <Route path="shift-reports" element={<ShiftReport />} />
           <Route path="attendance-reports" element={<AttendanceReport />} />
           <Route path="discrepancy-report" element={<DiscrepancyReport />} />
+          <Route path="bonus-report" element={<BonusReport />} />
           <Route
             path="attendance-multiple"
             element={

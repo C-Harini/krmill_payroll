@@ -27,6 +27,20 @@ const getExperienceYears = (dateOfJoining) => {
 };
 
 /**
+ * Round off incentive amount: round off happens only if .5 or above.
+ * Fraction < 0.5 -> floor (e.g. 857.49 -> 857)
+ * Fraction >= 0.5 -> ceil (e.g. 857.50 -> 858)
+ */
+const roundIncentiveAmount = (val) => {
+  const num = parseFloat(val);
+  if (isNaN(num)) return 0;
+  const rounded2 = Math.round(num * 100) / 100;
+  const intPart = Math.floor(rounded2);
+  const fracPart = Math.round((rounded2 - intPart) * 100) / 100;
+  return fracPart >= 0.5 ? intPart + 1 : intPart;
+};
+
+/**
  * Map category name → INCENTIVE_CONFIG grade key.
  *
  * Actual employee categories in DB:
@@ -616,8 +630,8 @@ const calculateIncentive = (
   const tier = totalDays >= highTierDays ? "high" : "low";
   const ratePerDay = tier === "high" ? highTierRate : lowTierRate;
 
-  // Incentive is calculated ONLY on actual worked days (excluding slab days)
-  const incentive = Math.round(payableDays * ratePerDay * 100) / 100;
+  // Incentive is calculated ONLY on actual worked days (excluding slab days), rounded off if .5 or above
+  const incentive = roundIncentiveAmount(payableDays * ratePerDay);
 
   return {
     incentive,
@@ -855,7 +869,7 @@ exports.getAttendanceIncentives = async (req, res) => {
         shiftLabel: saved ? saved.shiftLabel : calc.shiftLabel || null,
         tier: saved ? saved.tier : calc.tier || null,
         ratePerDay: saved ? parseFloat(saved.ratePerDay) : calc.ratePerDay || 0,
-        incentive: saved ? parseFloat(saved.incentive) : calc.incentive || 0,
+        incentive: saved ? roundIncentiveAmount(saved.incentive) : (calc.incentive !== undefined ? roundIncentiveAmount(calc.incentive) : 0),
         maleOverrideApplied: saved
           ? saved.maleOverrideApplied
           : calc.maleOverrideApplied || false,
@@ -990,7 +1004,7 @@ exports.saveOneIncentive = async (req, res) => {
       year: parseInt(year, 10),
       adjustedDays: r.adjustedDays !== undefined && r.adjustedDays !== null ? parseInt(r.adjustedDays, 10) : 0,
       slabDays: r.slabDays ? parseInt(r.slabDays, 10) : 0,
-      incentive: r.incentive !== undefined && r.incentive !== null ? parseFloat(r.incentive) : 0,
+      incentive: r.incentive !== undefined && r.incentive !== null ? roundIncentiveAmount(r.incentive) : 0,
       ratePerDay: r.ratePerDay !== undefined && r.ratePerDay !== null ? parseFloat(r.ratePerDay) : 0,
       shiftKey: r.shiftKey || null,
       shiftLabel: r.shiftLabel || null,
@@ -1053,7 +1067,7 @@ exports.bulkSaveIncentives = async (req, res) => {
         year: parseInt(year, 10),
         adjustedDays: r.adjustedDays !== undefined && r.adjustedDays !== null ? parseInt(r.adjustedDays, 10) : 0,
         slabDays: r.slabDays ? parseInt(r.slabDays, 10) : 0,
-        incentive: r.incentive !== undefined && r.incentive !== null ? parseFloat(r.incentive) : 0,
+        incentive: r.incentive !== undefined && r.incentive !== null ? roundIncentiveAmount(r.incentive) : 0,
         ratePerDay: r.ratePerDay !== undefined && r.ratePerDay !== null ? parseFloat(r.ratePerDay) : 0,
         shiftKey: r.shiftKey || null,
         shiftLabel: r.shiftLabel || null,
@@ -1778,7 +1792,7 @@ exports.savePackagingEntries = async (req, res) => {
       const bags = parseInt(r.bagsPacked, 10) || 0;
       const rate = parseFloat(r.ratePerBag) || 1.0;
       const threshold = parseInt(r.minBagsThreshold, 10) || 45;
-      const amount = bags >= threshold ? bags * rate : 0;
+      const amount = bags >= threshold ? roundIncentiveAmount(bags * rate) : 0;
       const rowShiftTypeId = r.shiftTypeId || (shiftTypeId ? parseInt(shiftTypeId, 10) : null);
 
       if (selected) {
@@ -1881,7 +1895,9 @@ exports.getPackagingSummary = async (req, res) => {
       }
       summaryMap[empId].totalDaysWorked += 1;
       summaryMap[empId].totalBagsPacked += r.bagsPacked || 0;
-      summaryMap[empId].totalIncentiveAmount += parseFloat(r.incentiveAmount) || 0;
+      summaryMap[empId].totalIncentiveAmount = roundIncentiveAmount(
+        summaryMap[empId].totalIncentiveAmount + (parseFloat(r.incentiveAmount) || 0)
+      );
     }
 
     return res.status(200).json({
@@ -1894,4 +1910,5 @@ exports.getPackagingSummary = async (req, res) => {
   }
 };
 
+exports.roundIncentiveAmount = roundIncentiveAmount;
 exports.calculateIncentive = calculateIncentive;

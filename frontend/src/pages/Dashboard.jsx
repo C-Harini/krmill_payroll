@@ -764,6 +764,17 @@ const Dashboard = () => {
                 </li>
                 <li>
                   <Link
+                    to="bonus-report"
+                    className={`flex items-center px-6 py-2.5 transition duration-200 rounded-lg mx-2 text-sm ${isActiveLink("bonus-report")
+                      ? "bg-blue-700 text-white font-medium shadow-sm"
+                      : "text-blue-100 hover:bg-blue-800 hover:text-white"
+                      }`}
+                  >
+                    🎁 Bonus Report
+                  </Link>
+                </li>
+                <li>
+                  <Link
                     to="employee-reports"
                     className={`flex items-center px-6 py-2.5 transition duration-200 rounded-lg mx-2 text-sm ${isActiveLink("employee-reports")
                       ? "bg-blue-700 text-white font-medium shadow-sm"

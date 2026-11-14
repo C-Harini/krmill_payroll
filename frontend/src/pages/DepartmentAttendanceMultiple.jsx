@@ -121,7 +121,7 @@ const DepartmentAttendanceMultiple = () => {
       setUnsavedEmployees([]);
       setSavedData([]);
     }
-  }, [selectedCompanyId, selectedDeptId, entryDate, selectedShiftId]);
+  }, [selectedCompanyId, selectedDeptId, entryDate, selectedWorkedDeptId, selectedShiftId]);
 
   const fetchCategories = async (companyId = selectedCompanyId) => {
     try {
@@ -204,6 +204,7 @@ const DepartmentAttendanceMultiple = () => {
         params: {
           companyId: selectedCompanyId,
           departmentId: selectedDeptId,
+          workedDeptId: selectedWorkedDeptId,
           attendanceDate: entryDate,
           shiftId: selectedShiftId
         }
@@ -801,8 +802,13 @@ const DepartmentAttendanceMultiple = () => {
             <div className="flex items-center justify-between mb-3 px-1">
               <div className="flex items-center gap-2">
                 <Database size={18} className="text-blue-900" />
-                <h3 className="text-sm font-black text-blue-950 uppercase tracking-wide">
-                  Saved Data
+                <h3 className="text-sm font-black text-blue-950 uppercase tracking-wide flex items-center gap-1.5">
+                  <span>Saved Data</span>
+                  {workedDeptInput && (
+                    <span className="text-[11px] font-bold text-blue-800 bg-blue-100/90 px-2 py-0.5 rounded-md border border-blue-200 normal-case" title="Filtered by Worked Department">
+                      ({workedDeptInput})
+                    </span>
+                  )}
                 </h3>
                 <span className="bg-indigo-100 text-indigo-900 text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-indigo-300">
                   {filteredSavedData.length} Saved
@@ -895,7 +901,14 @@ const DepartmentAttendanceMultiple = () => {
                               {item.ticketNo || item.employeeCode || item.employeeId || "-"}
                             </td>
                             <td className="py-2 px-3 border-r border-blue-100 uppercase font-semibold text-slate-900">
-                              {item.empName}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span>{item.empName}</span>
+                                {item.homeDeptName && item.workedDeptId && item.departmentId && String(item.workedDeptId) !== String(item.departmentId) && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 bg-amber-100 text-amber-900 rounded border border-amber-300 normal-case" title={`Home Dept: ${item.homeDeptName}`}>
+                                    {item.homeDeptName}
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="py-2 px-1.5 border-r border-blue-100 text-center font-bold text-blue-950">
                               {item.shift}

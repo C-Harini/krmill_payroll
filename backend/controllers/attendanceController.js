@@ -906,7 +906,7 @@ exports.getPermissionSummary = async (req, res) => {
 // MULTIPLE ENTRY ATTENDANCE (hr_department_attendance)
 // ============================================================
 exports.getMultipleEntryAttendance = async (req, res) => {
-  const { companyId, departmentId, attendanceDate, shiftId } = req.query;
+  const { companyId, departmentId, workedDeptId, attendanceDate, shiftId } = req.query;
 
   if (!companyId || !departmentId || !attendanceDate) {
     return res.status(400).json({
@@ -917,8 +917,9 @@ exports.getMultipleEntryAttendance = async (req, res) => {
 
   try {
     const formattedDate = moment(attendanceDate).format("YYYY-MM-DD");
+    const filterWorkedDeptId = workedDeptId || departmentId;
 
-    // 1. Fetch active employees for the selected department
+    // 1. Fetch active employees for the selected department (Home / Own department checklist)
     const employees = await Employee.findAll({
       where: {
         companyId,
@@ -937,10 +938,14 @@ exports.getMultipleEntryAttendance = async (req, res) => {
     });
 
     // 2. Fetch saved records from DepartmentAttendance (hr_department_attendance)
+    // Filtered by worked department (matching OT multiple entry logic)
     const whereDeptAtt = {
       companyId,
-      departmentId,
       attendanceDate: formattedDate,
+      [Op.or]: [
+        { workedDeptId: filterWorkedDeptId },
+        { workedDeptId: null, departmentId: filterWorkedDeptId },
+      ],
     };
     if (shiftId) {
       whereDeptAtt.shiftId = shiftId;
@@ -952,6 +957,12 @@ exports.getMultipleEntryAttendance = async (req, res) => {
         {
           model: Employee,
           as: "employee",
+        },
+        {
+          model: Department,
+          as: "department",
+          attributes: ["id", "departmentname"],
+          required: false,
         },
       ],
       order: [["id", "ASC"]],
@@ -1010,6 +1021,8 @@ exports.getMultipleEntryAttendance = async (req, res) => {
         attendanceDate: rec.attendanceDate,
         workedDeptId: rec.workedDeptId,
         shiftId: rec.shiftId,
+        departmentId: rec.departmentId,
+        homeDeptName: rec.department?.departmentname || "",
       };
     });
 

@@ -93,26 +93,59 @@ const groupData = (rows) => {
   return map;
 };
 
-// ── Multi-select component ────────────────────────────────────
-function MultiSelect({ label, options, selected, onChange, labelKey = "name", valueKey = "id" }) {
+// ── Multi-select component with search ────────────────────────
+function MultiSelect({ label, options, selected, onChange, labelKey = "name", valueKey = "id", searchable = true }) {
   const [open, setOpen] = useState(false);
+  const [searchTxt, setSearchTxt] = useState("");
   const ref = useRef(null);
 
   useEffect(() => {
     const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false);
+        setSearchTxt("");
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  const filteredOptions = useMemo(() => {
+    if (!searchTxt.trim()) return options;
+    const q = searchTxt.toLowerCase().trim();
+    return options.filter((o) => {
+      const val = String(o[labelKey] || "").toLowerCase();
+      const code = String(o.acronym || o.categoryCode || o.code || "").toLowerCase();
+      return val.includes(q) || code.includes(q);
+    });
+  }, [options, searchTxt, labelKey]);
 
   const toggle = (id) => {
     const sid = String(id);
     onChange(selected.includes(sid) ? selected.filter((s) => s !== sid) : [...selected, sid]);
   };
 
-  const toggleAll = () =>
-    onChange(selected.length === options.length ? [] : options.map((o) => String(o[valueKey])));
+  const toggleAll = () => {
+    if (searchTxt.trim()) {
+      const filteredIds = filteredOptions.map((o) => String(o[valueKey]));
+      const allFilteredSelected = filteredIds.length > 0 && filteredIds.every((id) => selected.includes(id));
+      if (allFilteredSelected) {
+        onChange(selected.filter((id) => !filteredIds.includes(id)));
+      } else {
+        onChange(Array.from(new Set([...selected, ...filteredIds])));
+      }
+    } else {
+      if (selected.length === options.length && options.length > 0) {
+        onChange([]);
+      } else {
+        onChange(options.map((o) => String(o[valueKey])));
+      }
+    }
+  };
+
+  const isAllSelected = searchTxt.trim()
+    ? filteredOptions.length > 0 && filteredOptions.every((o) => selected.includes(String(o[valueKey])))
+    : selected.length === options.length && options.length > 0;
 
   const displayText = () => {
     if (!selected.length) return `All ${label}`;
@@ -127,29 +160,104 @@ function MultiSelect({ label, options, selected, onChange, labelKey = "name", va
     <div style={ms.wrap} ref={ref}>
       <label style={ms.label}>{label}</label>
       <div style={ms.trigger} onClick={() => setOpen(!open)}>
-        <span style={ms.triggerText}>{displayText()}</span>
-        <span style={{ color: "#94a3b8", fontSize: 10 }}>{open ? "▲" : "▼"}</span>
+        <span style={ms.triggerText} title={displayText()}>{displayText()}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: 4, flexShrink: 0 }}>
+          {selected.length > 0 && (
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange([]);
+              }}
+              style={{
+                color: "#94a3b8",
+                fontWeight: "bold",
+                fontSize: 12,
+                padding: "0 2px",
+                cursor: "pointer",
+              }}
+              title="Clear selection"
+            >
+              ✕
+            </span>
+          )}
+          <span style={{ color: "#94a3b8", fontSize: 10 }}>{open ? "▲" : "▼"}</span>
+        </div>
       </div>
       {open && (
         <div style={ms.dropdown}>
-          <div style={ms.allRow} onClick={toggleAll}>
-            <input type="checkbox" readOnly
-              checked={selected.length === options.length && options.length > 0}
-              style={{ marginRight: 8 }} />
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>Select all</span>
-          </div>
-          {options.map((o) => {
-            const id = String(o[valueKey]);
-            return (
-              <div key={id} style={ms.optRow} onClick={() => toggle(id)}>
-                <input type="checkbox" readOnly checked={selected.includes(id)} style={{ marginRight: 8 }} />
-                <span style={{ fontSize: 12.5, color: "#334155" }}>{o[labelKey]}</span>
+          {searchable && (
+            <div style={ms.searchBox}>
+              <div style={ms.searchInputWrapper}>
+                <input
+                  type="text"
+                  placeholder={`Search ${label.toLowerCase()}...`}
+                  value={searchTxt}
+                  onChange={(e) => setSearchTxt(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  style={ms.searchInput}
+                  autoFocus
+                />
+                {searchTxt && (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSearchTxt("");
+                    }}
+                    style={ms.clearSearchBtn}
+                    title="Clear search"
+                  >
+                    ✕
+                  </span>
+                )}
               </div>
-            );
-          })}
-          {!options.length && (
-            <div style={{ padding: "10px 12px", fontSize: 12, color: "#94a3b8" }}>No options</div>
+            </div>
           )}
+          <div style={ms.allRow} onClick={toggleAll}>
+            <input
+              type="checkbox"
+              readOnly
+              checked={isAllSelected}
+              style={{ marginRight: 8, cursor: "pointer" }}
+            />
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>
+              {searchTxt.trim() ? "Select all matching" : "Select all"}
+            </span>
+            <span style={{ fontSize: 11, color: "#64748b", marginLeft: "auto" }}>
+              {selected.length} / {options.length}
+            </span>
+          </div>
+          <div style={ms.optionsList}>
+            {filteredOptions.length === 0 ? (
+              <div style={{ padding: "12px", fontSize: 12, color: "#94a3b8", textAlign: "center" }}>
+                No matching {label.toLowerCase()}s
+              </div>
+            ) : (
+              filteredOptions.map((o) => {
+                const id = String(o[valueKey]);
+                const isChecked = selected.includes(id);
+                return (
+                  <div
+                    key={id}
+                    style={{
+                      ...ms.optRow,
+                      backgroundColor: isChecked ? "#f0f7ff" : "transparent",
+                    }}
+                    onClick={() => toggle(id)}
+                  >
+                    <input
+                      type="checkbox"
+                      readOnly
+                      checked={isChecked}
+                      style={{ marginRight: 8, cursor: "pointer" }}
+                    />
+                    <span style={{ fontSize: 12.5, color: isChecked ? "#1e40af" : "#334155", fontWeight: isChecked ? 600 : 400 }}>
+                      {o[labelKey]}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -159,11 +267,88 @@ function MultiSelect({ label, options, selected, onChange, labelKey = "name", va
 const ms = {
   wrap: { position: "relative", display: "flex", flexDirection: "column", gap: 3 },
   label: { fontSize: 12, fontWeight: 600, color: "#475569" },
-  trigger: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: 6, background: "#fff", cursor: "pointer", minWidth: 170, fontSize: 13, userSelect: "none", color: "#1e293b", height: 38, boxSizing: "border-box" },
+  trigger: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "8px 12px",
+    border: "1px solid #cbd5e1",
+    borderRadius: 6,
+    background: "#fff",
+    cursor: "pointer",
+    minWidth: 170,
+    fontSize: 13,
+    userSelect: "none",
+    color: "#1e293b",
+    height: 38,
+    boxSizing: "border-box",
+  },
   triggerText: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 },
-  dropdown: { position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #cbd5e1", borderRadius: 6, zIndex: 200, maxHeight: 240, overflowY: "auto", boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)", marginTop: 4 },
-  allRow: { display: "flex", alignItems: "center", padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid #f1f5f9", background: "#f8fafc" },
-  optRow: { display: "flex", alignItems: "center", padding: "7px 12px", cursor: "pointer" },
+  dropdown: {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    background: "#fff",
+    border: "1px solid #cbd5e1",
+    borderRadius: 8,
+    zIndex: 300,
+    minWidth: 220,
+    maxWidth: 320,
+    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)",
+    marginTop: 4,
+    overflow: "hidden",
+  },
+  searchBox: {
+    padding: "8px",
+    borderBottom: "1px solid #f1f5f9",
+    background: "#f8fafc",
+  },
+  searchInputWrapper: {
+    position: "relative",
+    display: "flex",
+    alignItems: "center",
+  },
+  searchInput: {
+    width: "100%",
+    padding: "6px 26px 6px 10px",
+    fontSize: 12,
+    border: "1px solid #cbd5e1",
+    borderRadius: 6,
+    outline: "none",
+    background: "#fff",
+    boxSizing: "border-box",
+    color: "#1e293b",
+  },
+  clearSearchBtn: {
+    position: "absolute",
+    right: 8,
+    cursor: "pointer",
+    color: "#94a3b8",
+    fontSize: 11,
+    userSelect: "none",
+    fontWeight: "bold",
+  },
+  allRow: {
+    display: "flex",
+    alignItems: "center",
+    padding: "8px 12px",
+    cursor: "pointer",
+    borderBottom: "1px solid #f1f5f9",
+    background: "#f8fafc",
+    userSelect: "none",
+  },
+  optionsList: {
+    maxHeight: 220,
+    overflowY: "auto",
+  },
+  optRow: {
+    display: "flex",
+    alignItems: "center",
+    padding: "7px 12px",
+    cursor: "pointer",
+    userSelect: "none",
+    transition: "background-color 0.1s ease",
+  },
 };
 
 // ── Employee multi-select with search ─────────────────────────

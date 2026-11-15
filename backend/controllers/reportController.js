@@ -1579,70 +1579,10 @@ module.exports = {
     }
 
     try {
-      const { OTHours } = require("../models");
+      const { OTHours, Employee, Department, ShiftType, Attendance, BiometricPunch, Category } = require("../models");
       const moment = require("moment");
 
-      const whereClause = {
-        date: {
-          [Op.between]: [moment(fromDate).startOf("day").toDate(), moment(toDate).endOf("day").toDate()]
-        }
-      };
-
-      if (companyId) {
-        whereClause.companyId = companyId;
-      }
-
-      if (Array.isArray(departments) && departments.length > 0) {
-        whereClause[Op.or] = [
-          { workedDeptId: { [Op.in]: departments } },
-          { workedDeptId: null, departmentId: { [Op.in]: departments } }
-        ];
-      }
-
-      if (shift) {
-        whereClause.shiftId = parseInt(shift);
-      }
-
-      const records = await OTHours.findAll({
-        where: whereClause,
-        attributes: [
-          "otHours",
-          [Sequelize.fn("COUNT", Sequelize.fn("DISTINCT", Sequelize.col("employeeId"))), "numEmployees"]
-        ],
-        group: ["otHours"],
-        order: [["otHours", "ASC"]],
-        raw: true
-      });
-
-      const formatted = records.map(r => {
-        const hours = parseFloat(r.otHours);
-        return {
-          otHours: hours === 1 ? "1 Hour" : `${hours} Hours`,
-          numEmployees: parseInt(r.numEmployees)
-        };
-      });
-
-      return res.status(200).json({
-        success: true,
-        data: formatted
-      });
-    } catch (err) {
-      console.error("Error generating hours wise overtime report:", err);
-      return res.status(500).json({ error: "Failed to generate hours wise overtime report", message: err.message });
-    }
-  },
-
-  generateDepartmentOvertimeDayWiseReport: async (req, res) => {
-    const { fromDate, toDate, departments, shift, companyId } = req.body;
-
-    if (!fromDate || !toDate) {
-      return res.status(400).json({ error: "fromDate and toDate are required" });
-    }
-
-    try {
-      const { OTHours, Employee, Department } = require("../models");
-      const moment = require("moment");
-
+      // 1. Build query for OTHours
       const whereClause = {
         date: {
           [Op.between]: [moment(fromDate).startOf("day").toDate(), moment(toDate).endOf("day").toDate()]
@@ -1670,7 +1610,437 @@ module.exports = {
           {
             model: Employee,
             as: "employee",
-            attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "middleName", "lastName"],
+            attributes: [
+              "id", "curEmployeeCode", "newEmployeeCode", "firstName", "middleName", "lastName",
+              "departmentId", "categoryId", "workingType", "employeeType", "epfNumber", "providentFundNumber", "isHostel"
+            ],
+            include: [
+              {
+                model: Category,
+                as: "category",
+                attributes: ["id", "categoryName", "categoryCode"],
+                required: false
+              }
+            ],
+            required: false
+          },
+          {
+            model: Department,
+            as: "department",
+            attributes: ["id", "departmentname"],
+            required: false
+          },
+          {
+            model: Department,
+            as: "workedDepartment",
+            attributes: ["id", "departmentname"],
+            required: false
+          },
+          {
+            model: ShiftType,
+            as: "shift",
+            attributes: ["id", "name", "startTime", "endTime"],
+            required: false
+          }
+        ],
+        order: [["date", "ASC"], ["id", "ASC"]]
+      });
+
+      // Filter post-reconciliation if departments array was passed
+      let filteredRecords = records;
+      if (Array.isArray(departments) && departments.length > 0) {
+        const deptIdSet = new Set(departments.map(id => parseInt(id)));
+        filteredRecords = records.filter(r => {
+          const resolvedDeptId = r.workedDeptId || r.departmentId;
+          return resolvedDeptId && deptIdSet.has(parseInt(resolvedDeptId));
+        });
+      }
+
+      // 2. Fetch original biometric punch out times from Attendance and BiometricPunch
+      const empIds = Array.from(new Set(filteredRecords.map(r => r.employeeId).filter(Boolean)));
+      const attMap = {};
+      const punchMap = {};
+
+      if (empIds.length > 0) {
+        const attRecords = await Attendance.findAll({
+          where: {
+            employeeId: { [Op.in]: empIds },
+            attendanceDate: { [Op.between]: [fromDate, toDate] }
+          },
+          attributes: ["employeeId", "attendanceDate", "lastCheckOut"]
+        });
+        attRecords.forEach(a => {
+          const k = `${a.employeeId}_${moment(a.attendanceDate).format("YYYY-MM-DD")}`;
+          if (a.lastCheckOut) attMap[k] = a.lastCheckOut;
+        });
+
+        const punches = await BiometricPunch.findAll({
+          where: {
+            employeeId: { [Op.in]: empIds },
+            punchDate: { [Op.between]: [fromDate, toDate] }
+          },
+          order: [["punchTime", "DESC"]],
+          attributes: ["employeeId", "punchDate", "punchTime", "punchType"]
+        });
+        punches.forEach(p => {
+          const k = `${p.employeeId}_${moment(p.punchDate).format("YYYY-MM-DD")}`;
+          if (!punchMap[k] && p.punchTime) {
+            punchMap[k] = p.punchTime;
+          }
+        });
+      }
+
+      // Helper: resolve category code (e.g. O, H, S-PF)
+      const resolveCategoryCode = (emp) => {
+        if (!emp) return "";
+        const catName = String(emp.category?.categoryName || "").toUpperCase();
+        if (catName.includes("HOSTEL") || emp.isHostel) return "H";
+        if (catName.includes("OTHER")) return "O";
+        if (catName.includes("STAFF") || emp.employeeType === "Staff") {
+          return emp.epfNumber || emp.providentFundNumber ? "S-PF" : "S";
+        }
+        if (emp.category?.categoryCode) return emp.category.categoryCode;
+        if (emp.category?.categoryName) return emp.category.categoryName.charAt(0);
+        return "";
+      };
+
+      // Preload all shifts for reliable endTime lookup
+      const allShifts = await ShiftType.findAll({ raw: true });
+      const shiftMapById = {};
+      const shiftMapByName = {};
+      allShifts.forEach(s => {
+        shiftMapById[s.id] = s;
+        shiftMapByName[String(s.name).toUpperCase().trim()] = s;
+      });
+
+      const parseTime = (val) => {
+        if (!val) return null;
+        const s = String(val).trim();
+        if (/^\d{2}:\d{2}\.\d$/.test(s)) return null;
+
+        const formats = [
+          moment.ISO_8601,
+          "YYYY-MM-DDTHH:mm",
+          "YYYY-MM-DDTHH:mm:ss",
+          "YYYY-MM-DD HH:mm:ss",
+          "YYYY-MM-DD HH:mm",
+          "DD-MM-YYYY HH:mm",
+          "DD-MM-YYYY HH:mm:ss",
+          "YYYY-MM-DD h:mm A",
+          "YYYY-MM-DD hh:mm A",
+          "HH:mm:ss",
+          "HH:mm",
+          "h:mm A",
+          "hh:mm A",
+          "h:mm a",
+          "hh:mm a",
+          "h:mmA",
+          "hh:mmA",
+          "h:mma",
+          "hh:mma"
+        ];
+
+        const m = moment(s, formats, false);
+        return m.isValid() ? m : null;
+      };
+
+      // Helper: calculate Overtime In and Out
+      // 1) First priority: Use the actual FROM TIME and TO TIME selected during OT entry (Multiple Entry)
+      // 2) Fallback: If not entered or legacy, calculate based on shift operational hours + OT hours
+      const calculateOtTimes = (r, sh) => {
+        let otIn = "";
+        let otOut = "";
+
+        const mFrom = parseTime(r.fromTime);
+        const mTo = parseTime(r.toTime);
+
+        if (mFrom) {
+          otIn = mFrom.format("h:mmA");
+        }
+        if (mTo) {
+          otOut = mTo.format("h:mmA");
+        }
+
+        const hrs = parseFloat(r.otHours) || 0;
+
+        // If fromTime was entered but toTime was not, add otHours to fromTime
+        if (mFrom && !otOut && hrs > 0) {
+          otOut = mFrom.clone().add(Math.round(hrs * 60), "minutes").format("h:mmA");
+        }
+
+        // If no valid fromTime was entered, fallback based on shift:
+        // - Shift A (08:00-16:30): Overtime starts at 16:30 (4:30PM)
+        // - Shift B (16:30-01:00): Overtime performed during Shift B starts at 16:30 (4:30PM),
+        //                          or 16:00 (4:00PM) for MIXING department
+        // - Shift C (01:00-08:00): Overtime starts at 08:00 (8:00AM)
+        if (!otIn) {
+          let shiftObj = sh;
+          if (!shiftObj && r.shiftId) shiftObj = shiftMapById[r.shiftId];
+          if (!shiftObj && r.employee?.shiftTypeId) shiftObj = shiftMapById[r.employee.shiftTypeId];
+          if (!shiftObj && r.shift?.name) shiftObj = shiftMapByName[String(r.shift.name).toUpperCase().trim()];
+
+          let sName = (shiftObj?.name || r.shift?.name || "").toUpperCase().trim();
+          if (!sName && (r.shiftId === 1 || r.shiftId === "1")) sName = "A";
+          if (!sName && (r.shiftId === 2 || r.shiftId === "2")) sName = "B";
+          if (!sName && (r.shiftId === 3 || r.shiftId === "3")) sName = "C";
+
+          const deptName = String(
+            (r.workedDepartment ? r.workedDepartment.departmentname : null) ||
+            (r.department ? r.department.departmentname : "") ||
+            ""
+          ).toUpperCase().trim();
+
+          let otStartTime = "16:30:00"; // Default for Shift A
+          if (sName === "B" || sName.startsWith("B")) {
+            // Shift B overtime starts at 16:30 (4:30PM), or 16:00 (4:00PM) for MIXING
+            if (deptName.includes("MIXING")) {
+              otStartTime = "16:00:00";
+            } else {
+              otStartTime = "16:30:00";
+            }
+          } else if (sName === "C" || sName.startsWith("C")) {
+            // Shift C overtime starts at 08:00 (8:00AM)
+            otStartTime = "08:00:00";
+          } else if (sName === "A" || sName.startsWith("A")) {
+            // Shift A overtime starts at 16:30 (4:30PM)
+            otStartTime = "16:30:00";
+          } else {
+            // Staff / General or other shifts: use their defined endTime if available
+            if (shiftObj && shiftObj.endTime && shiftObj.endTime !== "01:00:00") {
+              otStartTime = shiftObj.endTime;
+            } else {
+              otStartTime = "16:30:00";
+            }
+          }
+
+          const baseDate = moment(r.date).format("YYYY-MM-DD");
+          const inMoment = moment(`${baseDate} ${otStartTime}`, [
+            "YYYY-MM-DD HH:mm:ss",
+            "YYYY-MM-DD HH:mm",
+            "YYYY-MM-DD h:mm A",
+            "YYYY-MM-DD h:mm:ss A"
+          ]);
+
+          if (inMoment.isValid()) {
+            otIn = inMoment.format("h:mmA");
+            otOut = inMoment.clone().add(Math.round(hrs * 60), "minutes").format("h:mmA");
+          } else {
+            otIn = otStartTime;
+            otOut = "";
+          }
+        }
+
+        return { otIn, otOut };
+      };
+
+      // 3. Group records by Shift, then Worked Department
+      const shiftGroups = {};
+      filteredRecords.forEach(r => {
+        let sName = (r.shift ? r.shift.name : "").toUpperCase().trim();
+        if (!sName && r.shiftId && shiftMapById[r.shiftId]) {
+          sName = String(shiftMapById[r.shiftId].name).toUpperCase().trim();
+        }
+        if (!sName && r.employee?.shiftTypeId && shiftMapById[r.employee.shiftTypeId]) {
+          sName = String(shiftMapById[r.employee.shiftTypeId].name).toUpperCase().trim();
+        }
+        if (!sName) sName = "ALL";
+        if (!shiftGroups[sName]) {
+          shiftGroups[sName] = [];
+        }
+        shiftGroups[sName].push(r);
+      });
+
+      // Sort shift keys: A, B, C, then others
+      const shiftSortOrder = ["A", "B", "C", "SUP_A", "SUP_B", "SUP_C", "STAFF_A", "STAFF_B", "STAFF_C", "GENERAL_A", "GENERAL_B"];
+      const sortedShiftKeys = Object.keys(shiftGroups).sort((a, b) => {
+        const idxA = shiftSortOrder.indexOf(a);
+        const idxB = shiftSortOrder.indexOf(b);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+        return a.localeCompare(b);
+      });
+
+      let empSlNoCounter = 1;
+      let deptSlNoCounter = 1;
+      let grandTotalHrs = 0;
+      const formattedShifts = [];
+      const flatRows = [];
+
+      sortedShiftKeys.forEach(shiftKey => {
+        const recs = shiftGroups[shiftKey];
+        let shiftTotalHrs = 0;
+        const shiftRows = [];
+
+        // Group by worked department
+        const deptGroups = {};
+        recs.forEach(r => {
+          const deptName = (r.workedDepartment ? r.workedDepartment.departmentname : null) || (r.department ? r.department.departmentname : "General");
+          if (!deptGroups[deptName]) {
+            deptGroups[deptName] = [];
+          }
+          deptGroups[deptName].push(r);
+        });
+
+        // Add shift header entry into flatRows
+        flatRows.push({
+          isShiftHeader: true,
+          shiftName: shiftKey
+        });
+
+        Object.keys(deptGroups).forEach((deptName) => {
+          const deptRecs = deptGroups[deptName];
+          const currentDeptSlNo = deptSlNoCounter++;
+
+          deptRecs.forEach((r, rIdx) => {
+            const emp = r.employee;
+            const code = (emp ? (emp.curEmployeeCode || emp.newEmployeeCode) : "") || r.ticketNo || "";
+            const name = emp ? (emp.firstName || "").trim() : (r.empName || "");
+            const hours = parseFloat(r.otHours) || 0;
+            shiftTotalHrs = Math.round((shiftTotalHrs + hours) * 100) / 100;
+            grandTotalHrs = Math.round((grandTotalHrs + hours) * 100) / 100;
+
+            const shiftForOt = r.shift || shiftMapById[r.shiftId] || shiftMapById[r.employee?.shiftTypeId];
+            const { otIn, otOut } = calculateOtTimes(r, shiftForOt);
+
+            const attKey = `${r.employeeId}_${moment(r.date).format("YYYY-MM-DD")}`;
+            let punchOut = "";
+            if (attMap[attKey]) {
+              punchOut = moment(attMap[attKey]).format("h:mmA");
+            } else if (punchMap[attKey]) {
+              const pVal = punchMap[attKey];
+              punchOut = moment(pVal, ["YYYY-MM-DD HH:mm:ss", "HH:mm:ss", "HH:mm"]).isValid()
+                ? moment(pVal, ["YYYY-MM-DD HH:mm:ss", "HH:mm:ss", "HH:mm"]).format("h:mmA")
+                : String(pVal);
+            }
+
+            const categoryCode = resolveCategoryCode(emp);
+
+            const rowData = {
+              deptSlNo: rIdx === 0 ? currentDeptSlNo : "",
+              department: rIdx === 0 ? deptName : "",
+              deptCount: deptRecs.length,
+              isFirstInDept: rIdx === 0,
+              empSlNo: empSlNoCounter++,
+              ticketNo: code,
+              employeeName: name.toUpperCase(),
+              shift: shiftKey,
+              otIn,
+              otOut,
+              otHours: hours,
+              punchOut,
+              category: categoryCode
+            };
+
+            shiftRows.push(rowData);
+            flatRows.push({ ...rowData, isDataRow: true });
+          });
+        });
+
+        // Add Shift Subtotal row
+        flatRows.push({
+          isShiftSubtotal: true,
+          shiftName: shiftKey,
+          shiftTotalHrs
+        });
+
+        formattedShifts.push({
+          shiftName: shiftKey,
+          shiftTotalHrs,
+          rows: shiftRows
+        });
+      });
+
+      // Resolve report title
+      let computedReportTitle = "OT Report for Production";
+      if (Array.isArray(departments) && departments.length === 1) {
+        const singleDept = await Department.findByPk(departments[0]);
+        if (singleDept) computedReportTitle = `OT Report for ${singleDept.departmentname}`;
+      }
+
+      let targetShiftName = "ALL";
+      if (shift) {
+        const sh = await ShiftType.findByPk(shift);
+        if (sh && sh.name) targetShiftName = sh.name;
+      }
+
+      return res.status(200).json({
+        success: true,
+        reportTitle: computedReportTitle,
+        shiftName: targetShiftName,
+        fromDate: moment(fromDate).format("DD-MM-YYYY"),
+        toDate: moment(toDate).format("DD-MM-YYYY"),
+        shifts: formattedShifts,
+        flatRows,
+        data: flatRows,
+        grandTotalHrs
+      });
+    } catch (err) {
+      console.error("Error generating hours wise overtime report:", err);
+      return res.status(500).json({ error: "Failed to generate hours wise overtime report", message: err.message });
+    }
+  },
+
+  generateDepartmentOvertimeDayWiseReport: async (req, res) => {
+    const { fromDate, toDate, departments, shift, companyId } = req.body;
+
+    if (!fromDate || !toDate) {
+      return res.status(400).json({ error: "fromDate and toDate are required" });
+    }
+
+    try {
+      const { OTHours, Employee, Department, ShiftType } = require("../models");
+      const moment = require("moment");
+
+      // 1. Generate day sequence for the date range (supports spanning across months without collisions)
+      const dayList = [];
+      let cur = moment(fromDate);
+      const end = moment(toDate);
+      while (cur.isSameOrBefore(end)) {
+        dayList.push({
+          key: cur.format("YYYY-MM-DD"),
+          dateStr: cur.format("YYYY-MM-DD"),
+          label: cur.format("D")
+        });
+        cur.add(1, "day");
+      }
+
+      // 2. Resolve shift name if selected
+      let targetShiftName = "ALL";
+      if (shift) {
+        const sh = await ShiftType.findByPk(shift);
+        if (sh && sh.name) targetShiftName = sh.name;
+      }
+
+      // 3. Build query for OTHours
+      const whereClause = {
+        date: {
+          [Op.between]: [moment(fromDate).startOf("day").toDate(), moment(toDate).endOf("day").toDate()]
+        }
+      };
+
+      if (companyId) {
+        whereClause.companyId = companyId;
+      }
+
+      if (Array.isArray(departments) && departments.length > 0) {
+        whereClause[Op.or] = [
+          { workedDeptId: { [Op.in]: departments } },
+          { workedDeptId: null, departmentId: { [Op.in]: departments } }
+        ];
+      }
+
+      if (shift) {
+        whereClause.shiftId = parseInt(shift);
+      }
+
+      const records = await OTHours.findAll({
+        where: whereClause,
+        include: [
+          {
+            model: Employee,
+            as: "employee",
+            attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "middleName", "lastName", "departmentId"],
           },
           {
             model: Department,
@@ -1682,42 +2052,107 @@ module.exports = {
             as: "workedDepartment",
             attributes: ["id", "departmentname"],
             required: false
+          },
+          {
+            model: ShiftType,
+            as: "shift",
+            attributes: ["id", "name"],
+            required: false
           }
         ],
         order: [["date", "ASC"], ["id", "ASC"]]
       });
 
-      const formatted = records.map(r => {
-        const emp = r.employee;
-        const resolvedDeptId = r.workedDeptId || r.departmentId;
-        const deptName = (r.workedDepartment ? r.workedDepartment.departmentname : null)
-          || (r.department ? r.department.departmentname : "General");
-
-        const empName = emp
-          ? (emp.firstName || emp.employeeCode)
-          : (r.empName || "");
-
-        return {
-          date: moment(r.date).format("DD-MMM-YYYY"),
-          employeeName: empName,
-          department: deptName,
-          deptId: resolvedDeptId ? parseInt(resolvedDeptId) : null,
-          otHours: r.otHours
-        };
-      });
-
-      // Filter post-reconciliation to only include records whose resolved department matches the filters (if filtered)
-      let filteredData = formatted;
+      // Filter post-reconciliation to only include records whose resolved department matches
+      let filteredRecords = records;
       if (Array.isArray(departments) && departments.length > 0) {
         const deptIdSet = new Set(departments.map(id => parseInt(id)));
-        filteredData = formatted.filter(r => r.deptId && deptIdSet.has(r.deptId));
+        filteredRecords = records.filter(r => {
+          const resolvedDeptId = r.workedDeptId || r.departmentId;
+          return resolvedDeptId && deptIdSet.has(parseInt(resolvedDeptId));
+        });
       }
 
-      const finalData = filteredData.map(({ deptId, ...rest }) => rest);
+      // 4. Pivot records by Employee (Cross-tab matrix by Day)
+      const employeeMap = new Map();
+
+      filteredRecords.forEach(r => {
+        const emp = r.employee;
+        const empId = r.employeeId || (emp ? emp.id : r.ticketNo);
+        const code = (emp ? (emp.curEmployeeCode || emp.newEmployeeCode) : "") || r.ticketNo || String(empId);
+        const name = emp
+          ? (emp.firstName || "").trim() || (r.empName || "")
+          : (r.empName || "");
+
+        const dayNum = moment(r.date).format("D");
+        const dateKey = moment(r.date).format("YYYY-MM-DD");
+        const hours = parseFloat(r.otHours) || 0;
+
+        if (!employeeMap.has(empId)) {
+          employeeMap.set(empId, {
+            employeeId: empId,
+            ticketNo: code,
+            employeeName: name.toUpperCase(),
+            department: (r.workedDepartment ? r.workedDepartment.departmentname : null) || (r.department ? r.department.departmentname : "General"),
+            dailyHours: {},
+            total: 0
+          });
+        }
+
+        const empRow = employeeMap.get(empId);
+        empRow.dailyHours[dateKey] = Math.round(((empRow.dailyHours[dateKey] || 0) + hours) * 100) / 100;
+        empRow.dailyHours[dayNum] = empRow.dailyHours[dateKey];
+        empRow.total = Math.round((empRow.total + hours) * 100) / 100;
+      });
+
+      // Sort rows numerically / alphabetically by ticketNo
+      const rows = Array.from(employeeMap.values()).sort((a, b) => {
+        const numA = parseInt(String(a.ticketNo).replace(/[^0-9]/g, ""), 10);
+        const numB = parseInt(String(b.ticketNo).replace(/[^0-9]/g, ""), 10);
+        if (!isNaN(numA) && !isNaN(numB) && numA !== numB) {
+          return numA - numB;
+        }
+        return String(a.ticketNo).localeCompare(String(b.ticketNo), undefined, { numeric: true });
+      });
+
+      // 5. Calculate daily column totals and grand total
+      const dayTotals = {};
+      dayList.forEach(d => {
+        dayTotals[d.key] = 0;
+        dayTotals[d.label] = 0;
+      });
+      let grandTotal = 0;
+
+      rows.forEach(row => {
+        dayList.forEach(d => {
+          if (row.dailyHours[d.key]) {
+            dayTotals[d.key] = Math.round((dayTotals[d.key] + row.dailyHours[d.key]) * 100) / 100;
+            dayTotals[d.label] = dayTotals[d.key];
+          }
+        });
+        grandTotal = Math.round((grandTotal + row.total) * 100) / 100;
+      });
+
+      // Resolve report title
+      const deptNames = Array.from(new Set(rows.map(r => r.department).filter(Boolean)));
+      let computedReportTitle = "OT Report for Production";
+      if (deptNames.length === 1) {
+        computedReportTitle = `OT Report for ${deptNames[0]}`;
+      } else if (Array.isArray(departments) && departments.length === 1) {
+        const singleDept = await Department.findByPk(departments[0]);
+        if (singleDept) computedReportTitle = `OT Report for ${singleDept.departmentname}`;
+      }
 
       return res.status(200).json({
         success: true,
-        data: finalData
+        reportTitle: computedReportTitle,
+        shiftName: targetShiftName,
+        fromDate: moment(fromDate).format("DD-MM-YYYY"),
+        toDate: moment(toDate).format("DD-MM-YYYY"),
+        days: dayList,
+        data: rows,
+        dayTotals,
+        grandTotal
       });
     } catch (err) {
       console.error("Error generating day wise overtime report:", err);

@@ -1177,8 +1177,15 @@ module.exports = {
     }
 
     try {
-      const { Attendance, Employee, Department, ShiftType, DepartmentAttendance, BiometricPunch } = require("../models");
+      const { Attendance, Employee, Department, ShiftType, DepartmentAttendance, BiometricPunch, Category, Company } = require("../models");
       const moment = require("moment");
+
+      // Fetch company name
+      let companyName = "KAYAAR EXPORTS (P) LTD";
+      if (companyId) {
+        const comp = await Company.findByPk(companyId);
+        if (comp && comp.companyname) companyName = comp.companyname;
+      }
 
       // Fetch shift name mappings in memory
       const allShifts = await ShiftType.findAll({ raw: true });
@@ -1190,9 +1197,34 @@ module.exports = {
       // Fetch department mappings in memory
       const allDepts = await Department.findAll({ raw: true });
       const deptMap = {};
+      const deptAcronymMap = {};
       allDepts.forEach(d => {
         deptMap[d.id] = d.departmentname;
+        deptAcronymMap[d.id] = d.acronym || d.departmentname;
       });
+
+      // Helper: resolve category code (e.g. O, H, MIX, S-PF, S)
+      const resolveCategoryCode = (emp) => {
+        if (!emp) return "O";
+        const catName = String(emp.category?.categoryName || "").toUpperCase();
+        const catCode = String(emp.category?.categoryCode || "").toUpperCase();
+        if (catName.includes("HOSTEL") || catCode.includes("HOSTEL") || emp.isHostel) return "H";
+        if (catName.includes("MIX") || catCode.includes("MIX")) return "MIX";
+        if (catName.includes("OTHER") || catCode.includes("OTHER")) return "O";
+        if (catName.includes("STAFF") || emp.employeeType === "Staff") {
+          return emp.epfNumber || emp.providentFundNumber ? "S-PF" : "S";
+        }
+        if (emp.category?.categoryCode) return emp.category.categoryCode;
+        if (emp.category?.categoryName) return emp.category.categoryName.charAt(0);
+        return "O";
+      };
+
+      const calculateDays = (status) => {
+        const s = String(status || "").toLowerCase().trim();
+        if (s.includes("half") || s === "p/l" || s.includes("0.5")) return 0.5;
+        if (s.includes("present") || s === "p" || s === "pr") return 1.0;
+        return 0.0;
+      };
 
       // 1. Fetch manual department attendance records
       const manualWhere = {
@@ -1209,7 +1241,7 @@ module.exports = {
           { departmentId: { [Op.in]: departments } }
         ];
       }
-      if (shift) {
+      if (shift && reportType !== "Attendance Shift Wise Abstract") {
         manualWhere.shiftId = parseInt(shift);
       }
 
@@ -1219,7 +1251,19 @@ module.exports = {
           {
             model: Employee,
             as: "employee",
-            attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "middleName", "lastName", "departmentId", "shiftTypeId"],
+            attributes: [
+              "id", "curEmployeeCode", "newEmployeeCode", "firstName", "middleName", "lastName",
+              "departmentId", "shiftTypeId", "categoryId", "workingType", "employeeType",
+              "epfNumber", "providentFundNumber", "isHostel", "dateOfJoining"
+            ],
+            include: [
+              {
+                model: Category,
+                as: "category",
+                attributes: ["id", "categoryName", "categoryCode"],
+                required: false
+              }
+            ],
             required: false
           },
           {
@@ -1274,7 +1318,7 @@ module.exports = {
         whereClause[Op.or] = deptConditions;
       }
 
-      if (shift) {
+      if (shift && reportType !== "Attendance Shift Wise Abstract") {
         const targetShift = allShifts.find(s => String(s.id) === String(shift));
         const shiftConditions = [
           { shiftId: parseInt(shift) },
@@ -1293,7 +1337,19 @@ module.exports = {
           {
             model: Employee,
             as: "employee",
-            attributes: ["id", "curEmployeeCode", "newEmployeeCode", "firstName", "middleName", "lastName", "departmentId", "shiftTypeId"],
+            attributes: [
+              "id", "curEmployeeCode", "newEmployeeCode", "firstName", "middleName", "lastName",
+              "departmentId", "shiftTypeId", "categoryId", "workingType", "employeeType",
+              "epfNumber", "providentFundNumber", "isHostel", "dateOfJoining"
+            ],
+            include: [
+              {
+                model: Category,
+                as: "category",
+                attributes: ["id", "categoryName", "categoryCode"],
+                required: false
+              }
+            ],
             required: false
           },
           {
@@ -1349,7 +1405,6 @@ module.exports = {
           resolvedStatus = manualRecord.status || "Present";
           entryType = "HR_VERIFIED";
         } else if (isBiometricPresent) {
-          // Biometric punch exists, but NO manual HR entry made
           resolvedStatus = "Absent";
           entryType = "BIOMETRIC_WITHOUT_HR";
         } else {
@@ -1360,22 +1415,30 @@ module.exports = {
         let inTime = r.firstCheckIn ? moment(r.firstCheckIn).format("hh:mm A") : "—";
         let outTime = r.lastCheckOut ? moment(r.lastCheckOut).format("hh:mm A") : "—";
 
-        const empName = emp
-          ? (emp.firstName || emp.employeeCode)
-          : (manualRecord ? manualRecord.empName : "");
+        const rawName = (emp ? (emp.firstName || "") : (manualRecord ? manualRecord.empName : "")).trim();
+        const cleanName = rawName.toUpperCase();
 
-        const empCodeStr = emp ? (emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode)) : "";
+        const empCodeStr = (emp ? (emp.curEmployeeCode || emp.newEmployeeCode) : "") || (manualRecord ? manualRecord.ticketNo : "") || r.ticketNo || "";
+        const catCode = resolveCategoryCode(emp);
+        const days = calculateDays(resolvedStatus);
+
+        const rawDoj = emp?.dateOfJoining ? moment(emp.dateOfJoining).format("DD-MM-YYYY") : "";
         recordMap.set(key, {
-          ticketNo: empCodeStr || (manualRecord ? manualRecord.ticketNo : ""),
+          employeeId: r.employeeId,
+          ticketNo: empCodeStr,
           curEmployeeCode: emp?.curEmployeeCode || "",
           newEmployeeCode: emp?.newEmployeeCode || "",
-          employeeName: empName,
+          employeeName: cleanName,
           department: deptName,
           deptId: deptId ? parseInt(deptId) : null,
+          deptAcronym: deptAcronymMap[deptId] || deptName,
+          doj: rawDoj,
           date: r.attendanceDate,
           shift: shiftName,
+          category: catCode,
+          days: days,
           status: resolvedStatus,
-          entryType: entryType, // 'HR_VERIFIED' | 'BIOMETRIC_WITHOUT_HR' | 'ABSENT'
+          entryType: entryType,
           isHrVerified: hasManual,
           inTime: inTime,
           outTime: outTime
@@ -1393,20 +1456,28 @@ module.exports = {
             || deptMap[deptId]
             || "General";
           const shiftName = mr.shiftName || shiftMap[mr.shiftId] || "General";
-          const empName = emp
-            ? (emp.firstName || emp.employeeCode)
-            : (mr.empName || "");
+          const rawName = (emp ? (emp.firstName || "") : (mr.empName || "")).trim();
+          const cleanName = rawName.toUpperCase();
 
-          const empCodeStr = emp ? (emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode)) : "";
+          const empCodeStr = (emp ? (emp.curEmployeeCode || emp.newEmployeeCode) : "") || mr.ticketNo || "";
+          const catCode = resolveCategoryCode(emp);
+          const days = calculateDays(mr.status || "Present");
+          const rawDoj = emp?.dateOfJoining ? moment(emp.dateOfJoining).format("DD-MM-YYYY") : "";
+
           recordMap.set(key, {
+            employeeId: mr.employeeId,
             ticketNo: mr.ticketNo || empCodeStr || "",
             curEmployeeCode: emp?.curEmployeeCode || "",
             newEmployeeCode: emp?.newEmployeeCode || "",
-            employeeName: empName,
+            employeeName: cleanName,
             department: deptName,
             deptId: deptId ? parseInt(deptId) : null,
+            deptAcronym: deptAcronymMap[deptId] || deptName,
+            doj: rawDoj,
             date: mr.attendanceDate,
             shift: shiftName,
+            category: catCode,
+            days: days,
             status: mr.status || "Present",
             entryType: "HR_VERIFIED",
             isHrVerified: true,
@@ -1423,42 +1494,376 @@ module.exports = {
         mergedList = mergedList.filter(r => r.deptId && deptIdSet.has(r.deptId));
       }
 
-      // Sort by date DESC, then ticketNo ASC
-      mergedList.sort((a, b) => {
-        if (a.date !== b.date) return b.date.localeCompare(a.date);
-        return String(a.ticketNo).localeCompare(String(b.ticketNo), undefined, { numeric: true });
-      });
-
-      // If Abstract report is requested, aggregate by shift
+      // If Abstract report is requested, replicate the 11-column Shift wise Abstract format
       if (reportType === "Attendance Shift Wise Abstract") {
-        const pivotMap = {};
+        let targetShiftName = "ALL";
+        if (shift) {
+          const found = allShifts.find(s => String(s.id) === String(shift));
+          if (found && found.name) targetShiftName = found.name;
+        }
+
+        const empMap = new Map();
         mergedList.forEach(r => {
-          let shiftName = r.shift || "General";
-          if (!pivotMap[shiftName]) {
-            pivotMap[shiftName] = { shift: shiftName, present: 0, absent: 0, leave: 0 };
+          const isAbsent = String(r.status || "").toLowerCase().includes("absent") || r.entryType === "ABSENT";
+          if (r.days <= 0 && !isAbsent) return;
+
+          const empIdKey = r.employeeId || r.ticketNo || r.employeeName;
+          if (!empMap.has(empIdKey)) {
+            empMap.set(empIdKey, {
+              employeeId: r.employeeId,
+              ticketNo: r.ticketNo,
+              employeeName: r.employeeName,
+              department: r.department,
+              deptId: r.deptId,
+              deptAcronym: r.deptAcronym || deptAcronymMap[r.deptId] || r.department,
+              doj: r.doj || "",
+              category: r.category || "O",
+              shiftA: 0,
+              shiftB: 0,
+              shiftC: 0,
+              absDays: 0,
+              totalDays: 0
+            });
           }
-          const status = String(r.status || "").toLowerCase();
-          if (r.entryType === "HR_VERIFIED" && (status === "present" || status === "pr" || status === "present with permission" || status === "half day" || status === "present/leave (p/l)" || status === "p/l" || status === "p")) {
-            pivotMap[shiftName].present += 1;
-          } else if (status === "leave" || status === "lv" || status === "l" || status === "holiday" || status === "week off") {
-            pivotMap[shiftName].leave += 1;
-          } else {
-            pivotMap[shiftName].absent += 1;
+
+          const empRecord = empMap.get(empIdKey);
+          if (!empRecord.category && r.category) empRecord.category = r.category;
+          if (!empRecord.doj && r.doj) empRecord.doj = r.doj;
+
+          let shiftLetter = "A";
+          const sUpper = String(r.shift || "").toUpperCase();
+          if (sUpper.includes("B")) shiftLetter = "B";
+          else if (sUpper.includes("C")) shiftLetter = "C";
+          else if (sUpper.includes("A")) shiftLetter = "A";
+          else shiftLetter = sUpper.charAt(0) || "A";
+
+          if (r.days > 0) {
+            if (shiftLetter === "B") {
+              empRecord.shiftB = Math.round((empRecord.shiftB + r.days) * 10) / 10;
+            } else if (shiftLetter === "C") {
+              empRecord.shiftC = Math.round((empRecord.shiftC + r.days) * 10) / 10;
+            } else {
+              empRecord.shiftA = Math.round((empRecord.shiftA + r.days) * 10) / 10;
+            }
+            empRecord.totalDays = Math.round((empRecord.totalDays + r.days) * 10) / 10;
+          } else if (isAbsent) {
+            empRecord.absDays = Math.round((empRecord.absDays + 1) * 10) / 10;
           }
         });
+
+        const allEmps = Array.from(empMap.values()).filter(e => e.totalDays > 0 || e.absDays > 0);
+
+        const deptGroupMap = {};
+        allEmps.forEach(emp => {
+          const groupKey = (emp.deptAcronym || emp.department || "General").trim();
+          if (!deptGroupMap[groupKey]) {
+            deptGroupMap[groupKey] = {
+              deptAcronym: emp.deptAcronym || groupKey,
+              department: emp.department,
+              employees: []
+            };
+          }
+          deptGroupMap[groupKey].employees.push(emp);
+        });
+
+        const sortedDeptKeys = Object.keys(deptGroupMap).sort((a, b) => a.localeCompare(b));
+        const flatRows = [];
+        let runningSlNo = 1;
+        let grandShiftA = 0;
+        let grandShiftB = 0;
+        let grandShiftC = 0;
+        let grandAbsDays = 0;
+        let grandTotalDays = 0;
+
+        sortedDeptKeys.forEach(grpKey => {
+          const grp = deptGroupMap[grpKey];
+          // Sort employees within department strictly in alphabetical order by first name
+          grp.employees.sort((a, b) => String(a.employeeName).localeCompare(String(b.employeeName)));
+
+          flatRows.push({
+            isDeptHeader: true,
+            department: grp.department,
+            deptAcronym: grp.deptAcronym || grpKey
+          });
+
+          let deptShiftA = 0;
+          let deptShiftB = 0;
+          let deptShiftC = 0;
+          let deptAbsDays = 0;
+          let deptTotalDays = 0;
+
+          grp.employees.forEach(emp => {
+            const currentSlNo = runningSlNo++;
+            deptShiftA = Math.round((deptShiftA + emp.shiftA) * 10) / 10;
+            deptShiftB = Math.round((deptShiftB + emp.shiftB) * 10) / 10;
+            deptShiftC = Math.round((deptShiftC + emp.shiftC) * 10) / 10;
+            deptAbsDays = Math.round((deptAbsDays + emp.absDays) * 10) / 10;
+            deptTotalDays = Math.round((deptTotalDays + emp.totalDays) * 10) / 10;
+
+            flatRows.push({
+              isEmployeeRow: true,
+              slNo: currentSlNo,
+              ...emp
+            });
+          });
+
+          flatRows.push({
+            isDeptSubtotal: true,
+            department: grp.department,
+            deptAcronym: grp.deptAcronym || grpKey,
+            shiftA: deptShiftA,
+            shiftB: deptShiftB,
+            shiftC: deptShiftC,
+            absDays: deptAbsDays,
+            totalDays: deptTotalDays
+          });
+
+          grandShiftA = Math.round((grandShiftA + deptShiftA) * 10) / 10;
+          grandShiftB = Math.round((grandShiftB + deptShiftB) * 10) / 10;
+          grandShiftC = Math.round((grandShiftC + deptShiftC) * 10) / 10;
+          grandAbsDays = Math.round((grandAbsDays + deptAbsDays) * 10) / 10;
+          grandTotalDays = Math.round((grandTotalDays + deptTotalDays) * 10) / 10;
+        });
+
+        const grandTotals = {
+          shiftA: grandShiftA,
+          shiftB: grandShiftB,
+          shiftC: grandShiftC,
+          absDays: grandAbsDays,
+          totalDays: grandTotalDays
+        };
 
         return res.status(200).json({
           success: true,
-          data: Object.values(pivotMap)
+          companyName,
+          reportTitle: "Attendance Shift wise Abstract",
+          shiftName: targetShiftName,
+          fromDate: moment(fromDate).format("DD-MM-YYYY"),
+          toDate: moment(toDate).format("DD-MM-YYYY"),
+          totalEmployees: runningSlNo - 1,
+          grandTotals,
+          grandTotalDays: grandTotals.totalDays,
+          flatRows,
+          data: flatRows
         });
       }
 
-      // Remove temporary deptId field before sending
-      const finalData = mergedList.map(({ deptId, ...rest }) => rest);
+      // 3. Attendance Shift Wise Detail report format
+      if (reportType === "Attendance Shift Wise Detail") {
+        const dayCols = [];
+        for (let d = 1; d <= 31; d++) {
+          dayCols.push(String(d).padStart(2, "0"));
+        }
+
+        const activeRecords = mergedList.filter(r => r.days > 0);
+
+        const empMap = new Map();
+        activeRecords.forEach(r => {
+          const empIdKey = r.employeeId || r.ticketNo || r.employeeName;
+          if (!empMap.has(empIdKey)) {
+            empMap.set(empIdKey, {
+              employeeId: r.employeeId,
+              ticketNo: r.ticketNo,
+              employeeName: r.employeeName,
+              department: r.department,
+              deptId: r.deptId,
+              deptAcronym: r.deptAcronym || deptAcronymMap[r.deptId] || r.department,
+              doj: r.doj || "",
+              dailyShifts: {},
+              shiftA: 0,
+              shiftB: 0,
+              shiftC: 0,
+              totalDays: 0
+            });
+          }
+
+          const empRecord = empMap.get(empIdKey);
+          const dayNum = moment(r.date).format("DD");
+
+          let shiftLetter = "A";
+          const sUpper = String(r.shift || "").toUpperCase();
+          if (sUpper.includes("B")) shiftLetter = "B";
+          else if (sUpper.includes("C")) shiftLetter = "C";
+          else if (sUpper.includes("A")) shiftLetter = "A";
+          else shiftLetter = sUpper.charAt(0) || "A";
+
+          if (r.days === 0.5) {
+            shiftLetter = "0.5";
+          }
+          empRecord.dailyShifts[dayNum] = shiftLetter;
+
+          if (shiftLetter === "B") {
+            empRecord.shiftB = Math.round((empRecord.shiftB + r.days) * 10) / 10;
+          } else if (shiftLetter === "C") {
+            empRecord.shiftC = Math.round((empRecord.shiftC + r.days) * 10) / 10;
+          } else {
+            empRecord.shiftA = Math.round((empRecord.shiftA + r.days) * 10) / 10;
+          }
+          empRecord.totalDays = Math.round((empRecord.totalDays + r.days) * 10) / 10;
+        });
+
+        const allEmps = Array.from(empMap.values());
+
+        const deptGroupMap = {};
+        allEmps.forEach(emp => {
+          const groupKey = (emp.deptAcronym || emp.department || "General").trim();
+          if (!deptGroupMap[groupKey]) {
+            deptGroupMap[groupKey] = {
+              deptAcronym: emp.deptAcronym,
+              department: emp.department,
+              employees: []
+            };
+          }
+          deptGroupMap[groupKey].employees.push(emp);
+        });
+
+        const sortedDeptKeys = Object.keys(deptGroupMap).sort((a, b) => a.localeCompare(b));
+        const flatRows = [];
+        let grandTotalDays = 0;
+        let totalEmployees = 0;
+
+        sortedDeptKeys.forEach(grpKey => {
+          const grp = deptGroupMap[grpKey];
+          grp.employees.sort((a, b) => String(a.employeeName).localeCompare(String(b.employeeName)));
+
+          flatRows.push({
+            isDeptHeader: true,
+            department: grp.department,
+            deptAcronym: grp.deptAcronym || grpKey
+          });
+
+          grp.employees.forEach(emp => {
+            totalEmployees += 1;
+            grandTotalDays = Math.round((grandTotalDays + emp.totalDays) * 10) / 10;
+            flatRows.push({
+              isEmployeeRow: true,
+              ...emp
+            });
+          });
+        });
+
+        let targetShiftName = "ALL";
+        if (shift) {
+          const found = allShifts.find(s => String(s.id) === String(shift));
+          if (found) targetShiftName = found.name;
+        }
+
+        return res.status(200).json({
+          success: true,
+          reportTitle: "Shift wise Attendance Detail",
+          shiftName: targetShiftName,
+          fromDate: moment(fromDate).format("DD-MM-YYYY"),
+          toDate: moment(toDate).format("DD-MM-YYYY"),
+          dayCols,
+          totalEmployees,
+          grandTotalDays,
+          flatRows,
+          data: flatRows
+        });
+      }
+
+      // 4. Department Attendance report format
+      // Filter out records where days <= 0 (absent/leave)
+      const validRecords = mergedList.filter(r => r.days > 0);
+
+      const mixRecords = validRecords.filter(r => r.category === "MIX");
+      const regularRecords = validRecords.filter(r => r.category !== "MIX");
+
+      const processRecords = (recordsList) => {
+        const deptGroups = {};
+        recordsList.forEach(r => {
+          const dName = (r.department || "General").toUpperCase().trim();
+          if (!deptGroups[dName]) {
+            deptGroups[dName] = [];
+          }
+          deptGroups[dName].push(r);
+        });
+
+        const sortedDeptNames = Object.keys(deptGroups).sort((a, b) => a.localeCompare(b));
+        let total = 0;
+        let countEmps = 0;
+        const rows = [];
+
+        sortedDeptNames.forEach(dName => {
+          const emps = deptGroups[dName];
+          emps.sort((a, b) => String(a.employeeName).localeCompare(String(b.employeeName)));
+
+          let deptTotal = 0;
+          const count = emps.length;
+
+          emps.forEach((e, idx) => {
+            deptTotal = Math.round((deptTotal + e.days) * 100) / 100;
+            countEmps += 1;
+            rows.push({
+              ...e,
+              department: dName,
+              isFirstInDept: idx === 0,
+              deptCount: count,
+              empSlNo: idx + 1
+            });
+          });
+
+          // Department subtotal row
+          rows.push({
+            isDeptSubtotal: true,
+            department: dName,
+            deptTotalDays: deptTotal
+          });
+
+          total = Math.round((total + deptTotal) * 100) / 100;
+        });
+
+        return { rows, total, countEmps };
+      };
+
+      let grandTotalDays = 0;
+      let totalEmployees = 0;
+      const flatRows = [];
+
+      if (mixRecords.length > 0) {
+        // Group 1: Regular records
+        const regularProcessed = processRecords(regularRecords);
+        flatRows.push(...regularProcessed.rows);
+        flatRows.push({
+          isGroupSubtotal: true,
+          groupName: "REGULAR",
+          groupTotalDays: regularProcessed.total
+        });
+
+        // Group 2: MIX records
+        const mixProcessed = processRecords(mixRecords);
+        flatRows.push(...mixProcessed.rows);
+        flatRows.push({
+          isGroupSubtotal: true,
+          groupName: "MIX",
+          groupTotalDays: mixProcessed.total
+        });
+
+        totalEmployees = regularProcessed.countEmps + mixProcessed.countEmps;
+        grandTotalDays = Math.round((regularProcessed.total + mixProcessed.total) * 100) / 100;
+      } else {
+        const allProcessed = processRecords(validRecords);
+        flatRows.push(...allProcessed.rows);
+        totalEmployees = allProcessed.countEmps;
+        grandTotalDays = allProcessed.total;
+      }
+
+      let targetShiftName = "ALL";
+      if (shift) {
+        const found = allShifts.find(s => String(s.id) === String(shift));
+        if (found) targetShiftName = found.name;
+      }
 
       return res.status(200).json({
         success: true,
-        data: finalData
+        reportTitle: "Attendance Report for Production",
+        shiftName: targetShiftName,
+        fromDate: moment(fromDate).format("DD-MM-YYYY"),
+        toDate: moment(toDate).format("DD-MM-YYYY"),
+        totalEmployees,
+        grandTotalDays,
+        flatRows,
+        data: flatRows
       });
     } catch (err) {
       console.error("Error generating department attendance report:", err);
@@ -2168,8 +2573,22 @@ module.exports = {
     }
 
     try {
-      const { OTHours, Department } = require("../models");
+      const { OTHours, Employee, Department, ShiftType, Category, Company } = require("../models");
       const moment = require("moment");
+
+      // Resolve selected shift name
+      let shiftName = "ALL";
+      if (shift) {
+        const sh = await ShiftType.findByPk(shift);
+        if (sh && sh.name) shiftName = sh.name;
+      }
+
+      // Fetch company name
+      let companyName = "KAYAAR EXPORTS (P) LTD";
+      if (companyId) {
+        const comp = await Company.findByPk(companyId);
+        if (comp && comp.companyname) companyName = comp.companyname;
+      }
 
       const whereClause = {
         date: {
@@ -2194,52 +2613,181 @@ module.exports = {
 
       const records = await OTHours.findAll({
         where: whereClause,
-        attributes: [
-          "departmentId",
-          "workedDeptId",
-          [Sequelize.fn("COUNT", Sequelize.fn("DISTINCT", Sequelize.col("employeeId"))), "employees"],
-          [Sequelize.fn("SUM", Sequelize.col("otHours")), "totalOtHours"]
+        include: [
+          {
+            model: Employee,
+            as: "employee",
+            attributes: [
+              "id", "curEmployeeCode", "newEmployeeCode", "firstName", "middleName", "lastName",
+              "departmentId", "categoryId", "workingType", "employeeType", "epfNumber", "providentFundNumber", "isHostel"
+            ],
+            include: [
+              {
+                model: Category,
+                as: "category",
+                attributes: ["id", "categoryName", "categoryCode"],
+                required: false
+              }
+            ],
+            required: false
+          },
+          {
+            model: Department,
+            as: "department",
+            attributes: ["id", "departmentname"],
+            required: false
+          },
+          {
+            model: Department,
+            as: "workedDepartment",
+            attributes: ["id", "departmentname"],
+            required: false
+          },
+          {
+            model: ShiftType,
+            as: "shift",
+            attributes: ["id", "name"],
+            required: false
+          }
         ],
-        group: ["workedDeptId", "departmentId"],
-        raw: true
+        order: [["date", "ASC"], ["id", "ASC"]]
       });
 
-      // Map department names in memory to bypass ONLY_FULL_GROUP_BY issues
-      const allDepts = await Department.findAll({ raw: true });
-      const deptMap = {};
-      allDepts.forEach(d => {
-        deptMap[d.id] = d.departmentname;
-      });
-
-      const abstractMap = {};
-      records.forEach(r => {
-        const resolvedDeptId = r.workedDeptId || r.departmentId;
-        const deptName = deptMap[resolvedDeptId] || "General";
-
-        if (!abstractMap[deptName]) {
-          abstractMap[deptName] = {
-            department: deptName,
-            deptId: resolvedDeptId,
-            employees: 0,
-            totalOtHours: 0
-          };
-        }
-        abstractMap[deptName].employees += parseInt(r.employees || 0);
-        abstractMap[deptName].totalOtHours += parseFloat(r.totalOtHours || 0);
-      });
-
-      // Filter post-reconciliation to only include records whose resolved department matches the filters (if filtered)
-      let formatted = Object.values(abstractMap);
+      // Filter post-reconciliation if departments array was passed
+      let filteredRecords = records;
       if (Array.isArray(departments) && departments.length > 0) {
         const deptIdSet = new Set(departments.map(id => parseInt(id)));
-        formatted = formatted.filter(r => r.deptId && deptIdSet.has(r.deptId));
+        filteredRecords = records.filter(r => {
+          const resolvedDeptId = r.workedDeptId || r.departmentId;
+          return resolvedDeptId && deptIdSet.has(parseInt(resolvedDeptId));
+        });
       }
 
-      const finalData = formatted.map(({ deptId, ...rest }) => rest);
+      // Preload all shifts for reliable shift name lookup
+      const allShifts = await ShiftType.findAll({ raw: true });
+      const shiftMapById = {};
+      allShifts.forEach(s => {
+        shiftMapById[s.id] = s;
+      });
+
+      // Helper: resolve category code (e.g. O, H, S-PF)
+      const resolveCategoryCode = (emp) => {
+        if (!emp) return "";
+        const catName = String(emp.category?.categoryName || "").toUpperCase();
+        if (catName.includes("HOSTEL") || emp.isHostel) return "H";
+        if (catName.includes("OTHER")) return "O";
+        if (catName.includes("STAFF") || emp.employeeType === "Staff") {
+          return emp.epfNumber || emp.providentFundNumber ? "S-PF" : "S";
+        }
+        if (emp.category?.categoryCode) return emp.category.categoryCode;
+        if (emp.category?.categoryName) return emp.category.categoryName.charAt(0);
+        return "";
+      };
+
+      // Helper for employee name formatting: only first name (no need last name)
+      const formatEmployeeName = (emp, fallbackName) => {
+        if (!emp) return (fallbackName || "").toUpperCase().trim();
+        return (emp.firstName || fallbackName || "").toUpperCase().trim();
+      };
+
+      // Group records by shift
+      const shiftGroups = {};
+      filteredRecords.forEach(r => {
+        const sh = r.shift || shiftMapById[r.shiftId] || shiftMapById[r.employee?.shiftTypeId];
+        let sName = (sh?.name || "").toUpperCase().trim();
+        if (!sName && (r.shiftId === 1 || r.shiftId === "1")) sName = "A";
+        if (!sName && (r.shiftId === 2 || r.shiftId === "2")) sName = "B";
+        if (!sName && (r.shiftId === 3 || r.shiftId === "3")) sName = "C";
+        if (!sName) sName = "OTHER";
+
+        if (!shiftGroups[sName]) {
+          shiftGroups[sName] = [];
+        }
+        shiftGroups[sName].push(r);
+      });
+
+      const shiftSortOrder = ["A", "B", "C", "SUP_A", "SUP_B", "SUP_C", "STAFF_A", "STAFF_B", "STAFF_C", "GENERAL_A", "GENERAL_B"];
+      const sortedShiftKeys = Object.keys(shiftGroups).sort((a, b) => {
+        const idxA = shiftSortOrder.indexOf(a);
+        const idxB = shiftSortOrder.indexOf(b);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+        return a.localeCompare(b);
+      });
+
+      let grandTotalHrs = 0;
+      const flatRows = [];
+
+      sortedShiftKeys.forEach(shiftKey => {
+        const recs = shiftGroups[shiftKey];
+        let shiftTotalHrs = 0;
+
+        // Group by (employeeId + resolvedDeptId) to aggregate hours per employee in that shift & department
+        const empAggMap = new Map();
+        recs.forEach(r => {
+          const emp = r.employee;
+          const empId = r.employeeId || r.ticketNo || r.id;
+          const deptName = (r.workedDepartment ? r.workedDepartment.departmentname : null)
+            || (r.department ? r.department.departmentname : "General");
+          const key = `${shiftKey}_${deptName}_${empId}`;
+
+          const hours = parseFloat(r.otHours) || 0;
+          if (!empAggMap.has(key)) {
+            const code = (emp ? (emp.curEmployeeCode || emp.newEmployeeCode) : "") || r.ticketNo || "";
+            const empName = formatEmployeeName(emp, r.empName);
+            const cat = resolveCategoryCode(emp);
+            empAggMap.set(key, {
+              shift: shiftKey,
+              department: deptName,
+              ticketNo: code,
+              employeeName: empName,
+              category: cat,
+              otHours: 0
+            });
+          }
+          const item = empAggMap.get(key);
+          item.otHours = Math.round((item.otHours + hours) * 100) / 100;
+        });
+
+        const aggregatedList = Array.from(empAggMap.values());
+        let empSlNo = 1;
+
+        aggregatedList.forEach((row, rIdx) => {
+          shiftTotalHrs = Math.round((shiftTotalHrs + row.otHours) * 100) / 100;
+          grandTotalHrs = Math.round((grandTotalHrs + row.otHours) * 100) / 100;
+
+          flatRows.push({
+            isEmployeeRow: true,
+            shift: row.shift,
+            isFirstInShift: rIdx === 0,
+            shiftCount: aggregatedList.length,
+            department: row.department,
+            slNo: empSlNo++,
+            ticketNo: row.ticketNo,
+            employeeName: row.employeeName,
+            otHours: row.otHours,
+            category: row.category
+          });
+        });
+
+        // Add shift subtotal row
+        flatRows.push({
+          isShiftSubtotal: true,
+          shift: shiftKey,
+          shiftTotalHrs: Math.round(shiftTotalHrs * 100) / 100
+        });
+      });
 
       return res.status(200).json({
         success: true,
-        data: finalData
+        companyName,
+        shiftName,
+        reportTitle: "OT Report for Production",
+        data: flatRows.filter(r => r.isEmployeeRow),
+        flatRows,
+        grandTotalHrs: Math.round(grandTotalHrs * 100) / 100,
+        totalRecords: filteredRecords.length
       });
     } catch (err) {
       console.error("Error generating abstract overtime report:", err);

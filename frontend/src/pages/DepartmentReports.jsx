@@ -205,12 +205,17 @@ const DepartmentReports = () => {
           data: data.data || [],
           shifts: data.shifts || [],
           flatRows: data.flatRows || data.data || [],
+          grandTotals: data.grandTotals || {},
           grandTotalHrs: data.grandTotalHrs != null ? data.grandTotalHrs : 0,
+          grandTotalDays: data.grandTotalDays != null ? data.grandTotalDays : (data.grandTotals?.totalDays != null ? data.grandTotals.totalDays : (data.grandTotal || 0)),
+          totalEmployees: data.totalEmployees || 0,
           days: data.days || [],
+          dayCols: data.dayCols || [],
           dayTotals: data.dayTotals || {},
           grandTotal: data.grandTotal != null ? data.grandTotal : 0,
           shiftName: data.shiftName || "ALL",
-          reportTitle: data.reportTitle || "OT Report for Production",
+          reportTitle: data.reportTitle || "Attendance Report for Production",
+          companyName: data.companyName || "KAYAAR EXPORTS (P) LTD",
           meta: { fromDate, toDate }
         });
         toast.success("Report generated successfully!");
@@ -356,6 +361,7 @@ const DepartmentReports = () => {
         margin: { left: marginX, right: marginX, top: 24, bottom: 24 },
         tableWidth: "wrap",
         theme: "plain",
+        showFoot: "lastPage",
         styles: {
           fontSize,
           cellPadding,
@@ -569,6 +575,7 @@ const DepartmentReports = () => {
         startY: 28,
         margin: { left: marginX, right: marginX, top: 24, bottom: 24 },
         theme: "plain",
+        showFoot: "lastPage",
         styles: {
           fontSize: 7.5,
           cellPadding: { top: 1.5, bottom: 1.5, left: 1, right: 1 },
@@ -620,6 +627,779 @@ const DepartmentReports = () => {
       return doc;
     }
 
+    if (reportResult.type === "Department Attendance") {
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const marginX = 14;
+
+      // Centered Company Name
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(0, 0, 0);
+      doc.text(companyName, pageW / 2, 16, { align: "center" });
+
+      // Subtitle
+      const subTitle = `Attendance Report for Production - (${formatDMY(reportResult.meta.fromDate)}-${formatDMY(reportResult.meta.toDate)}) - Shift : ${reportResult.shiftName || "ALL"}`;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(0, 0, 0);
+      doc.text(subTitle, marginX, 24);
+
+      // Top horizontal black rule
+      doc.setLineWidth(0.3);
+      doc.setDrawColor(0, 0, 0);
+      doc.line(marginX, 26, pageW - marginX, 26);
+
+      const head = [
+        [
+          { content: "Department", styles: { halign: "left", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "SL.No", styles: { halign: "center", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Ticket No", styles: { halign: "left", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Employee Name", styles: { halign: "left", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Shift", styles: { halign: "center", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Category", styles: { halign: "center", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Days", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } }
+        ]
+      ];
+
+      const body = [];
+      const flat = reportResult.flatRows || reportResult.data || [];
+
+      flat.forEach((r) => {
+        if (r.isGroupSubtotal) {
+          body.push([
+            {
+              content: "",
+              colSpan: 6,
+              styles: {
+                lineWidth: 0
+              }
+            },
+            {
+              content: r.groupTotalDays != null ? Number(r.groupTotalDays).toFixed(2) : "0.00",
+              styles: {
+                halign: "right",
+                fontStyle: "bold",
+                lineWidth: { top: 0.3, right: 0, bottom: 0.3, left: 0 },
+                lineColor: [0, 0, 0]
+              }
+            }
+          ]);
+        } else if (r.isDeptSubtotal) {
+          body.push([
+            {
+              content: "",
+              colSpan: 6,
+              styles: {
+                lineWidth: 0
+              }
+            },
+            {
+              content: r.deptTotalDays != null ? Number(r.deptTotalDays).toFixed(2) : "0.00",
+              styles: {
+                halign: "right",
+                fontStyle: "bold",
+                lineWidth: { top: 0.3, right: 0, bottom: 0.3, left: 0 },
+                lineColor: [0, 0, 0]
+              }
+            }
+          ]);
+        } else {
+          if (r.isFirstInDept !== false) {
+            body.push([
+              { content: String(r.department || ""), rowSpan: r.deptCount || 1, styles: { halign: "left", valign: "top", fontStyle: "bold", lineWidth: 0 } },
+              { content: String(r.empSlNo || ""), styles: { halign: "center", lineWidth: 0 } },
+              { content: String(r.ticketNo || ""), styles: { halign: "left", lineWidth: 0 } },
+              { content: String(r.employeeName || "").toUpperCase(), styles: { halign: "left", lineWidth: 0 } },
+              { content: String(r.shift || ""), styles: { halign: "center", lineWidth: 0 } },
+              { content: String(r.category || ""), styles: { halign: "center", lineWidth: 0 } },
+              { content: r.days != null ? Number(r.days).toFixed(2) : "1.00", styles: { halign: "right", lineWidth: 0 } }
+            ]);
+          } else {
+            body.push([
+              { content: String(r.empSlNo || ""), styles: { halign: "center", lineWidth: 0 } },
+              { content: String(r.ticketNo || ""), styles: { halign: "left", lineWidth: 0 } },
+              { content: String(r.employeeName || "").toUpperCase(), styles: { halign: "left", lineWidth: 0 } },
+              { content: String(r.shift || ""), styles: { halign: "center", lineWidth: 0 } },
+              { content: String(r.category || ""), styles: { halign: "center", lineWidth: 0 } },
+              { content: r.days != null ? Number(r.days).toFixed(2) : "1.00", styles: { halign: "right", lineWidth: 0 } }
+            ]);
+          }
+        }
+      });
+
+      const foot = [
+        [
+          {
+            content: "Grand Total",
+            colSpan: 6,
+            styles: {
+              halign: "left",
+              fontStyle: "bold",
+              lineWidth: { top: 0.3, right: 0, bottom: 0.6, left: 0 },
+              lineColor: [0, 0, 0]
+            }
+          },
+          {
+            content: reportResult.grandTotalDays != null ? Number(reportResult.grandTotalDays).toFixed(2) : "0.00",
+            styles: {
+              halign: "right",
+              fontStyle: "bold",
+              lineWidth: { top: 0.3, right: 0, bottom: 0.6, left: 0 },
+              lineColor: [0, 0, 0]
+            }
+          }
+        ]
+      ];
+
+      const colStyles = {
+        0: { cellWidth: 44 },
+        1: { cellWidth: 14 },
+        2: { cellWidth: 24 },
+        3: { cellWidth: 56 },
+        4: { cellWidth: 14 },
+        5: { cellWidth: 16 },
+        6: { cellWidth: 16 }
+      };
+
+      autoTable(doc, {
+        head,
+        body,
+        foot,
+        startY: 28,
+        margin: { left: marginX, right: marginX, top: 24, bottom: 24 },
+        theme: "plain",
+        showFoot: "lastPage",
+        styles: {
+          fontSize: 7.5,
+          cellPadding: { top: 1.2, bottom: 1.2, left: 1, right: 1 },
+          textColor: [0, 0, 0],
+          lineColor: [0, 0, 0],
+          lineWidth: 0,
+          font: "helvetica"
+        },
+        headStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+          lineColor: [0, 0, 0],
+          lineWidth: 0
+        },
+        bodyStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          lineColor: [0, 0, 0],
+          lineWidth: 0
+        },
+        footStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+          lineColor: [0, 0, 0],
+          lineWidth: 0
+        },
+        columnStyles: colStyles,
+        willDrawCell: (data) => {
+          const isFirstCol = data.column.index === 0;
+          const isLastCol = data.column.index === data.table.columns.length - 1;
+          const isHead = data.section === "head";
+          const isFoot = data.section === "foot";
+
+          const left = isFirstCol ? 0.35 : 0;
+          const right = isLastCol ? 0.35 : 0.2;
+
+          let top = 0;
+          let bottom = 0;
+
+          if (isHead) {
+            top = 0.35;
+            bottom = 0.35;
+          } else if (isFoot) {
+            top = 0.25;
+            bottom = 0.6;
+          }
+
+          const existingLW = data.cell.styles.lineWidth;
+          if (existingLW && typeof existingLW === "object") {
+            if (existingLW.top != null) top = existingLW.top;
+            if (existingLW.bottom != null) bottom = existingLW.bottom;
+          } else if (typeof existingLW === "number" && existingLW > 0) {
+            top = existingLW;
+            bottom = existingLW;
+          }
+
+          data.cell.styles.lineWidth = { top, bottom, left, right };
+          data.cell.styles.lineColor = [0, 0, 0];
+        }
+      });
+
+      // Signatures on last page
+      const numPages = doc.internal.getNumberOfPages();
+      doc.setPage(numPages);
+      const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY : 120;
+      let sigY = Math.max(finalY + 16, pageH - 18);
+      if (sigY > pageH - 10) {
+        doc.addPage();
+        sigY = pageH - 18;
+      }
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.text("HOD", marginX + 10, sigY);
+      doc.text("PM", pageW / 2, sigY, { align: "center" });
+      doc.text("DGM", pageW - marginX - 10, sigY, { align: "right" });
+
+      return doc;
+    }
+
+    if (reportResult.type === "Attendance Shift Wise Detail") {
+      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: [612, 1008] });
+      const pageW = 1008;
+      const pageH = 612;
+      const marginX = 20;
+
+      // Centered Company Name
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.text(companyName, pageW / 2, 22, { align: "center" });
+
+      // Subtitle
+      const subTitle = `Shift wise Attendance Detail - (${formatDMY(reportResult.meta.fromDate)}-${formatDMY(reportResult.meta.toDate)}) - Shift : ${reportResult.shiftName || "ALL"}`;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(0, 0, 0);
+      doc.text(subTitle, marginX, 35);
+
+      // Top horizontal black rule
+      doc.setLineWidth(0.5);
+      doc.setDrawColor(0, 0, 0);
+      doc.line(marginX, 39, pageW - marginX, 39);
+
+      const dayCols = reportResult.dayCols && reportResult.dayCols.length === 31
+        ? reportResult.dayCols
+        : Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, "0"));
+
+      const head = [
+        [
+          { content: "Tkt.No", styles: { halign: "center", fontStyle: "bold" } },
+          { content: "empname", styles: { halign: "left", fontStyle: "bold" } },
+          { content: "Dept", styles: { halign: "center", fontStyle: "bold" } },
+          { content: "DOJ", styles: { halign: "center", fontStyle: "bold" } },
+          ...dayCols.map((d) => ({ content: d, styles: { halign: "center", fontStyle: "bold" } })),
+          { content: "A", styles: { halign: "center", fontStyle: "bold" } },
+          { content: "B", styles: { halign: "center", fontStyle: "bold" } },
+          { content: "C", styles: { halign: "center", fontStyle: "bold" } },
+          { content: "T", styles: { halign: "center", fontStyle: "bold" } }
+        ]
+      ];
+
+      const body = [];
+      const flat = reportResult.flatRows || reportResult.data || [];
+
+      flat.forEach((r) => {
+        if (r.isDeptHeader) {
+          body.push([
+            {
+              content: r.deptAcronym || r.department || "",
+              colSpan: 4 + 31 + 4,
+              styles: {
+                halign: "left",
+                fontStyle: "bold",
+                textColor: [0, 0, 0],
+                lineWidth: 0.15,
+                lineColor: [0, 0, 0]
+              }
+            }
+          ]);
+        } else if (r.isEmployeeRow) {
+          body.push([
+            { content: String(r.ticketNo || ""), styles: { halign: "center" } },
+            { content: String(r.employeeName || "").toUpperCase(), styles: { halign: "left" } },
+            { content: String(r.deptAcronym || r.department || ""), styles: { halign: "center" } },
+            { content: String(r.doj || ""), styles: { halign: "center" } },
+            ...dayCols.map((d) => ({
+              content: String(r.dailyShifts?.[d] || ""),
+              styles: { halign: "center" }
+            })),
+            { content: r.shiftA > 0 ? Number(r.shiftA).toFixed(1) : "-", styles: { halign: "center" } },
+            { content: r.shiftB > 0 ? Number(r.shiftB).toFixed(1) : "-", styles: { halign: "center" } },
+            { content: r.shiftC > 0 ? Number(r.shiftC).toFixed(1) : "-", styles: { halign: "center" } },
+            { content: r.totalDays > 0 ? Number(r.totalDays).toFixed(1) : "-", styles: { halign: "center", fontStyle: "bold" } }
+          ]);
+        }
+      });
+
+      const colStyles = {
+        0: { cellWidth: 32 },
+        1: { cellWidth: 125 },
+        2: { cellWidth: 44 },
+        3: { cellWidth: 54 },
+      };
+      dayCols.forEach((_, idx) => {
+        colStyles[4 + idx] = { cellWidth: 19 };
+      });
+      const shiftStartIdx = 4 + 31;
+      colStyles[shiftStartIdx] = { cellWidth: 26 };
+      colStyles[shiftStartIdx + 1] = { cellWidth: 26 };
+      colStyles[shiftStartIdx + 2] = { cellWidth: 26 };
+      colStyles[shiftStartIdx + 3] = { cellWidth: 28 };
+
+      autoTable(doc, {
+        head,
+        body,
+        startY: 42,
+        margin: { left: marginX, right: marginX, top: 30, bottom: 20 },
+        theme: "plain",
+        styles: {
+          fontSize: 6.5,
+          cellPadding: { top: 1.5, bottom: 1.5, left: 1, right: 1 },
+          textColor: [0, 0, 0],
+          lineColor: [0, 0, 0],
+          lineWidth: 0.15,
+          font: "helvetica"
+        },
+        headStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+          lineColor: [0, 0, 0],
+          lineWidth: 0.15
+        },
+        bodyStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          lineColor: [0, 0, 0],
+          lineWidth: 0.15
+        },
+        columnStyles: colStyles
+      });
+
+      return doc;
+    }
+
+    if (reportResult.type === "Over Time Report (Abstract)") {
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const marginX = 14;
+
+      // Centered Company Name
+      const compName = reportResult.companyName || (reportResult.company?.companyname) || "KAYAAR EXPORTS (P) LTD";
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(0, 0, 0);
+      doc.text(compName, pageW / 2, 16, { align: "center" });
+
+      // Subtitle
+      const subTitle = `OT Report for Production - (${formatDMY(reportResult.meta.fromDate)}-${formatDMY(reportResult.meta.toDate)}) - Shift : ${reportResult.shiftName || "ALL"}`;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(0, 0, 0);
+      doc.text(subTitle, marginX, 24);
+
+      // Top horizontal black rule
+      doc.setLineWidth(0.3);
+      doc.setDrawColor(0, 0, 0);
+      doc.line(marginX, 26, pageW - marginX, 26);
+
+      const head = [
+        [
+          { content: "", styles: { halign: "center", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Department", styles: { halign: "left", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Sl.No", styles: { halign: "center", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Ticket No", styles: { halign: "left", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Employee Name", styles: { halign: "left", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Hrs", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Category", styles: { halign: "center", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } }
+        ]
+      ];
+
+      const body = [];
+      const flat = reportResult.flatRows || reportResult.data || [];
+
+      flat.forEach((r) => {
+        if (r.isShiftSubtotal) {
+          body.push([
+            { content: "", colSpan: 5, styles: { lineWidth: 0 } },
+            {
+              content: r.shiftTotalHrs != null ? Number(r.shiftTotalHrs).toFixed(1) : "0.0",
+              styles: {
+                halign: "right",
+                fontStyle: "bold",
+                lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 },
+                lineColor: [0, 0, 0]
+              }
+            },
+            { content: "", styles: { lineWidth: 0 } }
+          ]);
+        } else if (r.isEmployeeRow) {
+          body.push([
+            {
+              content: r.isFirstInShift ? r.shift : "",
+              styles: { halign: "center", fontStyle: "bold", textColor: [30, 58, 138] }
+            },
+            {
+              content: r.department || "",
+              styles: { halign: "left" }
+            },
+            {
+              content: String(r.slNo || ""),
+              styles: { halign: "center" }
+            },
+            {
+              content: String(r.ticketNo || ""),
+              styles: { halign: "left", fontStyle: "bold" }
+            },
+            {
+              content: r.employeeName || "",
+              styles: { halign: "left" }
+            },
+            {
+              content: r.otHours != null ? Number(r.otHours).toFixed(1) : "0.0",
+              styles: { halign: "right" }
+            },
+            {
+              content: r.category || "",
+              styles: { halign: "center" }
+            }
+          ]);
+        }
+      });
+
+      const foot = [
+        [
+          {
+            content: "",
+            colSpan: 5,
+            styles: {
+              lineWidth: { top: 0.3, bottom: 0, left: 0, right: 0 },
+              lineColor: [0, 0, 0]
+            }
+          },
+          {
+            content: (reportResult.grandTotalHrs != null ? reportResult.grandTotalHrs : 0).toFixed(1),
+            styles: {
+              halign: "right",
+              fontStyle: "bold",
+              lineWidth: { top: 0.3, bottom: 0.6, left: 0, right: 0 },
+              lineColor: [0, 0, 0]
+            }
+          },
+          {
+            content: "",
+            styles: {
+              lineWidth: { top: 0.3, bottom: 0, left: 0, right: 0 },
+              lineColor: [0, 0, 0]
+            }
+          }
+        ]
+      ];
+
+      const colStyles = {
+        0: { cellWidth: 12 },
+        1: { cellWidth: 44 },
+        2: { cellWidth: 14 },
+        3: { cellWidth: 24 },
+        4: { cellWidth: 54 },
+        5: { cellWidth: 16 },
+        6: { cellWidth: 18 }
+      };
+
+      autoTable(doc, {
+        head,
+        body,
+        foot,
+        startY: 28,
+        margin: { left: marginX, right: marginX, top: 24, bottom: 24 },
+        theme: "plain",
+        showFoot: "lastPage",
+        styles: {
+          fontSize: 7.5,
+          cellPadding: { top: 1.2, bottom: 1.2, left: 1, right: 1 },
+          textColor: [0, 0, 0],
+          lineColor: [0, 0, 0],
+          lineWidth: 0,
+          font: "helvetica"
+        },
+        headStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+          lineColor: [0, 0, 0],
+          lineWidth: 0
+        },
+        bodyStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          lineColor: [0, 0, 0],
+          lineWidth: 0
+        },
+        footStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+          lineColor: [0, 0, 0],
+          lineWidth: 0
+        },
+        columnStyles: colStyles,
+        willDrawCell: (data) => {
+          const isFirstCol = data.column.index === 0;
+          const isLastCol = data.column.index === data.table.columns.length - 1;
+          const isHead = data.section === "head";
+          const isFoot = data.section === "foot";
+
+          const left = isFirstCol ? 0.35 : 0;
+          const right = isLastCol ? 0.35 : 0.2;
+
+          let top = 0;
+          let bottom = 0;
+
+          if (isHead) {
+            top = 0.35;
+            bottom = 0.35;
+          } else if (isFoot) {
+            top = 0.25;
+            bottom = 0.6;
+          }
+
+          const existingLW = data.cell.styles.lineWidth;
+          if (existingLW && typeof existingLW === "object") {
+            if (existingLW.top != null) top = existingLW.top;
+            if (existingLW.bottom != null) bottom = existingLW.bottom;
+          } else if (typeof existingLW === "number" && existingLW > 0) {
+            top = existingLW;
+            bottom = existingLW;
+          }
+
+          data.cell.styles.lineWidth = { top, bottom, left, right };
+          data.cell.styles.lineColor = [0, 0, 0];
+        }
+      });
+
+      // Signatures on last page
+      const numPages = doc.internal.getNumberOfPages();
+      doc.setPage(numPages);
+      const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY : 120;
+      let sigY = Math.max(finalY + 16, pageH - 18);
+      if (sigY > pageH - 10) {
+        doc.addPage();
+        sigY = pageH - 18;
+      }
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.text("HOD", marginX + 10, sigY);
+      doc.text("PM", pageW / 2, sigY, { align: "center" });
+      doc.text("DGM", pageW - marginX - 10, sigY, { align: "right" });
+
+      return doc;
+    }
+
+    if (reportResult.type === "Attendance Shift Wise Abstract") {
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const marginX = 14;
+
+      const compName = reportResult.companyName || companyName || "KAYAAR EXPORTS (P) LTD";
+      const subTitle = `Attendance Shift wise Abstract - (${formatDMY(reportResult.meta.fromDate)}-${formatDMY(reportResult.meta.toDate)}) - Shift : ${reportResult.shiftName || "ALL"}`;
+
+      const head = [
+        [
+          { content: "Sl.No", styles: { halign: "center", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Tkt No", styles: { halign: "center", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Employee", styles: { halign: "left", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Department", styles: { halign: "left", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "DOJ", styles: { halign: "center", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Category", styles: { halign: "center", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "A", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "B", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "C", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Abs", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Total", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } }
+        ]
+      ];
+
+      const body = [];
+      const flat = reportResult.flatRows || reportResult.data || [];
+
+      flat.forEach((r) => {
+        if (r.isDeptHeader) {
+          body.push([
+            { content: "", styles: { lineWidth: 0 } },
+            { content: "", styles: { lineWidth: 0 } },
+            {
+              content: r.deptAcronym || r.department || "",
+              styles: {
+                fontStyle: "bold",
+                fontSize: 9,
+                halign: "left",
+                textColor: [0, 0, 0],
+                lineWidth: { top: 0, bottom: 0.35, left: 0, right: 0 },
+                lineColor: [0, 0, 0]
+              }
+            },
+            { content: "", styles: { lineWidth: 0 } },
+            { content: "", styles: { lineWidth: 0 } },
+            { content: "", styles: { lineWidth: 0 } },
+            { content: "", styles: { lineWidth: 0 } },
+            { content: "", styles: { lineWidth: 0 } },
+            { content: "", styles: { lineWidth: 0 } },
+            { content: "", styles: { lineWidth: 0 } },
+            { content: "", styles: { lineWidth: 0 } }
+          ]);
+        } else if (r.isEmployeeRow) {
+          body.push([
+            { content: String(r.slNo || ""), styles: { halign: "center" } },
+            { content: String(r.ticketNo || ""), styles: { halign: "center", fontStyle: "bold" } },
+            { content: String(r.employeeName || ""), styles: { halign: "left" } },
+            { content: String(r.deptAcronym || r.department || ""), styles: { halign: "left" } },
+            { content: String(r.doj || "-"), styles: { halign: "center" } },
+            { content: String(r.category || "-"), styles: { halign: "center" } },
+            { content: r.shiftA > 0 ? Number(r.shiftA).toFixed(1) : "-", styles: { halign: "right" } },
+            { content: r.shiftB > 0 ? Number(r.shiftB).toFixed(1) : "-", styles: { halign: "right" } },
+            { content: r.shiftC > 0 ? Number(r.shiftC).toFixed(1) : "-", styles: { halign: "right" } },
+            { content: r.absDays > 0 ? Number(r.absDays).toFixed(1) : "-", styles: { halign: "right" } },
+            { content: r.totalDays > 0 ? Number(r.totalDays).toFixed(1) : "-", styles: { halign: "right", fontStyle: "bold" } }
+          ]);
+        } else if (r.isDeptSubtotal) {
+          body.push([
+            { content: "", styles: { lineWidth: { top: 0, bottom: 0, left: 0, right: 0 } } },
+            { content: "", styles: { lineWidth: { top: 0, bottom: 0, left: 0, right: 0 } } },
+            { content: "", styles: { lineWidth: { top: 0, bottom: 0, left: 0, right: 0 } } },
+            { content: "", styles: { lineWidth: { top: 0, bottom: 0, left: 0, right: 0 } } },
+            { content: "", styles: { lineWidth: { top: 0, bottom: 0, left: 0, right: 0 } } },
+            { content: "", styles: { lineWidth: { top: 0, bottom: 0, left: 0, right: 0 } } },
+            { content: r.shiftA > 0 ? Number(r.shiftA).toFixed(1) : "-", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.25, bottom: 0.25, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+            { content: r.shiftB > 0 ? Number(r.shiftB).toFixed(1) : "-", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.25, bottom: 0.25, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+            { content: r.shiftC > 0 ? Number(r.shiftC).toFixed(1) : "-", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.25, bottom: 0.25, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+            { content: r.absDays > 0 ? Number(r.absDays).toFixed(1) : "-", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.25, bottom: 0.25, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+            { content: r.totalDays > 0 ? Number(r.totalDays).toFixed(1) : "-", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.25, bottom: 0.25, left: 0, right: 0 }, lineColor: [0, 0, 0] } }
+          ]);
+        }
+      });
+
+      const gt = reportResult.grandTotals || {};
+      const foot = [
+        [
+          { content: "", colSpan: 6, styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.25, bottom: 0.6, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: gt.shiftA > 0 ? Number(gt.shiftA).toFixed(1) : "-", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.25, bottom: 0.6, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: gt.shiftB > 0 ? Number(gt.shiftB).toFixed(1) : "-", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.25, bottom: 0.6, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: gt.shiftC > 0 ? Number(gt.shiftC).toFixed(1) : "-", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.25, bottom: 0.6, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: gt.absDays > 0 ? Number(gt.absDays).toFixed(1) : "-", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.25, bottom: 0.6, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: gt.totalDays > 0 ? Number(gt.totalDays).toFixed(1) : "-", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.25, bottom: 0.6, left: 0, right: 0 }, lineColor: [0, 0, 0] } }
+        ]
+      ];
+
+      const colStyles = {
+        0: { cellWidth: 12 },
+        1: { cellWidth: 14 },
+        2: { cellWidth: 42 },
+        3: { cellWidth: 22 },
+        4: { cellWidth: 20 },
+        5: { cellWidth: 16 },
+        6: { cellWidth: 11 },
+        7: { cellWidth: 11 },
+        8: { cellWidth: 11 },
+        9: { cellWidth: 11 },
+        10: { cellWidth: 12 }
+      };
+
+      autoTable(doc, {
+        head,
+        body,
+        foot,
+        startY: 28,
+        margin: { left: marginX, right: marginX, top: 20, bottom: 15 },
+        theme: "plain",
+        showFoot: "lastPage",
+        styles: {
+          fontSize: 7.5,
+          cellPadding: { top: 1.2, bottom: 1.2, left: 1, right: 1 },
+          textColor: [0, 0, 0],
+          lineColor: [0, 0, 0],
+          lineWidth: 0,
+          font: "helvetica"
+        },
+        headStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+          lineColor: [0, 0, 0],
+          lineWidth: 0
+        },
+        bodyStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          lineColor: [0, 0, 0],
+          lineWidth: 0
+        },
+        footStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+          lineColor: [0, 0, 0],
+          lineWidth: 0
+        },
+        columnStyles: colStyles,
+        willDrawCell: (data) => {
+          const isFirstCol = data.column.index === 0;
+          const isLastCol = data.column.index === data.table.columns.length - 1;
+          const isHead = data.section === "head";
+          const isFoot = data.section === "foot";
+
+          const left = isFirstCol ? 0.35 : 0;
+          const right = isLastCol ? 0.35 : 0.2;
+
+          let top = 0;
+          let bottom = 0;
+
+          if (isHead) {
+            top = 0.35;
+            bottom = 0.35;
+          } else if (isFoot) {
+            top = 0.25;
+            bottom = 0.6;
+          }
+
+          const existingLW = data.cell.styles.lineWidth;
+          if (existingLW && typeof existingLW === "object") {
+            if (existingLW.top != null) top = existingLW.top;
+            if (existingLW.bottom != null) bottom = existingLW.bottom;
+          } else if (typeof existingLW === "number" && existingLW > 0) {
+            top = existingLW;
+            bottom = existingLW;
+          }
+
+          data.cell.styles.lineWidth = { top, bottom, left, right };
+          data.cell.styles.lineColor = [0, 0, 0];
+        },
+        didDrawPage: (data) => {
+          if (data.pageNumber === 1) {
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(12);
+            doc.setTextColor(0, 0, 0);
+            doc.text(compName, pageW / 2, 14, { align: "center" });
+
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8.5);
+            doc.text(subTitle, marginX, 22);
+          } else {
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8.5);
+            doc.setTextColor(0, 0, 0);
+            doc.text(subTitle, marginX, 12);
+          }
+        }
+      });
+
+      return doc;
+    }
+
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     const pageW = doc.internal.pageSize.getWidth();
 
@@ -642,15 +1422,7 @@ const DepartmentReports = () => {
     let columns = [];
     let rows = [];
 
-    if (reportResult.type === "Attendance Shift Wise Abstract") {
-      columns = [
-        { header: "Shift", dataKey: "shift" },
-        { header: "Present", dataKey: "present" },
-        { header: "Absent", dataKey: "absent" },
-        { header: "Leave", dataKey: "leave" }
-      ];
-      rows = reportResult.data;
-    } else if (reportResult.type === "Over Time Report") {
+    if (reportResult.type === "Over Time Report") {
       columns = [
         { header: "Tk.No", dataKey: "ticketNo" },
         { header: "Employee Name", dataKey: "employeeName" },
@@ -774,8 +1546,57 @@ const DepartmentReports = () => {
       let dataRows = [];
 
       if (reportResult.type === "Attendance Shift Wise Abstract") {
-        headers = ["Shift", "Present", "Absent", "Leave"];
-        dataRows = reportResult.data.map((r) => [r.shift, r.present, r.absent, r.leave]);
+        headers = ["Sl.No", "Tkt No", "Employee", "Department", "DOJ", "Category", "A", "B", "C", "Abs", "Total"];
+        dataRows = [];
+        const flat = reportResult.flatRows || reportResult.data || [];
+        flat.forEach((r) => {
+          if (r.isDeptHeader) {
+            dataRows.push(["", "", r.deptAcronym || r.department || "", "", "", "", "", "", "", "", ""]);
+          } else if (r.isEmployeeRow) {
+            dataRows.push([
+              r.slNo,
+              r.ticketNo,
+              r.employeeName,
+              r.deptAcronym || r.department || "",
+              r.doj || "-",
+              r.category || "-",
+              r.shiftA > 0 ? Number(r.shiftA).toFixed(1) : "-",
+              r.shiftB > 0 ? Number(r.shiftB).toFixed(1) : "-",
+              r.shiftC > 0 ? Number(r.shiftC).toFixed(1) : "-",
+              r.absDays > 0 ? Number(r.absDays).toFixed(1) : "-",
+              r.totalDays > 0 ? Number(r.totalDays).toFixed(1) : "-"
+            ]);
+          } else if (r.isDeptSubtotal) {
+            dataRows.push([
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              r.shiftA > 0 ? Number(r.shiftA).toFixed(1) : "-",
+              r.shiftB > 0 ? Number(r.shiftB).toFixed(1) : "-",
+              r.shiftC > 0 ? Number(r.shiftC).toFixed(1) : "-",
+              r.absDays > 0 ? Number(r.absDays).toFixed(1) : "-",
+              r.totalDays > 0 ? Number(r.totalDays).toFixed(1) : "-"
+            ]);
+          }
+        });
+        if (reportResult.grandTotals) {
+          dataRows.push([
+            "Grand Total",
+            "",
+            "",
+            "",
+            "",
+            "",
+            reportResult.grandTotals.shiftA > 0 ? Number(reportResult.grandTotals.shiftA).toFixed(1) : "-",
+            reportResult.grandTotals.shiftB > 0 ? Number(reportResult.grandTotals.shiftB).toFixed(1) : "-",
+            reportResult.grandTotals.shiftC > 0 ? Number(reportResult.grandTotals.shiftC).toFixed(1) : "-",
+            reportResult.grandTotals.absDays > 0 ? Number(reportResult.grandTotals.absDays).toFixed(1) : "-",
+            reportResult.grandTotals.totalDays > 0 ? Number(reportResult.grandTotals.totalDays).toFixed(1) : "-"
+          ]);
+        }
       } else if (reportResult.type === "Over Time Report") {
         headers = ["Tk.No", "Employee Name", "Department", "Date", "Shift", "OT Hours", "Remarks"];
         dataRows = reportResult.data.map((r) => [
@@ -841,10 +1662,72 @@ const DepartmentReports = () => {
           grandTotal
         ]);
       } else if (reportResult.type === "Over Time Report (Abstract)") {
-        headers = ["Department", "Employees", "Total OT Hours"];
-        dataRows = reportResult.data.map((r) => [r.department, r.employees, r.totalOtHours]);
+        headers = ["Shift", "Department", "Sl.No", "Ticket No", "Employee Name", "Hrs", "Category"];
+        const flat = reportResult.flatRows || reportResult.data || [];
+        dataRows = [];
+        flat.forEach((r) => {
+          if (r.isShiftSubtotal) {
+            dataRows.push(["", "", "", "", `Shift ${r.shift} Total`, r.shiftTotalHrs != null ? Number(r.shiftTotalHrs).toFixed(1) : "0.0", ""]);
+          } else if (r.isEmployeeRow) {
+            dataRows.push([
+              r.shift || "",
+              r.department || "",
+              r.slNo || "",
+              r.ticketNo || "",
+              r.employeeName || "",
+              r.otHours != null ? Number(r.otHours).toFixed(1) : "0.0",
+              r.category || ""
+            ]);
+          }
+        });
+        dataRows.push(["", "", "", "", "Grand Total", (reportResult.grandTotalHrs != null ? reportResult.grandTotalHrs : 0).toFixed(1), ""]);
+      } else if (reportResult.type === "Department Attendance") {
+        headers = ["Department", "SL.No", "Ticket No", "Employee Name", "Shift", "Category", "Days"];
+        const flat = reportResult.flatRows || reportResult.data || [];
+        dataRows = [];
+        flat.forEach((r) => {
+          if (r.isGroupSubtotal) {
+            dataRows.push(["", "", "", "", "", "Group Total", r.groupTotalDays != null ? Number(r.groupTotalDays).toFixed(2) : "0.00"]);
+          } else if (r.isDeptSubtotal) {
+            dataRows.push(["", "", "", "", "", "Total", r.deptTotalDays != null ? Number(r.deptTotalDays).toFixed(2) : "0.00"]);
+          } else {
+            dataRows.push([
+              r.department || "",
+              r.empSlNo || "",
+              r.ticketNo || "",
+              r.employeeName || "",
+              r.shift || "",
+              r.category || "",
+              r.days != null ? Number(r.days).toFixed(2) : "1.00"
+            ]);
+          }
+        });
+        dataRows.push(["Grand Total", "", "", "", "", "", reportResult.grandTotalDays != null ? Number(reportResult.grandTotalDays).toFixed(2) : "0.00"]);
+      } else if (reportResult.type === "Attendance Shift Wise Detail") {
+        const dayCols = reportResult.dayCols && reportResult.dayCols.length === 31
+          ? reportResult.dayCols
+          : Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, "0"));
+        headers = ["Tkt.No", "empname", "Dept", "DOJ", ...dayCols, "A", "B", "C", "T"];
+        const flat = reportResult.flatRows || reportResult.data || [];
+        dataRows = [];
+        flat.forEach((r) => {
+          if (r.isDeptHeader) {
+            dataRows.push([r.deptAcronym || r.department || "", ...Array(38).fill("")]);
+          } else if (r.isEmployeeRow) {
+            dataRows.push([
+              r.ticketNo || "",
+              r.employeeName || "",
+              r.deptAcronym || r.department || "",
+              r.doj || "",
+              ...dayCols.map((d) => r.dailyShifts?.[d] || ""),
+              r.shiftA > 0 ? Number(r.shiftA).toFixed(1) : "-",
+              r.shiftB > 0 ? Number(r.shiftB).toFixed(1) : "-",
+              r.shiftC > 0 ? Number(r.shiftC).toFixed(1) : "-",
+              r.totalDays > 0 ? Number(r.totalDays).toFixed(1) : "-"
+            ]);
+          }
+        });
       } else {
-        // Department Attendance / Attendance Shift Wise Detail
         headers = ["Tk.No", "Employee Name", "Department", "Date", "Shift", "Status", "HR Verified", "In Time", "Out Time"];
         dataRows = reportResult.data.map((r) => [
           r.ticketNo,
@@ -859,8 +1742,8 @@ const DepartmentReports = () => {
         ]);
       }
 
-      const subTitle = reportResult.type === "Over Time Report (Day wise)"
-        ? `${reportResult.reportTitle || "OT Report for Production"} - (${formatDMY(reportResult.meta.fromDate)}-${formatDMY(reportResult.meta.toDate)}) - Shift : ${reportResult.shiftName || "ALL"}`
+      const subTitle = (reportResult.type === "Over Time Report (Day wise)" || reportResult.type === "Department Attendance" || reportResult.type === "Attendance Shift Wise Detail")
+        ? `${reportResult.reportTitle || "Attendance Report"} - (${formatDMY(reportResult.meta.fromDate)}-${formatDMY(reportResult.meta.toDate)}) - Shift : ${reportResult.shiftName || "ALL"}`
         : reportResult.type;
 
       const sheetData = [
@@ -873,7 +1756,7 @@ const DepartmentReports = () => {
         ...dataRows
       ];
 
-      if (reportResult.type === "Over Time Report (Day wise)") {
+      if (reportResult.type === "Over Time Report (Day wise)" || reportResult.type === "Department Attendance" || reportResult.type === "Over Time Report (Hours wise)") {
         sheetData.push([], ["HOD", "", "", "PM", "", "", "DGM"]);
       }
 
@@ -1188,10 +2071,24 @@ const DepartmentReports = () => {
         <div className="bg-white rounded-2xl border border-slate-200 shadow-lg overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300 mb-6">
           <div className="bg-slate-50 px-6 py-4 border-b border-slate-250 flex flex-wrap gap-3 justify-between items-center">
             <div>
-              <h3 className="text-base font-bold text-slate-800">{reportResult.type}</h3>
+              <h3 className="text-base font-bold text-slate-800">
+                {reportResult.type === "Department Attendance" || reportResult.type === "Attendance Shift Wise Detail" || reportResult.type === "Attendance Shift Wise Abstract" || reportResult.type === "Over Time Report (Abstract)"
+                  ? (reportResult.companyName || "KAYAAR EXPORTS (P) LTD")
+                  : reportResult.type}
+              </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Period: {reportResult.meta.fromDate} to {reportResult.meta.toDate} &bull; Total:{" "}
-                <span className="font-bold text-slate-700">{reportResult.data?.length || 0}</span> records
+                {reportResult.type === "Over Time Report (Abstract)"
+                  ? `OT Report for Production - (${formatDMY(reportResult.meta.fromDate)}-${formatDMY(reportResult.meta.toDate)}) - Shift : ${reportResult.shiftName || "ALL"}`
+                  : reportResult.type === "Attendance Shift Wise Abstract"
+                    ? `Attendance Shift wise Abstract - (${formatDMY(reportResult.meta.fromDate)}-${formatDMY(reportResult.meta.toDate)}) - Shift : ${reportResult.shiftName || "ALL"}`
+                    : `Period: ${reportResult.meta.fromDate} to ${reportResult.meta.toDate}`} &bull; Total:{" "}
+                <span className="font-bold text-slate-700">
+                  {reportResult.type === "Department Attendance" || reportResult.type === "Attendance Shift Wise Detail" || reportResult.type === "Attendance Shift Wise Abstract"
+                    ? `${reportResult.totalEmployees || 0} employees (${reportResult.grandTotalDays != null ? Number(reportResult.grandTotalDays).toFixed(1) : (reportResult.grandTotals?.totalDays != null ? Number(reportResult.grandTotals.totalDays).toFixed(1) : "0.0")} days)`
+                    : reportResult.type === "Over Time Report (Abstract)"
+                      ? `${reportResult.data?.length || 0} employees (${reportResult.grandTotalHrs != null ? Number(reportResult.grandTotalHrs).toFixed(1) : "0.0"} hrs)`
+                      : `${reportResult.data?.length || 0} records`}
+                </span>
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2.5">
@@ -1218,15 +2115,29 @@ const DepartmentReports = () => {
           <div id="printable-report-area" className="p-6">
             {/* Print Friendly Header */}
             <div className="hidden print:block text-center border-b pb-4 mb-6">
-              <h1 className="text-2xl font-bold uppercase tracking-wide">KAYAAR EXPORTS (P) LTD</h1>
-              <h2 className="text-base font-semibold text-slate-600 mt-1">{reportResult.type}</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                From Date: {reportResult.meta.fromDate} | To Date: {reportResult.meta.toDate}
-              </p>
+              <h1 className="text-2xl font-bold uppercase tracking-wide">
+                {reportResult.companyName || "KAYAAR EXPORTS (P) LTD"}
+              </h1>
+              <h2 className="text-base font-semibold text-slate-600 mt-1">
+                {reportResult.type === "Department Attendance"
+                  ? `Attendance Report for Production - (${formatDMY(reportResult.meta.fromDate)}-${formatDMY(reportResult.meta.toDate)}) - Shift : ${reportResult.shiftName || "ALL"}`
+                  : reportResult.type === "Attendance Shift Wise Detail"
+                    ? `Shift wise Attendance Detail - (${formatDMY(reportResult.meta.fromDate)}-${formatDMY(reportResult.meta.toDate)}) - Shift : ${reportResult.shiftName || "ALL"}`
+                    : reportResult.type === "Attendance Shift Wise Abstract"
+                      ? `Attendance Shift wise Abstract - (${formatDMY(reportResult.meta.fromDate)}-${formatDMY(reportResult.meta.toDate)}) - Shift : ${reportResult.shiftName || "ALL"}`
+                      : reportResult.type === "Over Time Report (Abstract)"
+                        ? `OT Report for Production - (${formatDMY(reportResult.meta.fromDate)}-${formatDMY(reportResult.meta.toDate)}) - Shift : ${reportResult.shiftName || "ALL"}`
+                        : reportResult.type}
+              </h2>
+              {reportResult.type !== "Department Attendance" && reportResult.type !== "Attendance Shift Wise Detail" && reportResult.type !== "Attendance Shift Wise Abstract" && reportResult.type !== "Over Time Report (Abstract)" && (
+                <p className="text-xs text-slate-500 mt-0.5">
+                  From Date: {reportResult.meta.fromDate} | To Date: {reportResult.meta.toDate}
+                </p>
+              )}
             </div>
 
             {/* Attendance Status Legend Tag Bar */}
-            {reportCategory === "Attendance" && (
+            {reportCategory === "Attendance" && reportResult.type !== "Department Attendance" && reportResult.type !== "Attendance Shift Wise Detail" && reportResult.type !== "Attendance Shift Wise Abstract" && (
               <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-wrap items-center gap-4 text-xs font-semibold print:border-slate-300">
                 <span className="text-slate-500 font-bold uppercase tracking-wider">Legend:</span>
 
@@ -1263,8 +2174,12 @@ const DepartmentReports = () => {
                   const totalRows = reportResult.data.length;
                   const totalPages = pageSize === "All" ? 1 : Math.ceil(totalRows / Number(pageSize)) || 1;
                   const paginatedData =
-                    pageSize === "All"
-                      ? reportResult.data
+                    pageSize === "All" ||
+                      reportResult.type === "Department Attendance" ||
+                      reportResult.type === "Attendance Shift Wise Detail" ||
+                      reportResult.type === "Attendance Shift Wise Abstract" ||
+                      reportResult.type === "Over Time Report (Abstract)"
+                      ? (reportResult.flatRows || reportResult.data)
                       : reportResult.data.slice(
                         (currentPage - 1) * Number(pageSize),
                         currentPage * Number(pageSize)
@@ -1274,25 +2189,99 @@ const DepartmentReports = () => {
                     <div>
                       <div className="overflow-x-auto max-h-[500px] overflow-y-auto print:max-h-none print:overflow-visible border border-slate-350 rounded-lg">
                         {reportResult.type === "Attendance Shift Wise Abstract" ? (
-                          <table className="w-full border-collapse border border-slate-300">
+                          <table className="w-full border-collapse border border-slate-300 text-xs">
                             <thead>
-                              <tr className="bg-slate-100 text-slate-750 text-xs font-bold text-left border-b border-slate-300 print:bg-slate-100">
-                                <th className="sticky top-0 bg-slate-100 z-10 px-6 py-3 border border-slate-300">Shift</th>
-                                <th className="sticky top-0 bg-slate-100 z-10 px-6 py-3 border border-slate-300 text-emerald-750">Present</th>
-                                <th className="sticky top-0 bg-slate-100 z-10 px-6 py-3 border border-slate-300 text-rose-750">Absent</th>
-                                <th className="sticky top-0 bg-slate-100 z-10 px-6 py-3 border border-slate-300 text-amber-750">Leave</th>
+                              <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300">
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-center min-w-[50px]">Sl.No</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-center min-w-[65px]">Tkt No</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-3 py-2 border border-slate-300 text-left min-w-[170px]">Employee</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-center min-w-[75px]">Department</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-center min-w-[85px]">DOJ</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-center min-w-[65px]">Category</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-right min-w-[45px]">A</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-right min-w-[45px]">B</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-right min-w-[45px]">C</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-right min-w-[45px]">Abs</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-right min-w-[55px]">Total</th>
                               </tr>
                             </thead>
-                            <tbody className="text-sm font-semibold divide-y divide-slate-200">
-                              {paginatedData.map((row, index) => (
-                                <tr key={index} className="hover:bg-slate-50/50">
-                                  <td className="px-6 py-3.5 border border-slate-300 font-bold text-indigo-700">{row.shift}</td>
-                                  <td className="px-6 py-3.5 border border-slate-300 text-emerald-600">{row.present}</td>
-                                  <td className="px-6 py-3.5 border border-slate-300 text-rose-600">{row.absent}</td>
-                                  <td className="px-6 py-3.5 border border-slate-300 text-amber-600">{row.leave}</td>
-                                </tr>
-                              ))}
+                            <tbody className="text-slate-800 divide-y divide-slate-200">
+                              {(reportResult.flatRows || reportResult.data || []).map((row, index) => {
+                                if (row.isDeptHeader) {
+                                  return (
+                                    <tr key={`dept-hdr-${index}`} className="bg-white">
+                                      <td className="px-2 py-1.5 border border-slate-300"></td>
+                                      <td className="px-2 py-1.5 border border-slate-300"></td>
+                                      <td className="px-3 py-1.5 border border-slate-300 text-left">
+                                        <span className="font-extrabold text-slate-900 text-sm border-b-2 border-slate-900 pb-0.5 inline-block uppercase tracking-wide">
+                                          {row.deptAcronym || row.department}
+                                        </span>
+                                      </td>
+                                      <td className="px-2 py-1.5 border border-slate-300"></td>
+                                      <td className="px-2 py-1.5 border border-slate-300"></td>
+                                      <td className="px-2 py-1.5 border border-slate-300"></td>
+                                      <td className="px-2 py-1.5 border border-slate-300"></td>
+                                      <td className="px-2 py-1.5 border border-slate-300"></td>
+                                      <td className="px-2 py-1.5 border border-slate-300"></td>
+                                      <td className="px-2 py-1.5 border border-slate-300"></td>
+                                      <td className="px-2 py-1.5 border border-slate-300"></td>
+                                    </tr>
+                                  );
+                                }
+                                if (row.isEmployeeRow) {
+                                  return (
+                                    <tr key={`emp-${row.slNo || index}`} className="hover:bg-slate-50/50 font-medium text-xs">
+                                      <td className="px-2 py-1 border border-slate-300 text-center text-slate-600">{row.slNo}</td>
+                                      <td className="px-2 py-1 border border-slate-300 text-center font-bold text-slate-900">{row.ticketNo}</td>
+                                      <td className="px-3 py-1 border border-slate-300 text-left font-semibold text-slate-900 uppercase whitespace-nowrap">{row.employeeName}</td>
+                                      <td className="px-2 py-1 border border-slate-300 text-center font-semibold text-slate-700">{row.deptAcronym || row.department}</td>
+                                      <td className="px-2 py-1 border border-slate-300 text-center text-slate-600 whitespace-nowrap">{row.doj || "-"}</td>
+                                      <td className="px-2 py-1 border border-slate-300 text-center font-bold text-slate-700">{row.category || "-"}</td>
+                                      <td className="px-2 py-1 border border-slate-300 text-right font-semibold text-slate-800">{row.shiftA > 0 ? Number(row.shiftA).toFixed(1) : "-"}</td>
+                                      <td className="px-2 py-1 border border-slate-300 text-right font-semibold text-slate-800">{row.shiftB > 0 ? Number(row.shiftB).toFixed(1) : "-"}</td>
+                                      <td className="px-2 py-1 border border-slate-300 text-right font-semibold text-slate-800">{row.shiftC > 0 ? Number(row.shiftC).toFixed(1) : "-"}</td>
+                                      <td className="px-2 py-1 border border-slate-300 text-right font-semibold text-slate-800">{row.absDays > 0 ? Number(row.absDays).toFixed(1) : "-"}</td>
+                                      <td className="px-2 py-1 border border-slate-300 text-right font-bold text-slate-900">{row.totalDays > 0 ? Number(row.totalDays).toFixed(1) : "-"}</td>
+                                    </tr>
+                                  );
+                                }
+                                if (row.isDeptSubtotal) {
+                                  return (
+                                    <tr key={`dept-sub-${index}`} className="bg-slate-50 font-bold border-t border-b-2 border-slate-300 text-xs">
+                                      <td colSpan={6} className="px-3 py-1 border border-slate-300"></td>
+                                      <td className="px-2 py-1 border border-slate-300 text-right font-bold text-slate-900">{row.shiftA > 0 ? Number(row.shiftA).toFixed(1) : "-"}</td>
+                                      <td className="px-2 py-1 border border-slate-300 text-right font-bold text-slate-900">{row.shiftB > 0 ? Number(row.shiftB).toFixed(1) : "-"}</td>
+                                      <td className="px-2 py-1 border border-slate-300 text-right font-bold text-slate-900">{row.shiftC > 0 ? Number(row.shiftC).toFixed(1) : "-"}</td>
+                                      <td className="px-2 py-1 border border-slate-300 text-right font-bold text-slate-900">{row.absDays > 0 ? Number(row.absDays).toFixed(1) : "-"}</td>
+                                      <td className="px-2 py-1 border border-slate-300 text-right font-black text-slate-900">{row.totalDays > 0 ? Number(row.totalDays).toFixed(1) : "-"}</td>
+                                    </tr>
+                                  );
+                                }
+                                return null;
+                              })}
                             </tbody>
+                            <tfoot>
+                              <tr className="bg-slate-100 text-slate-800 font-bold border-t-2 border-slate-300 text-xs" style={{ backgroundColor: "#f1f5f9" }}>
+                                <td colSpan={6} className="px-3 py-2 border border-slate-300 text-right font-bold text-slate-800 uppercase tracking-wider bg-slate-100" style={{ backgroundColor: "#f1f5f9", opacity: 1 }}>
+                                  Grand Total
+                                </td>
+                                <td className="px-2 py-2 border border-slate-300 text-right font-bold text-slate-900 bg-slate-100" style={{ backgroundColor: "#f1f5f9", opacity: 1 }}>
+                                  {(reportResult.grandTotals?.shiftA != null && reportResult.grandTotals.shiftA > 0) ? Number(reportResult.grandTotals.shiftA).toFixed(1) : "-"}
+                                </td>
+                                <td className="px-2 py-2 border border-slate-300 text-right font-bold text-slate-900 bg-slate-100" style={{ backgroundColor: "#f1f5f9", opacity: 1 }}>
+                                  {(reportResult.grandTotals?.shiftB != null && reportResult.grandTotals.shiftB > 0) ? Number(reportResult.grandTotals.shiftB).toFixed(1) : "-"}
+                                </td>
+                                <td className="px-2 py-2 border border-slate-300 text-right font-bold text-slate-900 bg-slate-100" style={{ backgroundColor: "#f1f5f9", opacity: 1 }}>
+                                  {(reportResult.grandTotals?.shiftC != null && reportResult.grandTotals.shiftC > 0) ? Number(reportResult.grandTotals.shiftC).toFixed(1) : "-"}
+                                </td>
+                                <td className="px-2 py-2 border border-slate-300 text-right font-bold text-slate-900 bg-slate-100" style={{ backgroundColor: "#f1f5f9", opacity: 1 }}>
+                                  {(reportResult.grandTotals?.absDays != null && reportResult.grandTotals.absDays > 0) ? Number(reportResult.grandTotals.absDays).toFixed(1) : "-"}
+                                </td>
+                                <td className="px-2 py-2 border border-slate-300 text-right font-black text-slate-900 bg-slate-100" style={{ backgroundColor: "#f1f5f9", opacity: 1 }}>
+                                  {(reportResult.grandTotals?.totalDays != null && reportResult.grandTotals.totalDays > 0) ? Number(reportResult.grandTotals.totalDays).toFixed(1) : "-"}
+                                </td>
+                              </tr>
+                            </tfoot>
                           </table>
                         ) : reportResult.type === "Over Time Report" ? (
                           <table className="w-full border-collapse border border-slate-300">
@@ -1357,7 +2346,7 @@ const DepartmentReports = () => {
                                   return (
                                     <tr key={`sub-${index}`} className="font-bold">
                                       <td colSpan={8} className="border-b border-l border-slate-300"></td>
-                                      <td className="px-2 py-2 border border-slate-400 text-center font-black text-slate-900 bg-slate-100/60">
+                                      <td className="px-2 py-2 border border-slate-400 text-center font-black text-slate-900 bg-slate-100">
                                         {row.shiftTotalHrs != null ? (row.shiftTotalHrs.toFixed ? row.shiftTotalHrs.toFixed(1) : row.shiftTotalHrs) : 0}
                                       </td>
                                       <td colSpan={2} className="border-b border-r border-slate-300"></td>
@@ -1398,12 +2387,25 @@ const DepartmentReports = () => {
                               })}
                             </tbody>
                             <tfoot>
-                              <tr className="font-black">
-                                <td colSpan={8} className="border-b-2 border-l border-slate-400"></td>
-                                <td className="px-2 py-2.5 border-2 border-slate-400 text-center font-black text-indigo-800 text-sm bg-slate-200/50">
+                              <tr className="bg-slate-100 text-slate-800 font-bold border-t-2 border-slate-300" style={{ backgroundColor: "#f1f5f9" }}>
+                                <td
+                                  colSpan={8}
+                                  className="px-3 py-2.5 border border-slate-300 text-left font-bold text-slate-800 uppercase tracking-wider bg-slate-100"
+                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                >
+                                  Grand Total
+                                </td>
+                                <td
+                                  className="px-2 py-2.5 border border-slate-300 text-center font-black text-slate-900 text-sm bg-slate-100"
+                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                >
                                   {reportResult.grandTotalHrs != null ? (reportResult.grandTotalHrs.toFixed ? reportResult.grandTotalHrs.toFixed(1) : reportResult.grandTotalHrs) : 0}
                                 </td>
-                                <td colSpan={2} className="border-b-2 border-r border-slate-400"></td>
+                                <td
+                                  colSpan={2}
+                                  className="border border-slate-300 bg-slate-100"
+                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                ></td>
                               </tr>
                             </tfoot>
                           </table>
@@ -1445,8 +2447,12 @@ const DepartmentReports = () => {
                               ))}
                             </tbody>
                             <tfoot>
-                              <tr className="bg-slate-100 text-slate-900 font-bold border-t-2 border-slate-300">
-                                <td colSpan={2} className="px-4 py-3 border border-slate-300 text-left font-bold uppercase tracking-wider">
+                              <tr className="bg-slate-100 text-slate-900 font-bold border-t-2 border-slate-300" style={{ backgroundColor: "#f1f5f9" }}>
+                                <td
+                                  colSpan={2}
+                                  className="px-4 py-3 border border-slate-300 text-left font-bold uppercase tracking-wider bg-slate-100 text-slate-800"
+                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                >
                                   Total
                                 </td>
                                 {(reportResult.days || []).map((d) => {
@@ -1454,38 +2460,239 @@ const DepartmentReports = () => {
                                   const lbl = getDayLabel(d);
                                   const sum = reportResult.dayTotals ? (reportResult.dayTotals[k] ?? reportResult.dayTotals[lbl]) : 0;
                                   return (
-                                    <td key={k} className="px-2 py-3 border border-slate-300 text-center font-bold text-slate-900">
+                                    <td
+                                      key={k}
+                                      className="px-2 py-3 border border-slate-300 text-center font-bold text-slate-900 bg-slate-100"
+                                      style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                    >
                                       {sum != null ? sum : 0}
                                     </td>
                                   );
                                 })}
-                                <td className="px-4 py-3 border border-slate-300 text-center font-black text-indigo-750">
+                                <td
+                                  className="px-4 py-3 border border-slate-300 text-center font-black text-slate-900 bg-slate-100"
+                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                >
                                   {reportResult.grandTotal != null ? reportResult.grandTotal : 0}
                                 </td>
                               </tr>
                             </tfoot>
                           </table>
                         ) : reportResult.type === "Over Time Report (Abstract)" ? (
-                          <table className="w-full border-collapse border border-slate-300">
+                          <>
+                            <table className="w-full border-collapse border border-slate-300 text-xs">
+                              <thead>
+                                <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300">
+                                  <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-center w-12">Shift</th>
+                                  <th className="sticky top-0 bg-slate-100 z-10 px-3 py-2 border border-slate-300 text-left min-w-[130px]">Department</th>
+                                  <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-center w-12">Sl.No</th>
+                                  <th className="sticky top-0 bg-slate-100 z-10 px-3 py-2 border border-slate-300 text-left min-w-[90px]">Ticket No</th>
+                                  <th className="sticky top-0 bg-slate-100 z-10 px-3 py-2 border border-slate-300 text-left min-w-[160px]">Employee Name</th>
+                                  <th className="sticky top-0 bg-slate-100 z-10 px-3 py-2 border border-slate-300 text-right min-w-[70px]">Hrs</th>
+                                  <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-center min-w-[70px]">Category</th>
+                                </tr>
+                              </thead>
+                              <tbody className="text-slate-800 divide-y divide-slate-200">
+                                {(reportResult.flatRows || []).map((row, index) => {
+                                  if (row.isShiftSubtotal) {
+                                    return (
+                                      <tr key={`sub-${index}`} className="font-bold">
+                                        <td colSpan={5} className="border-b border-l border-slate-300"></td>
+                                        <td className="px-3 py-1.5 border border-slate-400 text-right font-black text-slate-900 bg-slate-100" style={{ backgroundColor: "#f1f5f9" }}>
+                                          {row.shiftTotalHrs != null ? Number(row.shiftTotalHrs).toFixed(1) : "0.0"}
+                                        </td>
+                                        <td className="border-b border-r border-slate-300"></td>
+                                      </tr>
+                                    );
+                                  }
+                                  if (row.isEmployeeRow) {
+                                    return (
+                                      <tr key={`row-${index}`} className="hover:bg-slate-50/50 font-medium">
+                                        {row.isFirstInShift !== false && (
+                                          <td
+                                            rowSpan={row.shiftCount || 1}
+                                            className="px-2 py-2 border border-slate-300 text-center font-bold text-indigo-700 align-top bg-white"
+                                          >
+                                            {row.shift}
+                                          </td>
+                                        )}
+                                        <td className="px-3 py-1.5 border border-slate-300 uppercase font-semibold text-slate-700">{row.department}</td>
+                                        <td className="px-2 py-1.5 border border-slate-300 text-center text-slate-600">{row.slNo}</td>
+                                        <td className="px-3 py-1.5 border border-slate-300 font-bold text-slate-900">{row.ticketNo}</td>
+                                        <td className="px-3 py-1.5 border border-slate-300 uppercase whitespace-nowrap">{row.employeeName}</td>
+                                        <td className="px-3 py-1.5 border border-slate-300 text-right font-bold text-slate-800">
+                                          {row.otHours != null ? Number(row.otHours).toFixed(1) : "0.0"}
+                                        </td>
+                                        <td className="px-2 py-1.5 border border-slate-300 text-center font-bold text-slate-700">{row.category}</td>
+                                      </tr>
+                                    );
+                                  }
+                                  return null;
+                                })}
+                              </tbody>
+                              <tfoot>
+                                <tr className="bg-slate-100 text-slate-800 font-bold border-t-2 border-slate-300" style={{ backgroundColor: "#f1f5f9" }}>
+                                  <td
+                                    colSpan={5}
+                                    className="px-3 py-2.5 border border-slate-300 text-left font-bold text-slate-800 uppercase tracking-wider bg-slate-100"
+                                    style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                  >
+                                    Grand Total
+                                  </td>
+                                  <td
+                                    className="px-3 py-2.5 border border-slate-300 text-right font-black text-slate-900 text-sm bg-slate-100"
+                                    style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                  >
+                                    {(reportResult.grandTotalHrs != null ? reportResult.grandTotalHrs : 0).toFixed(1)}
+                                  </td>
+                                  <td
+                                    className="border border-slate-300 bg-slate-100"
+                                    style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                  ></td>
+                                </tr>
+                              </tfoot>
+                            </table>
+
+                            {/* Signatures matching reference image */}
+                            <div className="flex justify-between items-center px-12 pt-8 pb-4 text-xs font-bold text-slate-700 uppercase tracking-wider">
+                              <div>HOD</div>
+                              <div>PM</div>
+                              <div>DGM</div>
+                            </div>
+                          </>
+                        ) : reportResult.type === "Department Attendance" ? (
+                          <table className="w-full border-collapse border border-slate-300 text-xs">
                             <thead>
-                              <tr className="bg-slate-100 text-slate-750 text-xs font-bold text-left border-b border-slate-300 print:bg-slate-100">
-                                <th className="sticky top-0 bg-slate-100 z-10 px-4 py-3 border border-slate-300">Department</th>
-                                <th className="sticky top-0 bg-slate-100 z-10 px-4 py-3 border border-slate-300">Employees</th>
-                                <th className="sticky top-0 bg-slate-100 z-10 px-4 py-3 border border-slate-300">Total OT Hours</th>
+                              <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300">
+                                <th className="sticky top-0 bg-slate-100 z-10 px-3 py-2.5 border border-slate-300 text-left min-w-[140px]">Department</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2.5 border border-slate-300 text-center w-14">SL.No</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-3 py-2.5 border border-slate-300 text-left min-w-[90px]">Ticket No</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-3 py-2.5 border border-slate-300 text-left min-w-[180px]">Employee Name</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2.5 border border-slate-300 text-center w-14">Shift</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2.5 border border-slate-300 text-center min-w-[70px]">Category</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-3 py-2.5 border border-slate-300 text-right min-w-[70px]">Days</th>
                               </tr>
                             </thead>
-                            <tbody className="text-sm font-medium text-slate-700 divide-y divide-slate-200">
-                              {paginatedData.map((row, index) => (
-                                <tr key={index} className="hover:bg-slate-50/50">
-                                  <td className="px-4 py-3 border border-slate-300 font-bold">{row.department}</td>
-                                  <td className="px-4 py-3 border border-slate-300 text-slate-800">{row.employees}</td>
-                                  <td className="px-4 py-3 border border-slate-300 font-bold text-indigo-750">{row.totalOtHours}</td>
-                                </tr>
-                              ))}
+                            <tbody className="text-slate-800 divide-y divide-slate-200">
+                              {(reportResult.flatRows || reportResult.data || []).map((row, index) => {
+                                if (row.isGroupSubtotal) {
+                                  return (
+                                    <tr key={`grp-${index}`} className="font-bold">
+                                      <td colSpan={6} className="border-b border-l border-slate-300"></td>
+                                      <td className="px-3 py-1.5 border border-slate-400 text-right font-black text-slate-900 bg-slate-100" style={{ backgroundColor: "#f1f5f9" }}>
+                                        {row.groupTotalDays != null ? Number(row.groupTotalDays).toFixed(2) : "0.00"}
+                                      </td>
+                                    </tr>
+                                  );
+                                }
+                                if (row.isDeptSubtotal) {
+                                  return (
+                                    <tr key={`sub-${index}`} className="font-bold">
+                                      <td colSpan={6} className="border-b border-l border-slate-300"></td>
+                                      <td className="px-3 py-1.5 border border-slate-400 text-right font-black text-slate-900 bg-slate-100" style={{ backgroundColor: "#f1f5f9" }}>
+                                        {row.deptTotalDays != null ? Number(row.deptTotalDays).toFixed(2) : "0.00"}
+                                      </td>
+                                    </tr>
+                                  );
+                                }
+                                return (
+                                  <tr key={`row-${row.empSlNo || index}`} className="hover:bg-slate-50/50 font-medium">
+                                    {row.isFirstInDept !== false && (
+                                      <td
+                                        rowSpan={row.deptCount || 1}
+                                        className="px-3 py-1.5 border border-slate-300 uppercase font-bold text-slate-800 align-top bg-white"
+                                      >
+                                        {row.department}
+                                      </td>
+                                    )}
+                                    <td className="px-2 py-1.5 border border-slate-300 text-center text-slate-600">{row.empSlNo}</td>
+                                    <td className="px-3 py-1.5 border border-slate-300 font-bold text-slate-900">{row.ticketNo}</td>
+                                    <td className="px-3 py-1.5 border border-slate-300 uppercase whitespace-nowrap">{row.employeeName}</td>
+                                    <td className="px-2 py-1.5 border border-slate-300 text-center font-semibold text-indigo-700">{row.shift}</td>
+                                    <td className="px-2 py-1.5 border border-slate-300 text-center font-bold text-slate-700">{row.category}</td>
+                                    <td className="px-3 py-1.5 border border-slate-300 text-right font-semibold text-slate-900">
+                                      {row.days != null ? Number(row.days).toFixed(2) : "1.00"}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                            <tfoot>
+                              <tr className="bg-slate-100 text-slate-800 font-bold border-t-2 border-slate-300" style={{ backgroundColor: "#f1f5f9" }}>
+                                <td
+                                  colSpan={6}
+                                  className="px-3 py-2.5 border border-slate-300 text-left font-bold text-slate-800 uppercase tracking-wider bg-slate-100"
+                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                >
+                                  Grand Total
+                                </td>
+                                <td
+                                  className="px-3 py-2.5 border border-slate-300 text-right font-black text-slate-900 text-sm bg-slate-100"
+                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                >
+                                  {reportResult.grandTotalDays != null ? Number(reportResult.grandTotalDays).toFixed(2) : "0.00"}
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        ) : reportResult.type === "Attendance Shift Wise Detail" ? (
+                          <table className="w-full border-collapse border border-slate-300 text-xs">
+                            <thead>
+                              <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300">
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-center min-w-[55px]">Tkt.No</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-3 py-2 border border-slate-300 text-left min-w-[150px]">empname</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-center min-w-[65px]">Dept</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-center min-w-[80px]">DOJ</th>
+                                {(reportResult.dayCols && reportResult.dayCols.length === 31 ? reportResult.dayCols : Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, "0"))).map((d) => (
+                                  <th key={d} className="sticky top-0 bg-slate-100 z-10 px-1 py-2 border border-slate-300 text-center min-w-[24px]">
+                                    {d}
+                                  </th>
+                                ))}
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-center min-w-[32px]">A</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-center min-w-[32px]">B</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-center min-w-[32px]">C</th>
+                                <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-center min-w-[34px]">T</th>
+                              </tr>
+                            </thead>
+                            <tbody className="text-slate-800 divide-y divide-slate-200">
+                              {(reportResult.flatRows || reportResult.data || []).map((row, index) => {
+                                if (row.isDeptHeader) {
+                                  return (
+                                    <tr key={`dept-${index}`} className="bg-slate-100 font-extrabold">
+                                      <td colSpan={39} className="px-3 py-1.5 text-indigo-900 border border-slate-300 text-xs tracking-wider uppercase font-bold" style={{ backgroundColor: "#f1f5f9" }}>
+                                        {row.deptAcronym || row.department}
+                                      </td>
+                                    </tr>
+                                  );
+                                }
+                                if (row.isEmployeeRow) {
+                                  const dayCols = reportResult.dayCols && reportResult.dayCols.length === 31
+                                    ? reportResult.dayCols
+                                    : Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, "0"));
+                                  return (
+                                    <tr key={`emp-${row.ticketNo || index}`} className="hover:bg-slate-50/50 font-medium">
+                                      <td className="px-2 py-1 border border-slate-300 text-center font-bold text-slate-900">{row.ticketNo}</td>
+                                      <td className="px-3 py-1 border border-slate-300 uppercase whitespace-nowrap text-slate-800">{row.employeeName}</td>
+                                      <td className="px-2 py-1 border border-slate-300 text-center font-semibold text-slate-700">{row.deptAcronym || row.department}</td>
+                                      <td className="px-2 py-1 border border-slate-300 text-center text-slate-600 whitespace-nowrap">{row.doj || "—"}</td>
+                                      {dayCols.map((d) => (
+                                        <td key={d} className="px-1 py-1 border border-slate-300 text-center font-bold text-slate-800">
+                                          {row.dailyShifts?.[d] || ""}
+                                        </td>
+                                      ))}
+                                      <td className="px-1.5 py-1 border border-slate-300 text-center font-bold text-slate-800">{row.shiftA > 0 ? Number(row.shiftA).toFixed(1) : "-"}</td>
+                                      <td className="px-1.5 py-1 border border-slate-300 text-center font-bold text-slate-800">{row.shiftB > 0 ? Number(row.shiftB).toFixed(1) : "-"}</td>
+                                      <td className="px-1.5 py-1 border border-slate-300 text-center font-bold text-slate-800">{row.shiftC > 0 ? Number(row.shiftC).toFixed(1) : "-"}</td>
+                                      <td className="px-1.5 py-1 border border-slate-300 text-center font-black text-indigo-700 bg-slate-50">{row.totalDays > 0 ? Number(row.totalDays).toFixed(1) : "-"}</td>
+                                    </tr>
+                                  );
+                                }
+                                return null;
+                              })}
                             </tbody>
                           </table>
                         ) : (
-                          // Department Attendance / Attendance Shift Wise Detail
+                          // Fallback table
                           <table className="w-full border-collapse border border-slate-300">
                             <thead>
                               <tr className="bg-slate-100 text-slate-750 text-xs font-bold text-left border-b border-slate-300 print:bg-slate-100">
@@ -1547,7 +2754,7 @@ const DepartmentReports = () => {
                       </div>
 
                       {/* Pagination Controls Footer */}
-                      {totalRows > 0 && (
+                      {totalRows > 0 && reportResult.type !== "Over Time Report (Hours wise)" && reportResult.type !== "Department Attendance" && reportResult.type !== "Attendance Shift Wise Detail" && reportResult.type !== "Attendance Shift Wise Abstract" && reportResult.type !== "Over Time Report (Abstract)" && (
                         <div className="mt-4 flex flex-wrap items-center justify-between gap-4 pt-3 border-t border-slate-200 text-xs text-slate-600 print:hidden">
                           <div className="flex items-center gap-2">
                             <span>Show</span>

@@ -1177,8 +1177,15 @@ module.exports = {
     }
 
     try {
-      const { Attendance, Employee, Department, ShiftType, DepartmentAttendance, BiometricPunch, Category } = require("../models");
+      const { Attendance, Employee, Department, ShiftType, DepartmentAttendance, BiometricPunch, Category, Company } = require("../models");
       const moment = require("moment");
+
+      // Fetch company name
+      let companyName = "KAYAAR EXPORTS (P) LTD";
+      if (companyId) {
+        const comp = await Company.findByPk(companyId);
+        if (comp && comp.companyname) companyName = comp.companyname;
+      }
 
       // Fetch shift name mappings in memory
       const allShifts = await ShiftType.findAll({ raw: true });
@@ -1234,7 +1241,7 @@ module.exports = {
           { departmentId: { [Op.in]: departments } }
         ];
       }
-      if (shift) {
+      if (shift && reportType !== "Attendance Shift Wise Abstract") {
         manualWhere.shiftId = parseInt(shift);
       }
 
@@ -1311,7 +1318,7 @@ module.exports = {
         whereClause[Op.or] = deptConditions;
       }
 
-      if (shift) {
+      if (shift && reportType !== "Attendance Shift Wise Abstract") {
         const targetShift = allShifts.find(s => String(s.id) === String(shift));
         const shiftConditions = [
           { shiftId: parseInt(shift) },
@@ -1487,27 +1494,157 @@ module.exports = {
         mergedList = mergedList.filter(r => r.deptId && deptIdSet.has(r.deptId));
       }
 
-      // If Abstract report is requested, aggregate by shift
+      // If Abstract report is requested, replicate the 11-column Shift wise Abstract format
       if (reportType === "Attendance Shift Wise Abstract") {
-        const pivotMap = {};
+        let targetShiftName = "ALL";
+        if (shift) {
+          const found = allShifts.find(s => String(s.id) === String(shift));
+          if (found && found.name) targetShiftName = found.name;
+        }
+
+        const empMap = new Map();
         mergedList.forEach(r => {
-          let shiftName = r.shift || "General";
-          if (!pivotMap[shiftName]) {
-            pivotMap[shiftName] = { shift: shiftName, present: 0, absent: 0, leave: 0 };
+          const isAbsent = String(r.status || "").toLowerCase().includes("absent") || r.entryType === "ABSENT";
+          if (r.days <= 0 && !isAbsent) return;
+
+          const empIdKey = r.employeeId || r.ticketNo || r.employeeName;
+          if (!empMap.has(empIdKey)) {
+            empMap.set(empIdKey, {
+              employeeId: r.employeeId,
+              ticketNo: r.ticketNo,
+              employeeName: r.employeeName,
+              department: r.department,
+              deptId: r.deptId,
+              deptAcronym: r.deptAcronym || deptAcronymMap[r.deptId] || r.department,
+              doj: r.doj || "",
+              category: r.category || "O",
+              shiftA: 0,
+              shiftB: 0,
+              shiftC: 0,
+              absDays: 0,
+              totalDays: 0
+            });
           }
-          const status = String(r.status || "").toLowerCase();
-          if (r.entryType === "HR_VERIFIED" && (status === "present" || status === "pr" || status === "present with permission" || status === "half day" || status === "present/leave (p/l)" || status === "p/l" || status === "p")) {
-            pivotMap[shiftName].present += 1;
-          } else if (status === "leave" || status === "lv" || status === "l" || status === "holiday" || status === "week off") {
-            pivotMap[shiftName].leave += 1;
-          } else {
-            pivotMap[shiftName].absent += 1;
+
+          const empRecord = empMap.get(empIdKey);
+          if (!empRecord.category && r.category) empRecord.category = r.category;
+          if (!empRecord.doj && r.doj) empRecord.doj = r.doj;
+
+          let shiftLetter = "A";
+          const sUpper = String(r.shift || "").toUpperCase();
+          if (sUpper.includes("B")) shiftLetter = "B";
+          else if (sUpper.includes("C")) shiftLetter = "C";
+          else if (sUpper.includes("A")) shiftLetter = "A";
+          else shiftLetter = sUpper.charAt(0) || "A";
+
+          if (r.days > 0) {
+            if (shiftLetter === "B") {
+              empRecord.shiftB = Math.round((empRecord.shiftB + r.days) * 10) / 10;
+            } else if (shiftLetter === "C") {
+              empRecord.shiftC = Math.round((empRecord.shiftC + r.days) * 10) / 10;
+            } else {
+              empRecord.shiftA = Math.round((empRecord.shiftA + r.days) * 10) / 10;
+            }
+            empRecord.totalDays = Math.round((empRecord.totalDays + r.days) * 10) / 10;
+          } else if (isAbsent) {
+            empRecord.absDays = Math.round((empRecord.absDays + 1) * 10) / 10;
           }
         });
 
+        const allEmps = Array.from(empMap.values()).filter(e => e.totalDays > 0 || e.absDays > 0);
+
+        const deptGroupMap = {};
+        allEmps.forEach(emp => {
+          const groupKey = (emp.deptAcronym || emp.department || "General").trim();
+          if (!deptGroupMap[groupKey]) {
+            deptGroupMap[groupKey] = {
+              deptAcronym: emp.deptAcronym || groupKey,
+              department: emp.department,
+              employees: []
+            };
+          }
+          deptGroupMap[groupKey].employees.push(emp);
+        });
+
+        const sortedDeptKeys = Object.keys(deptGroupMap).sort((a, b) => a.localeCompare(b));
+        const flatRows = [];
+        let runningSlNo = 1;
+        let grandShiftA = 0;
+        let grandShiftB = 0;
+        let grandShiftC = 0;
+        let grandAbsDays = 0;
+        let grandTotalDays = 0;
+
+        sortedDeptKeys.forEach(grpKey => {
+          const grp = deptGroupMap[grpKey];
+          // Sort employees within department strictly in alphabetical order by first name
+          grp.employees.sort((a, b) => String(a.employeeName).localeCompare(String(b.employeeName)));
+
+          flatRows.push({
+            isDeptHeader: true,
+            department: grp.department,
+            deptAcronym: grp.deptAcronym || grpKey
+          });
+
+          let deptShiftA = 0;
+          let deptShiftB = 0;
+          let deptShiftC = 0;
+          let deptAbsDays = 0;
+          let deptTotalDays = 0;
+
+          grp.employees.forEach(emp => {
+            const currentSlNo = runningSlNo++;
+            deptShiftA = Math.round((deptShiftA + emp.shiftA) * 10) / 10;
+            deptShiftB = Math.round((deptShiftB + emp.shiftB) * 10) / 10;
+            deptShiftC = Math.round((deptShiftC + emp.shiftC) * 10) / 10;
+            deptAbsDays = Math.round((deptAbsDays + emp.absDays) * 10) / 10;
+            deptTotalDays = Math.round((deptTotalDays + emp.totalDays) * 10) / 10;
+
+            flatRows.push({
+              isEmployeeRow: true,
+              slNo: currentSlNo,
+              ...emp
+            });
+          });
+
+          flatRows.push({
+            isDeptSubtotal: true,
+            department: grp.department,
+            deptAcronym: grp.deptAcronym || grpKey,
+            shiftA: deptShiftA,
+            shiftB: deptShiftB,
+            shiftC: deptShiftC,
+            absDays: deptAbsDays,
+            totalDays: deptTotalDays
+          });
+
+          grandShiftA = Math.round((grandShiftA + deptShiftA) * 10) / 10;
+          grandShiftB = Math.round((grandShiftB + deptShiftB) * 10) / 10;
+          grandShiftC = Math.round((grandShiftC + deptShiftC) * 10) / 10;
+          grandAbsDays = Math.round((grandAbsDays + deptAbsDays) * 10) / 10;
+          grandTotalDays = Math.round((grandTotalDays + deptTotalDays) * 10) / 10;
+        });
+
+        const grandTotals = {
+          shiftA: grandShiftA,
+          shiftB: grandShiftB,
+          shiftC: grandShiftC,
+          absDays: grandAbsDays,
+          totalDays: grandTotalDays
+        };
+
         return res.status(200).json({
           success: true,
-          data: Object.values(pivotMap)
+          companyName,
+          reportTitle: "Attendance Shift wise Abstract",
+          shiftName: targetShiftName,
+          fromDate: moment(fromDate).format("DD-MM-YYYY"),
+          toDate: moment(toDate).format("DD-MM-YYYY"),
+          totalEmployees: runningSlNo - 1,
+          grandTotals,
+          grandTotalDays: grandTotals.totalDays,
+          flatRows,
+          data: flatRows
         });
       }
 

@@ -58,6 +58,8 @@ const DepartmentReports = () => {
   const [selectedShiftId, setSelectedShiftId] = useState("");
   const [deptSearch, setDeptSearch] = useState("");
 
+  const selectedCompany = companies.find((c) => String(c.id) === String(selectedCompanyId));
+
   // --- Bootstrap ---
   useEffect(() => {
     fetchCompanies();
@@ -198,6 +200,9 @@ const DepartmentReports = () => {
       }
       const { data } = await API.post(url, payload);
 
+      const selectedCompany = companies.find((c) => String(c.id) === String(selectedCompanyId));
+      const companyName = data.companyName || selectedCompany?.name || "Test Company";
+
       if (data.success) {
         setReportResult({
           type: selectedReportType,
@@ -215,7 +220,7 @@ const DepartmentReports = () => {
           grandTotal: data.grandTotal != null ? data.grandTotal : 0,
           shiftName: data.shiftName || "ALL",
           reportTitle: data.reportTitle || "Attendance Report for Production",
-          companyName: data.companyName || "KAYAAR EXPORTS (P) LTD",
+          companyName,
           meta: { fromDate, toDate }
         });
         toast.success("Report generated successfully!");
@@ -233,7 +238,7 @@ const DepartmentReports = () => {
   // --- PDF Document Generator ---
   const generatePDFDoc = () => {
     const selectedCompany = companies.find((c) => String(c.id) === String(selectedCompanyId));
-    const companyName = selectedCompany?.name || "KAYAAR EXPORTS (P) LTD";
+    const companyName = reportResult?.companyName || selectedCompany?.name || "Test Company";
 
     if (reportResult.type === "Over Time Report (Day wise)") {
       const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
@@ -494,8 +499,8 @@ const DepartmentReports = () => {
         } else {
           if (r.isFirstInDept !== false) {
             body.push([
-              { content: String(r.deptSlNo || ""), rowSpan: r.deptCount || 1, styles: { halign: "center", valign: "middle" } },
-              { content: String(r.department || ""), rowSpan: r.deptCount || 1, styles: { halign: "left", valign: "middle" } },
+              { content: String(r.deptSlNo || ""), rowSpan: r.deptCount || 1, styles: { halign: "center", valign: "top" } },
+              { content: String(r.department || ""), rowSpan: r.deptCount || 1, styles: { halign: "left", valign: "top" } },
               { content: String(r.empSlNo || ""), styles: { halign: "center" } },
               { content: String(r.ticketNo || ""), styles: { halign: "left" } },
               { content: String(r.employeeName || "").toUpperCase(), styles: { halign: "left" } },
@@ -987,7 +992,7 @@ const DepartmentReports = () => {
       const marginX = 14;
 
       // Centered Company Name
-      const compName = reportResult.companyName || (reportResult.company?.companyname) || "KAYAAR EXPORTS (P) LTD";
+      const compName = reportResult.companyName || companyName || "Test Company";
       doc.setFont("helvetica", "bold");
       doc.setFontSize(13);
       doc.setTextColor(0, 0, 0);
@@ -1000,20 +1005,15 @@ const DepartmentReports = () => {
       doc.setTextColor(0, 0, 0);
       doc.text(subTitle, marginX, 24);
 
-      // Top horizontal black rule
-      doc.setLineWidth(0.3);
-      doc.setDrawColor(0, 0, 0);
-      doc.line(marginX, 26, pageW - marginX, 26);
-
       const head = [
         [
-          { content: "", styles: { halign: "center", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
-          { content: "Department", styles: { halign: "left", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
-          { content: "Sl.No", styles: { halign: "center", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
-          { content: "Ticket No", styles: { halign: "left", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
-          { content: "Employee Name", styles: { halign: "left", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
-          { content: "Hrs", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
-          { content: "Category", styles: { halign: "center", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } }
+          { content: "", styles: { halign: "center", fontStyle: "bold" } },
+          { content: "Department", styles: { halign: "left", fontStyle: "bold" } },
+          { content: "Sl.No", styles: { halign: "center", fontStyle: "bold" } },
+          { content: "Ticket No", styles: { halign: "left", fontStyle: "bold" } },
+          { content: "Employee Name", styles: { halign: "left", fontStyle: "bold" } },
+          { content: "Hrs", styles: { halign: "right", fontStyle: "bold" } },
+          { content: "Category", styles: { halign: "center", fontStyle: "bold" } }
         ]
       ];
 
@@ -1029,7 +1029,7 @@ const DepartmentReports = () => {
               styles: {
                 halign: "right",
                 fontStyle: "bold",
-                lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 },
+                lineWidth: { top: 0.2, bottom: 0.2, left: 0, right: 0 },
                 lineColor: [0, 0, 0]
               }
             },
@@ -1075,7 +1075,7 @@ const DepartmentReports = () => {
             content: "",
             colSpan: 5,
             styles: {
-              lineWidth: { top: 0.3, bottom: 0, left: 0, right: 0 },
+              lineWidth: { top: 0.2, bottom: 0.2, left: 0, right: 0 },
               lineColor: [0, 0, 0]
             }
           },
@@ -1084,14 +1084,14 @@ const DepartmentReports = () => {
             styles: {
               halign: "right",
               fontStyle: "bold",
-              lineWidth: { top: 0.3, bottom: 0.6, left: 0, right: 0 },
+              lineWidth: { top: 0.2, bottom: 0.2, left: 0, right: 0 },
               lineColor: [0, 0, 0]
             }
           },
           {
             content: "",
             styles: {
-              lineWidth: { top: 0.3, bottom: 0, left: 0, right: 0 },
+              lineWidth: { top: 0.2, bottom: 0.2, left: 0, right: 0 },
               lineColor: [0, 0, 0]
             }
           }
@@ -1151,18 +1151,20 @@ const DepartmentReports = () => {
           const isHead = data.section === "head";
           const isFoot = data.section === "foot";
 
-          const left = isFirstCol ? 0.35 : 0;
-          const right = isLastCol ? 0.35 : 0.2;
+          const LINE_W = 0.2; // uniform normal line width
+
+          const left = isFirstCol ? LINE_W : 0;
+          const right = isLastCol ? LINE_W : LINE_W;
 
           let top = 0;
           let bottom = 0;
 
           if (isHead) {
-            top = 0.35;
-            bottom = 0.35;
+            top = LINE_W;
+            bottom = LINE_W;
           } else if (isFoot) {
-            top = 0.25;
-            bottom = 0.6;
+            top = LINE_W;
+            bottom = LINE_W;
           }
 
           const existingLW = data.cell.styles.lineWidth;
@@ -1205,7 +1207,7 @@ const DepartmentReports = () => {
       const pageH = doc.internal.pageSize.getHeight();
       const marginX = 14;
 
-      const compName = reportResult.companyName || companyName || "KAYAAR EXPORTS (P) LTD";
+      const compName = reportResult.companyName || companyName || "Test Company";
       const subTitle = `Attendance Shift wise Abstract - (${formatDMY(reportResult.meta.fromDate)}-${formatDMY(reportResult.meta.toDate)}) - Shift : ${reportResult.shiftName || "ALL"}`;
 
       const head = [
@@ -1540,7 +1542,7 @@ const DepartmentReports = () => {
 
     try {
       const selectedCompany = companies.find((c) => String(c.id) === String(selectedCompanyId));
-      const companyName = selectedCompany?.name || "KAYAAR EXPORTS (P) LTD";
+      const companyName = reportResult.companyName || selectedCompany?.name || "Test Company";
 
       let headers = [];
       let dataRows = [];
@@ -2073,7 +2075,7 @@ const DepartmentReports = () => {
             <div>
               <h3 className="text-base font-bold text-slate-800">
                 {reportResult.type === "Department Attendance" || reportResult.type === "Attendance Shift Wise Detail" || reportResult.type === "Attendance Shift Wise Abstract" || reportResult.type === "Over Time Report (Abstract)"
-                  ? (reportResult.companyName || "KAYAAR EXPORTS (P) LTD")
+                  ? (reportResult.companyName || selectedCompany?.name || "Test Company")
                   : reportResult.type}
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -2116,7 +2118,7 @@ const DepartmentReports = () => {
             {/* Print Friendly Header */}
             <div className="hidden print:block text-center border-b pb-4 mb-6">
               <h1 className="text-2xl font-bold uppercase tracking-wide">
-                {reportResult.companyName || "KAYAAR EXPORTS (P) LTD"}
+                {reportResult.companyName || selectedCompany?.name || "Test Company"}
               </h1>
               <h2 className="text-base font-semibold text-slate-600 mt-1">
                 {reportResult.type === "Department Attendance"
@@ -2359,13 +2361,13 @@ const DepartmentReports = () => {
                                       <>
                                         <td
                                           rowSpan={row.deptCount || 1}
-                                          className="px-2 py-1.5 border border-slate-300 text-center font-bold align-middle bg-white"
+                                          className="px-2 py-1.5 border border-slate-300 text-center font-bold align-top bg-white"
                                         >
                                           {row.deptSlNo}
                                         </td>
                                         <td
                                           rowSpan={row.deptCount || 1}
-                                          className="px-3 py-1.5 border border-slate-300 uppercase font-semibold text-slate-700 align-middle bg-white"
+                                          className="px-3 py-1.5 border border-slate-300 uppercase font-semibold text-slate-700 align-top bg-white"
                                         >
                                           {row.department}
                                         </td>

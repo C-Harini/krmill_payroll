@@ -46,7 +46,7 @@ exports.getOTReport = async (req, res) => {
         date: { [Op.gte]: startDate, [Op.lt]: endDate },
       },
       include: [
-        { model: Company,    as: "company",    attributes: ["id", "companyName"] },
+        { model: Company,    as: "company",    attributes: ["id", "name", ["name", "companyName"]] },
         { model: Department, as: "department", attributes: ["id", "departmentname", ["departmentname", "departmentName"], ["departmentname", "name"]] },
         {
           model: Employee,

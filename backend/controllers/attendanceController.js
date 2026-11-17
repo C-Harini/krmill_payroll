@@ -37,6 +37,7 @@ const {
   EmploymentType,
   EmployeeShift,
   Department,
+  ShiftType,
 } = require("../models");
 const { Op } = require("sequelize");
 const moment = require("moment");
@@ -458,9 +459,9 @@ exports.getAttendance = async (req, res) => {
     }
     const empIdList = (employeeIds || employeeId)
       ? String(employeeIds || employeeId)
-          .split(",")
-          .map((id) => parseInt(id.trim()))
-          .filter(Boolean)
+        .split(",")
+        .map((id) => parseInt(id.trim()))
+        .filter(Boolean)
       : [];
     if (empIdList.length === 1) {
       where.employeeId = empIdList[0];
@@ -968,38 +969,69 @@ exports.getMultipleEntryAttendance = async (req, res) => {
       order: [["id", "ASC"]],
     });
 
-    // Fetch all employee IDs who are already assigned to ANY shift on this date
-    // so they are not shown in the checklist to be assigned to another shift
+    // Fetch all assignments on this date to know who is assigned and their shift/department details
     const allAssignedOnDate = await DepartmentAttendance.findAll({
       where: {
         companyId,
         attendanceDate: formattedDate,
       },
-      attributes: ["employeeId"],
-      raw: true,
+      include: [
+        {
+          model: ShiftType,
+          as: "shiftType",
+          attributes: ["id", "name"],
+          required: false,
+        },
+        {
+          model: Department,
+          as: "department",
+          attributes: ["id", "departmentname"],
+          required: false,
+        },
+        {
+          model: Department,
+          as: "workedDepartment",
+          attributes: ["id", "departmentname"],
+          required: false,
+        },
+      ],
     });
-    const assignedEmpIdSet = new Set(allAssignedOnDate.map((r) => r.employeeId));
 
-    // 3. Format Left Side (Unsaved / Department Employee checklist)
-    // Exclude any employee who is already assigned with any shift on this date
-    const unsavedEmployees = employees
-      .filter((emp) => !assignedEmpIdSet.has(emp.id))
-      .map((emp) => {
-        const catCode = emp.category
-          ? (emp.category.categoryName || emp.category.categoryCode)
-          : "O";
-        const code = emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode || emp.ticketNo || (emp.dataValues ? emp.dataValues.curEmployeeCode || emp.dataValues.employeeCode : "") || String(emp.id));
-        return {
-          employeeId: emp.id,
-          ticketNo: code,
-          employeeCode: code,
-          curEmployeeCode: emp.curEmployeeCode || emp.employeeCode,
-          newEmployeeCode: emp.newEmployeeCode || "",
-          empName: emp.firstName,
-          category: catCode,
-          isChecked: false,
-        };
+    const assignedMap = new Map();
+    allAssignedOnDate.forEach((r) => {
+      assignedMap.set(r.employeeId, {
+        id: r.id,
+        shiftId: r.shiftId,
+        shiftName: r.shiftType?.name || r.shiftName || "—",
+        status: r.status || "Present",
+        workedDeptName: r.workedDepartment?.departmentname || "",
+        homeDeptName: r.department?.departmentname || "",
+        attendanceDate: r.attendanceDate,
+        category: r.category,
       });
+    });
+
+    // 3. Format Left Side (Department Employee checklist)
+    // Keep ALL employees in list; mark assigned ones with isAssigned and assignmentDetails
+    const unsavedEmployees = employees.map((emp) => {
+      const catCode = emp.category
+        ? (emp.category.categoryName || emp.category.categoryCode)
+        : "O";
+      const code = emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode || emp.ticketNo || (emp.dataValues ? emp.dataValues.curEmployeeCode || emp.dataValues.employeeCode : "") || String(emp.id));
+      const assignment = assignedMap.get(emp.id) || null;
+      return {
+        employeeId: emp.id,
+        ticketNo: code,
+        employeeCode: code,
+        curEmployeeCode: emp.curEmployeeCode || emp.employeeCode,
+        newEmployeeCode: emp.newEmployeeCode || "",
+        empName: emp.firstName,
+        category: catCode,
+        isChecked: false,
+        isAssigned: !!assignment,
+        assignmentDetails: assignment,
+      };
+    });
 
     // 4. Format Right Side (Saved Data)
     const savedData = savedRecords.map((rec, index) => {

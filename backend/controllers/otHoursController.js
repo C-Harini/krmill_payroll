@@ -759,60 +759,23 @@ exports.getOTHoursMultipleEntry = async (req, res) => {
     const targetDate = moment(date).format("YYYY-MM-DD");
     const filterDeptId = workedDeptId || departmentId;
 
-    // 1. Fetch manual attendance entries for this date/department to find who worked here
-    const manualWhere = {
-      companyId,
-      attendanceDate: targetDate,
-      [Op.or]: [
-        { departmentId: filterDeptId },
-        { workedDeptId: filterDeptId },
+    // 1. Fetch active employees for the selected home department (matching Attendance Multiple Entry checklist)
+    const employees = await Employee.findAll({
+      where: {
+        companyId,
+        departmentId, // Selected Home Department
+        status: "Active",
+      },
+      include: [
+        {
+          model: require("../models").Category,
+          as: "category",
+          attributes: ["id", "categoryCode", "categoryName"],
+          required: false,
+        },
       ],
-      status: { [Op.ne]: "Absent" },
-    };
-
-    const manualAttendances = await DepartmentAttendance.findAll({
-      where: manualWhere,
-      raw: true,
+      order: [["curEmployeeCode", "ASC"]],
     });
-
-    let employees = [];
-    if (manualAttendances.length > 0) {
-      const workedEmpIds = [...new Set(manualAttendances.map((ma) => ma.employeeId))];
-      employees = await Employee.findAll({
-        where: {
-          id: { [Op.in]: workedEmpIds },
-          status: "Active",
-        },
-        include: [
-          {
-            model: require("../models").Category,
-            as: "category",
-            attributes: ["categoryName", "categoryCode"],
-            required: false,
-          },
-        ],
-        order: [["curEmployeeCode", "ASC"]],
-      });
-    } else {
-      // Fallback: If no manual attendance records exist for this department/date,
-      // load active employees belonging to the department so they are available for OT entry
-      employees = await Employee.findAll({
-        where: {
-          companyId,
-          departmentId: filterDeptId,
-          status: "Active",
-        },
-        include: [
-          {
-            model: require("../models").Category,
-            as: "category",
-            attributes: ["categoryName", "categoryCode"],
-            required: false,
-          },
-        ],
-        order: [["curEmployeeCode", "ASC"]],
-      });
-    }
 
     // 2. Fetch already saved OT records matching the query config (filtering by worked department)
     const whereClause = {
@@ -856,8 +819,7 @@ exports.getOTHoursMultipleEntry = async (req, res) => {
 
     const savedEmpIdSet = new Set(savedRecords.map((r) => r.employeeId));
 
-    // 3. Find employees who should NOT be shown in the unsaved checklist:
-    // a) Employees who ALREADY have an OT entry saved on this date (in this shift or ANY other shift)
+    // 3. Check employees who already have an OT entry or Department Attendance saved on this date
     const allSavedOTForDate = await OTHours.findAll({
       where: {
         companyId,
@@ -866,53 +828,113 @@ exports.getOTHoursMultipleEntry = async (req, res) => {
           [Op.lte]: moment(targetDate).endOf("day").toDate(),
         },
       },
-      attributes: ["employeeId", "shiftId"],
-      raw: true,
-    });
-    const employeesWithSavedOT = new Set(allSavedOTForDate.map((r) => r.employeeId));
-
-    // b) Employees who are assigned to a DIFFERENT shift in DepartmentAttendance on this date
-    let employeesAssignedToDiffShiftInAtt = new Set();
-    if (shiftId) {
-      const allAttForDate = await DepartmentAttendance.findAll({
-        where: {
-          companyId,
-          attendanceDate: targetDate,
-          shiftId: { [Op.ne]: shiftId },
+      include: [
+        {
+          model: require("../models").ShiftType,
+          as: "shift",
+          attributes: ["id", "name"],
+          required: false,
         },
-        attributes: ["employeeId", "shiftId"],
-        raw: true,
+        {
+          model: require("../models").Department,
+          as: "workedDepartment",
+          attributes: ["id", "departmentname"],
+          required: false,
+        },
+        {
+          model: require("../models").Department,
+          as: "department",
+          attributes: ["id", "departmentname"],
+          required: false,
+        },
+      ],
+    });
+
+    const otMap = new Map();
+    allSavedOTForDate.forEach((r) => {
+      otMap.set(r.employeeId, {
+        id: r.id,
+        shiftId: r.shiftId,
+        shiftName: r.shift?.name || "OT",
+        otHours: r.otHours,
+        otType: r.otType,
+        fromTime: r.fromTime || "-",
+        toTime: r.toTime || "-",
+        workedDeptName: r.workedDepartment?.departmentname || "",
+        homeDeptName: r.department?.departmentname || "",
+        date: targetDate,
+        source: "OT",
       });
-      employeesAssignedToDiffShiftInAtt = new Set(allAttForDate.map((r) => r.employeeId));
-    }
+    });
 
-    // Combine all exclusions for the unsaved checklist:
-    // - Already has OT on this date
-    // - Assigned to a different shift in Department Attendance on this date
-    const excludeFromUnsaved = new Set([
-      ...employeesWithSavedOT,
-      ...employeesAssignedToDiffShiftInAtt,
-    ]);
+    // Also fetch DepartmentAttendance for this date
+    const allAttForDate = await DepartmentAttendance.findAll({
+      where: {
+        companyId,
+        attendanceDate: targetDate,
+      },
+      include: [
+        {
+          model: require("../models").ShiftType,
+          as: "shiftType",
+          attributes: ["id", "name"],
+          required: false,
+        },
+        {
+          model: require("../models").Department,
+          as: "workedDepartment",
+          attributes: ["id", "departmentname"],
+          required: false,
+        },
+        {
+          model: require("../models").Department,
+          as: "department",
+          attributes: ["id", "departmentname"],
+          required: false,
+        },
+      ],
+    });
 
-    // Format Unsaved Employees list
-    const unsavedEmployees = employees
-      .filter((emp) => !excludeFromUnsaved.has(emp.id))
-      .map((emp) => {
-        const code = emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode || emp.ticketNo || (emp.dataValues ? emp.dataValues.curEmployeeCode || emp.dataValues.employeeCode : "") || String(emp.id));
-        const catName = emp.category
-          ? emp.category.categoryCode || emp.category.categoryName || "O"
-          : "O";
-
-        return {
-          employeeId: emp.id,
-          ticketNo: code,
-          employeeCode: code,
-          curEmployeeCode: emp.curEmployeeCode || emp.employeeCode,
-          newEmployeeCode: emp.newEmployeeCode || "",
-          empName: emp.firstName,
-          category: catName,
-        };
+    const attMap = new Map();
+    allAttForDate.forEach((r) => {
+      attMap.set(r.employeeId, {
+        id: r.id,
+        shiftId: r.shiftId,
+        shiftName: r.shiftType?.name || r.shiftName || "Att",
+        status: r.status,
+        workedDeptName: r.workedDepartment?.departmentname || "",
+        homeDeptName: r.department?.departmentname || "",
+        date: targetDate,
+        source: "DepartmentAttendance",
       });
+    });
+
+    // Format Department Employees checklist:
+    // DO NOT exclude assigned employees - keep all in checklist with isAssigned flag and details
+    const unsavedEmployees = employees.map((emp) => {
+      const code = emp.newEmployeeCode ? `${emp.curEmployeeCode || ''} / ${emp.newEmployeeCode}` : (emp.curEmployeeCode || emp.employeeCode || emp.ticketNo || (emp.dataValues ? emp.dataValues.curEmployeeCode || emp.dataValues.employeeCode : "") || String(emp.id));
+      const catName = emp.category
+        ? emp.category.categoryCode || emp.category.categoryName || "O"
+        : "O";
+
+      const otDetails = otMap.get(emp.id) || null;
+      const attDetails = attMap.get(emp.id) || null;
+      const isAssigned = !!otDetails;
+      const assignmentDetails = otDetails || attDetails || null;
+
+      return {
+        employeeId: emp.id,
+        ticketNo: code,
+        employeeCode: code,
+        curEmployeeCode: emp.curEmployeeCode || emp.employeeCode,
+        newEmployeeCode: emp.newEmployeeCode || "",
+        empName: emp.firstName,
+        category: catName,
+        isChecked: false,
+        isAssigned,
+        assignmentDetails,
+      };
+    });
 
     // 4. Format Enriched Saved Data list
     const savedData = savedRecords.map((r, index) => {

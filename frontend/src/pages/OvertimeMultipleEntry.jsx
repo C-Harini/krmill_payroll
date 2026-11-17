@@ -15,7 +15,8 @@ import {
   Database,
   Filter,
   Users,
-  Edit3
+  Edit3,
+  Check,
 } from "lucide-react";
 
 const OT_TYPE_OPTIONS = ["HOURS OT", "FULL TIME OT"];
@@ -69,6 +70,13 @@ const OvertimeMultipleEntry = () => {
   const [editWorkedDeptId, setEditWorkedDeptId] = useState("");
   const [editOtHours, setEditOtHours] = useState(0);
   const [editDate, setEditDate] = useState("");
+
+  // --- Already Assigned Details Modal State ---
+  const [alreadyAssignedModal, setAlreadyAssignedModal] = useState({
+    show: false,
+    employee: null,
+    assignment: null,
+  });
 
   // Initial Bootstrap
   useEffect(() => {
@@ -275,6 +283,15 @@ const OvertimeMultipleEntry = () => {
   }, [unsavedEmployees, leftSearch]);
 
   const toggleSelectLeftEmp = (empId) => {
+    const emp = unsavedEmployees.find((e) => e.employeeId === empId);
+    if (emp && emp.isAssigned) {
+      setAlreadyAssignedModal({
+        show: true,
+        employee: emp,
+        assignment: emp.assignmentDetails,
+      });
+      return;
+    }
     setSelectedLeftEmpIds((prev) => {
       const next = new Set(prev);
       if (next.has(empId)) {
@@ -287,10 +304,11 @@ const OvertimeMultipleEntry = () => {
   };
 
   const toggleSelectAllLeft = () => {
-    if (selectedLeftEmpIds.size === filteredUnsavedEmployees.length && filteredUnsavedEmployees.length > 0) {
+    const unassignedEmps = filteredUnsavedEmployees.filter((e) => !e.isAssigned);
+    if (selectedLeftEmpIds.size === unassignedEmps.length && unassignedEmps.length > 0) {
       setSelectedLeftEmpIds(new Set());
     } else {
-      setSelectedLeftEmpIds(new Set(filteredUnsavedEmployees.map((emp) => emp.employeeId)));
+      setSelectedLeftEmpIds(new Set(unassignedEmps.map((emp) => emp.employeeId)));
     }
   };
 
@@ -336,6 +354,15 @@ const OvertimeMultipleEntry = () => {
 
     if (!selectedDeptId || !selectedWorkedDeptId || !selectedShiftId) {
       toast.warning("Please select Department, Work Dept, and Shift.");
+      return;
+    }
+
+    const conflictEmps = Array.from(selectedLeftEmpIds)
+      .map((id) => unsavedEmployees.find((e) => e.employeeId === id))
+      .filter((e) => e && e.isAssigned);
+
+    if (conflictEmps.length > 0) {
+      toast.error(`Cannot assign OT: ${conflictEmps[0].empName} is already assigned on ${entryDate}.`);
       return;
     }
 
@@ -641,7 +668,7 @@ const OvertimeMultipleEntry = () => {
               <div className="flex items-center gap-2">
                 <Users size={18} className="text-blue-700" />
                 <h3 className="text-sm font-black text-blue-950 uppercase tracking-wide">
-                  Employee List
+                  Employee Checklist
                 </h3>
                 <span className="bg-blue-100 text-blue-900 text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-blue-300">
                   {filteredUnsavedEmployees.length} Available
@@ -668,14 +695,16 @@ const OvertimeMultipleEntry = () => {
                     <tr>
                       <th className="py-2.5 px-3 text-left w-28 border-r border-blue-800">Tkt.No</th>
                       <th className="py-2.5 px-3 text-left border-r border-blue-800">Emp Name</th>
+                      <th className="py-2.5 px-3 text-center w-28 border-r border-blue-800">Category</th>
                       <th className="py-2.5 px-3 text-center w-16">
                         <div className="flex items-center justify-center gap-1">
                           <span>Sel</span>
                           <input
                             type="checkbox"
                             checked={
-                              filteredUnsavedEmployees.length > 0 &&
-                              selectedLeftEmpIds.size === filteredUnsavedEmployees.length
+                              filteredUnsavedEmployees.filter((e) => !e.isAssigned).length > 0 &&
+                              selectedLeftEmpIds.size ===
+                                filteredUnsavedEmployees.filter((e) => !e.isAssigned).length
                             }
                             onChange={toggleSelectAllLeft}
                             className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
@@ -687,7 +716,7 @@ const OvertimeMultipleEntry = () => {
                   <tbody className="divide-y divide-blue-100 font-medium">
                     {loading ? (
                       <tr>
-                        <td colSpan="3" className="py-12 text-center text-slate-400">
+                        <td colSpan="4" className="py-12 text-center text-slate-400">
                           <div className="inline-block animate-spin rounded-full h-6 w-6 border-2 border-blue-700 border-t-transparent mb-2"></div>
                           <p className="text-xs font-semibold text-blue-800">Loading department employees...</p>
                         </td>
@@ -698,8 +727,20 @@ const OvertimeMultipleEntry = () => {
                         return (
                           <tr
                             key={emp.employeeId}
-                            className={`hover:bg-blue-50/70 transition-colors ${isChecked ? "bg-blue-100/90 font-semibold text-blue-950" : "text-slate-800"
-                              }`}
+                            onClick={() => {
+                              if (emp.isAssigned) {
+                                setAlreadyAssignedModal({
+                                  show: true,
+                                  employee: emp,
+                                  assignment: emp.assignmentDetails,
+                                });
+                              } else {
+                                toggleSelectLeftEmp(emp.employeeId);
+                              }
+                            }}
+                            className={`hover:bg-blue-50/70 transition-colors cursor-pointer ${
+                              isChecked ? "bg-blue-100/90 font-semibold text-blue-950" : "text-slate-800"
+                            }`}
                           >
                             <td className="py-2 px-3 border-r border-blue-100 font-bold font-mono text-blue-900">
                               {emp.ticketNo || emp.employeeCode || emp.employeeId || "-"}
@@ -707,20 +748,40 @@ const OvertimeMultipleEntry = () => {
                             <td className="py-2 px-3 border-r border-blue-100 uppercase font-semibold text-slate-900">
                               {emp.empName}
                             </td>
-                            <td className="py-2 px-3 text-center">
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => toggleSelectLeftEmp(emp.employeeId)}
-                                className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                              />
+                            <td className="py-2 px-3 border-r border-blue-100 text-center font-bold text-blue-950">
+                              {emp.category || "-"}
+                            </td>
+                            <td className="py-2 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                              {emp.isAssigned ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setAlreadyAssignedModal({
+                                      show: true,
+                                      employee: emp,
+                                      assignment: emp.assignmentDetails,
+                                    })
+                                  }
+                                  className="w-5 h-5 rounded flex items-center justify-center text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors mx-auto cursor-pointer"
+                                  title="Already assigned - Click to view assignment"
+                                >
+                                  <Check size={18} className="stroke-[3]" />
+                                </button>
+                              ) : (
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => toggleSelectLeftEmp(emp.employeeId)}
+                                  className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                                />
+                              )}
                             </td>
                           </tr>
                         );
                       })
                     ) : (
                       <tr>
-                        <td colSpan="3" className="py-16 text-center text-slate-400">
+                        <td colSpan="4" className="py-16 text-center text-slate-400">
                           <AlertCircle size={24} className="mx-auto mb-1 text-blue-300" />
                           <p className="text-xs font-semibold text-slate-600">No unsaved employees found.</p>
                           <p className="text-[11px] text-slate-400">Select department to load list.</p>
@@ -734,7 +795,7 @@ const OvertimeMultipleEntry = () => {
 
             <div className="mt-2 flex justify-between items-center text-[11px] text-blue-900 px-1 font-bold">
               <span>Selected for OT: <strong className="text-blue-700 font-black">{selectedLeftEmpIds.size}</strong></span>
-              <span>Total Available: {unsavedEmployees.length}</span>
+              <span>Available: <strong className="text-emerald-700 font-black">{unsavedEmployees.filter((e) => !e.isAssigned).length}</strong> | Total: {unsavedEmployees.length}</span>
             </div>
           </div>
 
@@ -1134,6 +1195,103 @@ const OvertimeMultipleEntry = () => {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+      {/* Modal: Already Assigned Warning & Details */}
+      {alreadyAssignedModal.show && alreadyAssignedModal.employee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden scale-100 transition-all">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-blue-700 to-indigo-800 px-6 py-4 text-white flex items-center justify-between shadow-md">
+              <div className="flex items-center gap-2.5">
+                <AlertCircle size={22} className="text-white shrink-0" />
+                <div>
+                  <h3 className="text-base font-black uppercase tracking-wide">Already Assigned</h3>
+                  <p className="text-xs text-blue-100 font-medium">Record already exists on this date</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setAlreadyAssignedModal({ show: false, employee: null, assignment: null })}
+                className="text-white hover:bg-white/20 p-1.5 rounded-lg transition-colors"
+              >
+                <XCircle size={20} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-950 font-medium">
+                <p>
+                  <strong>{alreadyAssignedModal.employee.empName}</strong> ({alreadyAssignedModal.employee.ticketNo}) has already been assigned on this date.
+                </p>
+              </div>
+
+              {/* Assignment Details Card */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs space-y-2.5">
+                <div className="flex justify-between py-1 border-b border-slate-200">
+                  <span className="text-slate-500 font-semibold">Date:</span>
+                  <span className="font-bold text-slate-800">{entryDate}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200">
+                  <span className="text-slate-500 font-semibold">Assigned Shift:</span>
+                  <span className="font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    Shift {alreadyAssignedModal.assignment?.shiftName || "—"}
+                  </span>
+                </div>
+
+                {alreadyAssignedModal.assignment?.otHours != null && (
+                  <>
+                    <div className="flex justify-between py-1 border-b border-slate-200">
+                      <span className="text-slate-500 font-semibold">OT Hours & Type:</span>
+                      <span className="font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                        {alreadyAssignedModal.assignment.otHours} hrs ({alreadyAssignedModal.assignment.otType || "HOURS OT"})
+                      </span>
+                    </div>
+                    {(alreadyAssignedModal.assignment.fromTime || alreadyAssignedModal.assignment.toTime) && (
+                      <div className="flex justify-between py-1 border-b border-slate-200">
+                        <span className="text-slate-500 font-semibold">Timings:</span>
+                        <span className="font-bold text-slate-700">
+                          {alreadyAssignedModal.assignment.fromTime || "—"} to {alreadyAssignedModal.assignment.toTime || "—"}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {alreadyAssignedModal.assignment?.status && (
+                  <div className="flex justify-between py-1 border-b border-slate-200">
+                    <span className="text-slate-500 font-semibold">Attendance Status:</span>
+                    <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      {alreadyAssignedModal.assignment.status}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex justify-between py-1 border-b border-slate-200">
+                  <span className="text-slate-500 font-semibold">Working Department:</span>
+                  <span className="font-bold text-slate-800">{alreadyAssignedModal.assignment?.workedDeptName || workedDeptInput || "—"}</span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-slate-500 font-semibold">Home Department:</span>
+                  <span className="font-bold text-slate-800">{alreadyAssignedModal.assignment?.homeDeptName || deptInput || "—"}</span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-500 italic text-center">
+                💡 If you need to edit this employee's OT entry, please use the Edit button in the Saved Data table on the right.
+              </p>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 flex justify-end">
+              <button
+                onClick={() => setAlreadyAssignedModal({ show: false, employee: null, assignment: null })}
+                className="px-5 py-2 bg-blue-900 hover:bg-blue-950 text-white font-bold text-xs rounded-xl transition-all shadow"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

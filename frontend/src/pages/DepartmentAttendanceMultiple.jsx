@@ -15,7 +15,8 @@ import {
   Filter,
   Users,
   CheckSquare,
-  Edit3
+  Edit3,
+  Check,
 } from "lucide-react";
 
 const STATUS_OPTIONS = [
@@ -82,6 +83,13 @@ const DepartmentAttendanceMultiple = () => {
   const [editCategory, setEditCategory] = useState("");
   const [editWorkedDeptId, setEditWorkedDeptId] = useState("");
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+
+  // --- Already Assigned Details Modal State ---
+  const [alreadyAssignedModal, setAlreadyAssignedModal] = useState({
+    show: false,
+    employee: null,
+    assignment: null,
+  });
 
   // Initial Load
   useEffect(() => {
@@ -285,6 +293,15 @@ const DepartmentAttendanceMultiple = () => {
   }, [unsavedEmployees, leftSearch]);
 
   const toggleSelectLeftEmp = (empId) => {
+    const emp = unsavedEmployees.find((e) => e.employeeId === empId);
+    if (emp && emp.isAssigned) {
+      setAlreadyAssignedModal({
+        show: true,
+        employee: emp,
+        assignment: emp.assignmentDetails,
+      });
+      return;
+    }
     setSelectedLeftEmpIds((prev) => {
       const next = new Set(prev);
       if (next.has(empId)) {
@@ -297,10 +314,11 @@ const DepartmentAttendanceMultiple = () => {
   };
 
   const toggleSelectAllLeft = () => {
-    if (selectedLeftEmpIds.size === filteredUnsavedEmployees.length && filteredUnsavedEmployees.length > 0) {
+    const unassignedEmps = filteredUnsavedEmployees.filter((e) => !e.isAssigned);
+    if (selectedLeftEmpIds.size === unassignedEmps.length && unassignedEmps.length > 0) {
       setSelectedLeftEmpIds(new Set());
     } else {
-      setSelectedLeftEmpIds(new Set(filteredUnsavedEmployees.map((emp) => emp.employeeId)));
+      setSelectedLeftEmpIds(new Set(unassignedEmps.map((emp) => emp.employeeId)));
     }
   };
 
@@ -376,6 +394,15 @@ const DepartmentAttendanceMultiple = () => {
 
     if (!selectedDeptId || !selectedWorkedDeptId || !selectedShiftId) {
       toast.warning("Please select Department, Worked Dept, and Shift.");
+      return;
+    }
+
+    const conflictEmps = Array.from(selectedLeftEmpIds)
+      .map((id) => unsavedEmployees.find((e) => e.employeeId === id))
+      .filter((e) => e && e.isAssigned);
+
+    if (conflictEmps.length > 0) {
+      toast.error(`Cannot assign: ${conflictEmps[0].empName} is already assigned on ${entryDate}.`);
       return;
     }
 
@@ -728,8 +755,9 @@ const DepartmentAttendanceMultiple = () => {
                           <input
                             type="checkbox"
                             checked={
-                              filteredUnsavedEmployees.length > 0 &&
-                              selectedLeftEmpIds.size === filteredUnsavedEmployees.length
+                              filteredUnsavedEmployees.filter((e) => !e.isAssigned).length > 0 &&
+                              selectedLeftEmpIds.size ===
+                                filteredUnsavedEmployees.filter((e) => !e.isAssigned).length
                             }
                             onChange={toggleSelectAllLeft}
                             className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
@@ -752,8 +780,20 @@ const DepartmentAttendanceMultiple = () => {
                         return (
                           <tr
                             key={emp.employeeId}
-                            className={`hover:bg-blue-50/70 transition-colors ${isChecked ? "bg-blue-100/90 font-semibold text-blue-950" : "text-slate-800"
-                              }`}
+                            onClick={() => {
+                              if (emp.isAssigned) {
+                                setAlreadyAssignedModal({
+                                  show: true,
+                                  employee: emp,
+                                  assignment: emp.assignmentDetails,
+                                });
+                              } else {
+                                toggleSelectLeftEmp(emp.employeeId);
+                              }
+                            }}
+                            className={`hover:bg-blue-50/70 transition-colors cursor-pointer ${
+                              isChecked ? "bg-blue-100/90 font-semibold text-blue-950" : "text-slate-800"
+                            }`}
                           >
                             <td className="py-2 px-3 border-r border-blue-100 font-bold font-mono text-blue-900">
                               {emp.ticketNo || emp.employeeCode || emp.employeeId || "-"}
@@ -764,13 +804,30 @@ const DepartmentAttendanceMultiple = () => {
                             <td className="py-2 px-3 border-r border-blue-100 text-center font-bold text-blue-950">
                               {emp.category}
                             </td>
-                            <td className="py-2 px-3 text-center">
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => toggleSelectLeftEmp(emp.employeeId)}
-                                className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                              />
+                            <td className="py-2 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                              {emp.isAssigned ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setAlreadyAssignedModal({
+                                      show: true,
+                                      employee: emp,
+                                      assignment: emp.assignmentDetails,
+                                    })
+                                  }
+                                  className="w-5 h-5 rounded flex items-center justify-center text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors mx-auto cursor-pointer"
+                                  title="Already assigned - Click to view assignment"
+                                >
+                                  <Check size={18} className="stroke-[3]" />
+                                </button>
+                              ) : (
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => toggleSelectLeftEmp(emp.employeeId)}
+                                  className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                                />
+                              )}
                             </td>
                           </tr>
                         );
@@ -792,7 +849,7 @@ const DepartmentAttendanceMultiple = () => {
             {/* Selection summary count */}
             <div className="mt-2 flex justify-between items-center text-[11px] text-blue-900 px-1 font-bold">
               <span>Selected for saving: <strong className="text-blue-700 font-black">{selectedLeftEmpIds.size}</strong></span>
-              <span>Total Unsaved: {unsavedEmployees.length}</span>
+              <span>Available: <strong className="text-emerald-700 font-black">{unsavedEmployees.filter((e) => !e.isAssigned).length}</strong> | Total: {unsavedEmployees.length}</span>
             </div>
           </div>
 
@@ -1214,6 +1271,80 @@ const DepartmentAttendanceMultiple = () => {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+      {/* Modal: Already Assigned Warning & Details */}
+      {alreadyAssignedModal.show && alreadyAssignedModal.employee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden scale-100 transition-all">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-blue-700 to-indigo-800 px-6 py-4 text-white flex items-center justify-between shadow-md">
+              <div className="flex items-center gap-2.5">
+                <AlertCircle size={22} className="text-white shrink-0" />
+                <div>
+                  <h3 className="text-base font-black uppercase tracking-wide">Already Assigned</h3>
+                  <p className="text-xs text-blue-100 font-medium">Record already exists on this date</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setAlreadyAssignedModal({ show: false, employee: null, assignment: null })}
+                className="text-white hover:bg-white/20 p-1.5 rounded-lg transition-colors"
+              >
+                <XCircle size={20} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-950 font-medium">
+                <p>
+                  <strong>{alreadyAssignedModal.employee.empName}</strong> ({alreadyAssignedModal.employee.ticketNo}) has already been assigned attendance on this date.
+                </p>
+              </div>
+
+              {/* Assignment Details Card */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs space-y-2.5">
+                <div className="flex justify-between py-1 border-b border-slate-200">
+                  <span className="text-slate-500 font-semibold">Attendance Date:</span>
+                  <span className="font-bold text-slate-800">{entryDate}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200">
+                  <span className="text-slate-500 font-semibold">Assigned Shift:</span>
+                  <span className="font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    Shift {alreadyAssignedModal.assignment?.shiftName || "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200">
+                  <span className="text-slate-500 font-semibold">Status:</span>
+                  <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                    {alreadyAssignedModal.assignment?.status || "Present"}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200">
+                  <span className="text-slate-500 font-semibold">Working Department:</span>
+                  <span className="font-bold text-slate-800">{alreadyAssignedModal.assignment?.workedDeptName || workedDeptInput || "—"}</span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-slate-500 font-semibold">Home Department:</span>
+                  <span className="font-bold text-slate-800">{alreadyAssignedModal.assignment?.homeDeptName || deptInput || "—"}</span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-500 italic text-center">
+                💡 If you need to change this employee's shift or status, please use the Edit button in the Saved Data table on the right.
+              </p>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 flex justify-end">
+              <button
+                onClick={() => setAlreadyAssignedModal({ show: false, employee: null, assignment: null })}
+                className="px-5 py-2 bg-blue-900 hover:bg-blue-950 text-white font-bold text-xs rounded-xl transition-all shadow"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

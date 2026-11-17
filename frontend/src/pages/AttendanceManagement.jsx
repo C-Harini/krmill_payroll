@@ -1058,7 +1058,7 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
 
     const csvContent = [];
     csvContent.push(`Attendance Report`);
-    const companyName = companies.find(c => String(c.id) === String(selectedCompanyId))?.name || "Kayaar Exports Pvt Ltd.,";
+    const companyName = companies.find(c => String(c.id) === String(selectedCompanyId))?.name || "Test Company";
     csvContent.push(`Company: ${companyName}`);
     csvContent.push(`Period: ${formatDate(startDate)} to ${formatDate(endDate)}`);
     csvContent.push("");
@@ -1135,7 +1135,7 @@ const AttendanceManagement = ({ companyId: propCompanyId }) => {
 
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    const companyName = companies.find(c => String(c.id) === String(selectedCompanyId))?.name || "Kayaar Exports Pvt Ltd.,";
+    const companyName = companies.find(c => String(c.id) === String(selectedCompanyId))?.name || "Test Company";
     doc.text(`Company: ${companyName}`, 14, 21);
     doc.text(`Period: ${formatDate(startDate)} to ${formatDate(endDate)}`, 14, 27);
     doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 33);

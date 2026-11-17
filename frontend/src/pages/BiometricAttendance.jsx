@@ -313,7 +313,7 @@ const BiometricAttendance = () => {
         
         doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
-        const companyName = companies.find(c => String(c.id) === String(selectedCompanyId))?.name || "Kayaar Exports Pvt Ltd.,";
+        const companyName = companies.find(c => String(c.id) === String(selectedCompanyId))?.name || "Test Company";
         doc.text(`Company: ${companyName}`, 14, 21);
         if (filters.date) {
             doc.text(`Date: ${formatDate(filters.date)}`, 14, 27);

@@ -1181,10 +1181,10 @@ module.exports = {
       const moment = require("moment");
 
       // Fetch company name
-      let companyName = "KAYAAR EXPORTS (P) LTD";
+      let companyName = "Test Company";
       if (companyId) {
         const comp = await Company.findByPk(companyId);
-        if (comp && comp.companyname) companyName = comp.companyname;
+        if (comp && (comp.name || comp.companyname)) companyName = comp.name || comp.companyname;
       }
 
       // Fetch shift name mappings in memory
@@ -1546,9 +1546,16 @@ module.exports = {
               empRecord.shiftA = Math.round((empRecord.shiftA + r.days) * 10) / 10;
             }
             empRecord.totalDays = Math.round((empRecord.totalDays + r.days) * 10) / 10;
-          } else if (isAbsent) {
-            empRecord.absDays = Math.round((empRecord.absDays + 1) * 10) / 10;
           }
+        });
+
+        // Compute Abs = selected duration - (a + b + c days). If <= 0, then 0 (which displays as "-")
+        const durationDays = Math.max(1, moment(toDate).startOf("day").diff(moment(fromDate).startOf("day"), "days") + 1);
+        empMap.forEach(empRecord => {
+          const workedDays = Math.round((empRecord.shiftA + empRecord.shiftB + empRecord.shiftC) * 10) / 10;
+          empRecord.totalDays = workedDays;
+          const calculatedAbs = Math.round((durationDays - workedDays) * 10) / 10;
+          empRecord.absDays = calculatedAbs > 0 ? calculatedAbs : 0;
         });
 
         const allEmps = Array.from(empMap.values()).filter(e => e.totalDays > 0 || e.absDays > 0);
@@ -1856,6 +1863,7 @@ module.exports = {
 
       return res.status(200).json({
         success: true,
+        companyName,
         reportTitle: "Attendance Report for Production",
         shiftName: targetShiftName,
         fromDate: moment(fromDate).format("DD-MM-YYYY"),
@@ -1879,8 +1887,14 @@ module.exports = {
     }
 
     try {
-      const { OTHours, Employee, Department, ShiftType } = require("../models");
+      const { OTHours, Employee, Department, ShiftType, Company } = require("../models");
       const moment = require("moment");
+
+      let companyName = "Test Company";
+      if (companyId) {
+        const comp = await Company.findByPk(companyId);
+        if (comp && (comp.name || comp.companyname)) companyName = comp.name || comp.companyname;
+      }
 
       const whereClause = {
         date: {
@@ -1968,6 +1982,7 @@ module.exports = {
 
       return res.status(200).json({
         success: true,
+        companyName,
         data: finalData
       });
     } catch (err) {
@@ -1984,8 +1999,14 @@ module.exports = {
     }
 
     try {
-      const { OTHours, Employee, Department, ShiftType, Attendance, BiometricPunch, Category } = require("../models");
+      const { OTHours, Employee, Department, ShiftType, Attendance, BiometricPunch, Category, Company } = require("../models");
       const moment = require("moment");
+
+      let companyName = "Test Company";
+      if (companyId) {
+        const comp = await Company.findByPk(companyId);
+        if (comp && (comp.name || comp.companyname)) companyName = comp.name || comp.companyname;
+      }
 
       // 1. Build query for OTHours
       const whereClause = {
@@ -2267,7 +2288,7 @@ module.exports = {
       });
 
       let empSlNoCounter = 1;
-      let deptSlNoCounter = 1;
+      let shiftSlNoCounter = 1;
       let grandTotalHrs = 0;
       const formattedShifts = [];
       const flatRows = [];
@@ -2293,9 +2314,13 @@ module.exports = {
           shiftName: shiftKey
         });
 
+        const currentShiftSlNo = shiftSlNoCounter++;
+        let isFirstDeptInShift = true;
+
         Object.keys(deptGroups).forEach((deptName) => {
           const deptRecs = deptGroups[deptName];
-          const currentDeptSlNo = deptSlNoCounter++;
+          const currentDeptSlNo = isFirstDeptInShift ? currentShiftSlNo : "";
+          isFirstDeptInShift = false;
 
           deptRecs.forEach((r, rIdx) => {
             const emp = r.employee;
@@ -2371,6 +2396,7 @@ module.exports = {
 
       return res.status(200).json({
         success: true,
+        companyName,
         reportTitle: computedReportTitle,
         shiftName: targetShiftName,
         fromDate: moment(fromDate).format("DD-MM-YYYY"),
@@ -2394,8 +2420,14 @@ module.exports = {
     }
 
     try {
-      const { OTHours, Employee, Department, ShiftType } = require("../models");
+      const { OTHours, Employee, Department, ShiftType, Company } = require("../models");
       const moment = require("moment");
+
+      let companyName = "Test Company";
+      if (companyId) {
+        const comp = await Company.findByPk(companyId);
+        if (comp && (comp.name || comp.companyname)) companyName = comp.name || comp.companyname;
+      }
 
       // 1. Generate day sequence for the date range (supports spanning across months without collisions)
       const dayList = [];
@@ -2550,6 +2582,7 @@ module.exports = {
 
       return res.status(200).json({
         success: true,
+        companyName,
         reportTitle: computedReportTitle,
         shiftName: targetShiftName,
         fromDate: moment(fromDate).format("DD-MM-YYYY"),
@@ -2584,10 +2617,10 @@ module.exports = {
       }
 
       // Fetch company name
-      let companyName = "KAYAAR EXPORTS (P) LTD";
+      let companyName = "Test Company";
       if (companyId) {
         const comp = await Company.findByPk(companyId);
-        if (comp && comp.companyname) companyName = comp.companyname;
+        if (comp && (comp.name || comp.companyname)) companyName = comp.name || comp.companyname;
       }
 
       const whereClause = {

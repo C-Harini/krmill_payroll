@@ -1740,7 +1740,7 @@ const DepartmentReports = () => {
                                   return (
                                     <tr key={`sub-${index}`} className="font-bold">
                                       <td colSpan={8} className="border-b border-l border-slate-300"></td>
-                                      <td className="px-2 py-2 border border-slate-400 text-center font-black text-slate-900 bg-slate-100/60">
+                                      <td className="px-2 py-2 border border-slate-400 text-center font-black text-slate-900 bg-slate-100">
                                         {row.shiftTotalHrs != null ? (row.shiftTotalHrs.toFixed ? row.shiftTotalHrs.toFixed(1) : row.shiftTotalHrs) : 0}
                                       </td>
                                       <td colSpan={2} className="border-b border-r border-slate-300"></td>
@@ -1781,12 +1781,25 @@ const DepartmentReports = () => {
                               })}
                             </tbody>
                             <tfoot>
-                              <tr className="font-black">
-                                <td colSpan={8} className="border-b-2 border-l border-slate-400"></td>
-                                <td className="px-2 py-2.5 border-2 border-slate-400 text-center font-black text-indigo-800 text-sm bg-slate-200/50">
+                              <tr className="bg-slate-100 text-slate-800 font-bold border-t-2 border-slate-300" style={{ backgroundColor: "#f1f5f9" }}>
+                                <td
+                                  colSpan={8}
+                                  className="px-3 py-2.5 border border-slate-300 text-left font-bold text-slate-800 uppercase tracking-wider bg-slate-100"
+                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                >
+                                  Grand Total
+                                </td>
+                                <td
+                                  className="px-2 py-2.5 border border-slate-300 text-center font-black text-slate-900 text-sm bg-slate-100"
+                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                >
                                   {reportResult.grandTotalHrs != null ? (reportResult.grandTotalHrs.toFixed ? reportResult.grandTotalHrs.toFixed(1) : reportResult.grandTotalHrs) : 0}
                                 </td>
-                                <td colSpan={2} className="border-b-2 border-r border-slate-400"></td>
+                                <td
+                                  colSpan={2}
+                                  className="border border-slate-300 bg-slate-100"
+                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                ></td>
                               </tr>
                             </tfoot>
                           </table>
@@ -1828,8 +1841,12 @@ const DepartmentReports = () => {
                               ))}
                             </tbody>
                             <tfoot>
-                              <tr className="bg-slate-100 text-slate-900 font-bold border-t-2 border-slate-300">
-                                <td colSpan={2} className="px-4 py-3 border border-slate-300 text-left font-bold uppercase tracking-wider">
+                              <tr className="bg-slate-100 text-slate-900 font-bold border-t-2 border-slate-300" style={{ backgroundColor: "#f1f5f9" }}>
+                                <td
+                                  colSpan={2}
+                                  className="px-4 py-3 border border-slate-300 text-left font-bold uppercase tracking-wider bg-slate-100 text-slate-800"
+                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                >
                                   Total
                                 </td>
                                 {(reportResult.days || []).map((d) => {
@@ -1837,12 +1854,19 @@ const DepartmentReports = () => {
                                   const lbl = getDayLabel(d);
                                   const sum = reportResult.dayTotals ? (reportResult.dayTotals[k] ?? reportResult.dayTotals[lbl]) : 0;
                                   return (
-                                    <td key={k} className="px-2 py-3 border border-slate-300 text-center font-bold text-slate-900">
+                                    <td
+                                      key={k}
+                                      className="px-2 py-3 border border-slate-300 text-center font-bold text-slate-900 bg-slate-100"
+                                      style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                    >
                                       {sum != null ? sum : 0}
                                     </td>
                                   );
                                 })}
-                                <td className="px-4 py-3 border border-slate-300 text-center font-black text-indigo-750">
+                                <td
+                                  className="px-4 py-3 border border-slate-300 text-center font-black text-slate-900 bg-slate-100"
+                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                >
                                   {reportResult.grandTotal != null ? reportResult.grandTotal : 0}
                                 </td>
                               </tr>
@@ -1866,6 +1890,28 @@ const DepartmentReports = () => {
                                 </tr>
                               ))}
                             </tbody>
+                            <tfoot>
+                              <tr className="bg-slate-100 text-slate-800 font-bold border-t-2 border-slate-300" style={{ backgroundColor: "#f1f5f9" }}>
+                                <td
+                                  className="px-4 py-3 border border-slate-300 font-bold text-slate-800 uppercase tracking-wider bg-slate-100"
+                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                >
+                                  Grand Total
+                                </td>
+                                <td
+                                  className="px-4 py-3 border border-slate-300 font-bold text-slate-800 bg-slate-100"
+                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                >
+                                  {(reportResult.data || []).reduce((sum, r) => sum + (parseInt(r.employees) || 0), 0)}
+                                </td>
+                                <td
+                                  className="px-4 py-3 border border-slate-300 font-black text-slate-900 bg-slate-100"
+                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                >
+                                  {(reportResult.data || []).reduce((sum, r) => sum + (parseFloat(r.totalOtHours) || 0), 0).toFixed(1)}
+                                </td>
+                              </tr>
+                            </tfoot>
                           </table>
                         ) : reportResult.type === "Department Attendance" ? (
                           <table className="w-full border-collapse border border-slate-300 text-xs">
@@ -1886,7 +1932,7 @@ const DepartmentReports = () => {
                                   return (
                                     <tr key={`grp-${index}`} className="font-bold">
                                       <td colSpan={6} className="border-b border-l border-slate-300"></td>
-                                      <td className="px-3 py-1.5 border border-slate-400 text-right font-black text-slate-900 bg-slate-100/80">
+                                      <td className="px-3 py-1.5 border border-slate-400 text-right font-black text-slate-900 bg-slate-100" style={{ backgroundColor: "#f1f5f9" }}>
                                         {row.groupTotalDays != null ? Number(row.groupTotalDays).toFixed(2) : "0.00"}
                                       </td>
                                     </tr>
@@ -1896,7 +1942,7 @@ const DepartmentReports = () => {
                                   return (
                                     <tr key={`sub-${index}`} className="font-bold">
                                       <td colSpan={6} className="border-b border-l border-slate-300"></td>
-                                      <td className="px-3 py-1.5 border border-slate-400 text-right font-black text-slate-900 bg-slate-100/60">
+                                      <td className="px-3 py-1.5 border border-slate-400 text-right font-black text-slate-900 bg-slate-100" style={{ backgroundColor: "#f1f5f9" }}>
                                         {row.deptTotalDays != null ? Number(row.deptTotalDays).toFixed(2) : "0.00"}
                                       </td>
                                     </tr>
@@ -1925,11 +1971,18 @@ const DepartmentReports = () => {
                               })}
                             </tbody>
                             <tfoot>
-                              <tr className="font-black">
-                                <td colSpan={6} className="px-3 py-2 border-b-2 border-l border-slate-400 text-left font-bold text-slate-800 uppercase tracking-wider">
+                              <tr className="bg-slate-100 text-slate-800 font-bold border-t-2 border-slate-300" style={{ backgroundColor: "#f1f5f9" }}>
+                                <td
+                                  colSpan={6}
+                                  className="px-3 py-2.5 border border-slate-300 text-left font-bold text-slate-800 uppercase tracking-wider bg-slate-100"
+                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                >
                                   Grand Total
                                 </td>
-                                <td className="px-3 py-2 border-2 border-slate-400 text-right font-black text-indigo-800 text-sm bg-slate-200/50">
+                                <td
+                                  className="px-3 py-2.5 border border-slate-300 text-right font-black text-slate-900 text-sm bg-slate-100"
+                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                >
                                   {reportResult.grandTotalDays != null ? Number(reportResult.grandTotalDays).toFixed(2) : "0.00"}
                                 </td>
                               </tr>
@@ -1958,8 +2011,8 @@ const DepartmentReports = () => {
                               {(reportResult.flatRows || reportResult.data || []).map((row, index) => {
                                 if (row.isDeptHeader) {
                                   return (
-                                    <tr key={`dept-${index}`} className="bg-slate-100/70 font-extrabold">
-                                      <td colSpan={39} className="px-3 py-1.5 text-indigo-900 border border-slate-300 text-xs tracking-wider uppercase font-bold">
+                                    <tr key={`dept-${index}`} className="bg-slate-100 font-extrabold">
+                                      <td colSpan={39} className="px-3 py-1.5 text-indigo-900 border border-slate-300 text-xs tracking-wider uppercase font-bold" style={{ backgroundColor: "#f1f5f9" }}>
                                         {row.deptAcronym || row.department}
                                       </td>
                                     </tr>

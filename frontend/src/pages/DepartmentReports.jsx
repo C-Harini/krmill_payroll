@@ -214,6 +214,7 @@ const DepartmentReports = () => {
           grandTotal: data.grandTotal != null ? data.grandTotal : 0,
           shiftName: data.shiftName || "ALL",
           reportTitle: data.reportTitle || "Attendance Report for Production",
+          companyName: data.companyName || "KAYAAR EXPORTS (P) LTD",
           meta: { fromDate, toDate }
         });
         toast.success("Report generated successfully!");
@@ -946,6 +947,193 @@ const DepartmentReports = () => {
       return doc;
     }
 
+    if (reportResult.type === "Over Time Report (Abstract)") {
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const marginX = 14;
+
+      // Centered Company Name
+      const compName = reportResult.companyName || (reportResult.company?.companyname) || "KAYAAR EXPORTS (P) LTD";
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(0, 0, 0);
+      doc.text(compName, pageW / 2, 16, { align: "center" });
+
+      // Subtitle
+      const subTitle = `OT Report for Production - (${formatDMY(reportResult.meta.fromDate)}-${formatDMY(reportResult.meta.toDate)}) - Shift : ${reportResult.shiftName || "ALL"}`;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(0, 0, 0);
+      doc.text(subTitle, marginX, 24);
+
+      // Top horizontal black rule
+      doc.setLineWidth(0.3);
+      doc.setDrawColor(0, 0, 0);
+      doc.line(marginX, 26, pageW - marginX, 26);
+
+      const head = [
+        [
+          { content: "", styles: { halign: "center", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Department", styles: { halign: "left", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Sl.No", styles: { halign: "center", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Ticket No", styles: { halign: "left", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Employee Name", styles: { halign: "left", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Hrs", styles: { halign: "right", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } },
+          { content: "Category", styles: { halign: "center", fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }, lineColor: [0, 0, 0] } }
+        ]
+      ];
+
+      const body = [];
+      const flat = reportResult.flatRows || reportResult.data || [];
+
+      flat.forEach((r) => {
+        if (r.isShiftSubtotal) {
+          body.push([
+            { content: "", colSpan: 5, styles: { lineWidth: 0 } },
+            {
+              content: r.shiftTotalHrs != null ? Number(r.shiftTotalHrs).toFixed(1) : "0.0",
+              styles: {
+                halign: "right",
+                fontStyle: "bold",
+                lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 },
+                lineColor: [0, 0, 0]
+              }
+            },
+            { content: "", styles: { lineWidth: 0 } }
+          ]);
+        } else if (r.isEmployeeRow) {
+          body.push([
+            {
+              content: r.isFirstInShift ? r.shift : "",
+              styles: { halign: "center", fontStyle: "bold", textColor: [30, 58, 138] }
+            },
+            {
+              content: r.department || "",
+              styles: { halign: "left" }
+            },
+            {
+              content: String(r.slNo || ""),
+              styles: { halign: "center" }
+            },
+            {
+              content: String(r.ticketNo || ""),
+              styles: { halign: "left", fontStyle: "bold" }
+            },
+            {
+              content: r.employeeName || "",
+              styles: { halign: "left" }
+            },
+            {
+              content: r.otHours != null ? Number(r.otHours).toFixed(1) : "0.0",
+              styles: { halign: "right" }
+            },
+            {
+              content: r.category || "",
+              styles: { halign: "center" }
+            }
+          ]);
+        }
+      });
+
+      const foot = [
+        [
+          {
+            content: "",
+            colSpan: 5,
+            styles: {
+              lineWidth: { top: 0.3, bottom: 0, left: 0, right: 0 },
+              lineColor: [0, 0, 0]
+            }
+          },
+          {
+            content: (reportResult.grandTotalHrs != null ? reportResult.grandTotalHrs : 0).toFixed(1),
+            styles: {
+              halign: "right",
+              fontStyle: "bold",
+              lineWidth: { top: 0.3, bottom: 0.6, left: 0, right: 0 },
+              lineColor: [0, 0, 0]
+            }
+          },
+          {
+            content: "",
+            styles: {
+              lineWidth: { top: 0.3, bottom: 0, left: 0, right: 0 },
+              lineColor: [0, 0, 0]
+            }
+          }
+        ]
+      ];
+
+      const colStyles = {
+        0: { cellWidth: 12 },
+        1: { cellWidth: 44 },
+        2: { cellWidth: 14 },
+        3: { cellWidth: 24 },
+        4: { cellWidth: 54 },
+        5: { cellWidth: 16 },
+        6: { cellWidth: 18 }
+      };
+
+      autoTable(doc, {
+        head,
+        body,
+        foot,
+        startY: 28,
+        margin: { left: marginX, right: marginX, top: 24, bottom: 24 },
+        theme: "plain",
+        showFoot: "lastPage",
+        styles: {
+          fontSize: 7.5,
+          cellPadding: { top: 1.2, bottom: 1.2, left: 1, right: 1 },
+          textColor: [0, 0, 0],
+          lineColor: [0, 0, 0],
+          lineWidth: 0,
+          font: "helvetica"
+        },
+        headStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+          lineColor: [0, 0, 0],
+          lineWidth: { top: 0.3, bottom: 0.3, left: 0, right: 0 }
+        },
+        bodyStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          lineColor: [0, 0, 0],
+          lineWidth: 0
+        },
+        footStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+          lineColor: [0, 0, 0],
+          lineWidth: 0
+        },
+        columnStyles: colStyles
+      });
+
+      // Signatures on last page
+      const numPages = doc.internal.getNumberOfPages();
+      doc.setPage(numPages);
+      const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY : 120;
+      let sigY = Math.max(finalY + 16, pageH - 18);
+      if (sigY > pageH - 10) {
+        doc.addPage();
+        sigY = pageH - 18;
+      }
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.text("HOD", marginX + 10, sigY);
+      doc.text("PM", pageW / 2, sigY, { align: "center" });
+      doc.text("DGM", pageW - marginX - 10, sigY, { align: "right" });
+
+      return doc;
+    }
+
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     const pageW = doc.internal.pageSize.getWidth();
 
@@ -1167,8 +1355,25 @@ const DepartmentReports = () => {
           grandTotal
         ]);
       } else if (reportResult.type === "Over Time Report (Abstract)") {
-        headers = ["Department", "Employees", "Total OT Hours"];
-        dataRows = reportResult.data.map((r) => [r.department, r.employees, r.totalOtHours]);
+        headers = ["Shift", "Department", "Sl.No", "Ticket No", "Employee Name", "Hrs", "Category"];
+        const flat = reportResult.flatRows || reportResult.data || [];
+        dataRows = [];
+        flat.forEach((r) => {
+          if (r.isShiftSubtotal) {
+            dataRows.push(["", "", "", "", `Shift ${r.shift} Total`, r.shiftTotalHrs != null ? Number(r.shiftTotalHrs).toFixed(1) : "0.0", ""]);
+          } else if (r.isEmployeeRow) {
+            dataRows.push([
+              r.shift || "",
+              r.department || "",
+              r.slNo || "",
+              r.ticketNo || "",
+              r.employeeName || "",
+              r.otHours != null ? Number(r.otHours).toFixed(1) : "0.0",
+              r.category || ""
+            ]);
+          }
+        });
+        dataRows.push(["", "", "", "", "Grand Total", (reportResult.grandTotalHrs != null ? reportResult.grandTotalHrs : 0).toFixed(1), ""]);
       } else if (reportResult.type === "Department Attendance") {
         headers = ["Department", "SL.No", "Ticket No", "Employee Name", "Shift", "Category", "Days"];
         const flat = reportResult.flatRows || reportResult.data || [];
@@ -1559,12 +1764,20 @@ const DepartmentReports = () => {
         <div className="bg-white rounded-2xl border border-slate-200 shadow-lg overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300 mb-6">
           <div className="bg-slate-50 px-6 py-4 border-b border-slate-250 flex flex-wrap gap-3 justify-between items-center">
             <div>
-              <h3 className="text-base font-bold text-slate-800">{reportResult.type}</h3>
+              <h3 className="text-base font-bold text-slate-800">
+                {reportResult.type === "Department Attendance" || reportResult.type === "Attendance Shift Wise Detail" || reportResult.type === "Over Time Report (Abstract)"
+                  ? (reportResult.companyName || "KAYAAR EXPORTS (P) LTD")
+                  : reportResult.type}
+              </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Period: {reportResult.meta.fromDate} to {reportResult.meta.toDate} &bull; Total:{" "}
+                {reportResult.type === "Over Time Report (Abstract)"
+                  ? `OT Report for Production - (${formatDMY(reportResult.meta.fromDate)}-${formatDMY(reportResult.meta.toDate)}) - Shift : ${reportResult.shiftName || "ALL"}`
+                  : `Period: ${reportResult.meta.fromDate} to ${reportResult.meta.toDate}`} &bull; Total:{" "}
                 <span className="font-bold text-slate-700">
                   {reportResult.type === "Department Attendance" || reportResult.type === "Attendance Shift Wise Detail"
                     ? `${reportResult.totalEmployees || 0} employees (${reportResult.grandTotalDays != null ? Number(reportResult.grandTotalDays).toFixed(1) : "0.0"} days)`
+                    : reportResult.type === "Over Time Report (Abstract)"
+                    ? `${reportResult.data?.length || 0} employees (${reportResult.grandTotalHrs != null ? Number(reportResult.grandTotalHrs).toFixed(1) : "0.0"} hrs)`
                     : `${reportResult.data?.length || 0} records`}
                 </span>
               </p>
@@ -1593,15 +1806,19 @@ const DepartmentReports = () => {
           <div id="printable-report-area" className="p-6">
             {/* Print Friendly Header */}
             <div className="hidden print:block text-center border-b pb-4 mb-6">
-              <h1 className="text-2xl font-bold uppercase tracking-wide">KAYAAR EXPORTS (P) LTD</h1>
+              <h1 className="text-2xl font-bold uppercase tracking-wide">
+                {reportResult.companyName || "KAYAAR EXPORTS (P) LTD"}
+              </h1>
               <h2 className="text-base font-semibold text-slate-600 mt-1">
                 {reportResult.type === "Department Attendance"
                   ? `Attendance Report for Production - (${formatDMY(reportResult.meta.fromDate)}-${formatDMY(reportResult.meta.toDate)}) - Shift : ${reportResult.shiftName || "ALL"}`
                   : reportResult.type === "Attendance Shift Wise Detail"
                   ? `Shift wise Attendance Detail - (${formatDMY(reportResult.meta.fromDate)}-${formatDMY(reportResult.meta.toDate)}) - Shift : ${reportResult.shiftName || "ALL"}`
+                  : reportResult.type === "Over Time Report (Abstract)"
+                  ? `OT Report for Production - (${formatDMY(reportResult.meta.fromDate)}-${formatDMY(reportResult.meta.toDate)}) - Shift : ${reportResult.shiftName || "ALL"}`
                   : reportResult.type}
               </h2>
-              {reportResult.type !== "Department Attendance" && reportResult.type !== "Attendance Shift Wise Detail" && (
+              {reportResult.type !== "Department Attendance" && reportResult.type !== "Attendance Shift Wise Detail" && reportResult.type !== "Over Time Report (Abstract)" && (
                 <p className="text-xs text-slate-500 mt-0.5">
                   From Date: {reportResult.meta.fromDate} | To Date: {reportResult.meta.toDate}
                 </p>
@@ -1646,7 +1863,10 @@ const DepartmentReports = () => {
                   const totalRows = reportResult.data.length;
                   const totalPages = pageSize === "All" ? 1 : Math.ceil(totalRows / Number(pageSize)) || 1;
                   const paginatedData =
-                    pageSize === "All"
+                    pageSize === "All" ||
+                    reportResult.type === "Department Attendance" ||
+                    reportResult.type === "Attendance Shift Wise Detail" ||
+                    reportResult.type === "Over Time Report (Abstract)"
                       ? reportResult.data
                       : reportResult.data.slice(
                         (currentPage - 1) * Number(pageSize),
@@ -1873,46 +2093,87 @@ const DepartmentReports = () => {
                             </tfoot>
                           </table>
                         ) : reportResult.type === "Over Time Report (Abstract)" ? (
-                          <table className="w-full border-collapse border border-slate-300">
-                            <thead>
-                              <tr className="bg-slate-100 text-slate-750 text-xs font-bold text-left border-b border-slate-300 print:bg-slate-100">
-                                <th className="sticky top-0 bg-slate-100 z-10 px-4 py-3 border border-slate-300">Department</th>
-                                <th className="sticky top-0 bg-slate-100 z-10 px-4 py-3 border border-slate-300">Employees</th>
-                                <th className="sticky top-0 bg-slate-100 z-10 px-4 py-3 border border-slate-300">Total OT Hours</th>
-                              </tr>
-                            </thead>
-                            <tbody className="text-sm font-medium text-slate-700 divide-y divide-slate-200">
-                              {paginatedData.map((row, index) => (
-                                <tr key={index} className="hover:bg-slate-50/50">
-                                  <td className="px-4 py-3 border border-slate-300 font-bold">{row.department}</td>
-                                  <td className="px-4 py-3 border border-slate-300 text-slate-800">{row.employees}</td>
-                                  <td className="px-4 py-3 border border-slate-300 font-bold text-indigo-750">{row.totalOtHours}</td>
+                          <>
+                            <table className="w-full border-collapse border border-slate-300 text-xs">
+                              <thead>
+                                <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300">
+                                  <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-center w-12">Shift</th>
+                                  <th className="sticky top-0 bg-slate-100 z-10 px-3 py-2 border border-slate-300 text-left min-w-[130px]">Department</th>
+                                  <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-center w-12">Sl.No</th>
+                                  <th className="sticky top-0 bg-slate-100 z-10 px-3 py-2 border border-slate-300 text-left min-w-[90px]">Ticket No</th>
+                                  <th className="sticky top-0 bg-slate-100 z-10 px-3 py-2 border border-slate-300 text-left min-w-[160px]">Employee Name</th>
+                                  <th className="sticky top-0 bg-slate-100 z-10 px-3 py-2 border border-slate-300 text-right min-w-[70px]">Hrs</th>
+                                  <th className="sticky top-0 bg-slate-100 z-10 px-2 py-2 border border-slate-300 text-center min-w-[70px]">Category</th>
                                 </tr>
-                              ))}
-                            </tbody>
-                            <tfoot>
-                              <tr className="bg-slate-100 text-slate-800 font-bold border-t-2 border-slate-300" style={{ backgroundColor: "#f1f5f9" }}>
-                                <td
-                                  className="px-4 py-3 border border-slate-300 font-bold text-slate-800 uppercase tracking-wider bg-slate-100"
-                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
-                                >
-                                  Grand Total
-                                </td>
-                                <td
-                                  className="px-4 py-3 border border-slate-300 font-bold text-slate-800 bg-slate-100"
-                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
-                                >
-                                  {(reportResult.data || []).reduce((sum, r) => sum + (parseInt(r.employees) || 0), 0)}
-                                </td>
-                                <td
-                                  className="px-4 py-3 border border-slate-300 font-black text-slate-900 bg-slate-100"
-                                  style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
-                                >
-                                  {(reportResult.data || []).reduce((sum, r) => sum + (parseFloat(r.totalOtHours) || 0), 0).toFixed(1)}
-                                </td>
-                              </tr>
-                            </tfoot>
-                          </table>
+                              </thead>
+                              <tbody className="text-slate-800 divide-y divide-slate-200">
+                                {(reportResult.flatRows || []).map((row, index) => {
+                                  if (row.isShiftSubtotal) {
+                                    return (
+                                      <tr key={`sub-${index}`} className="font-bold">
+                                        <td colSpan={5} className="border-b border-l border-slate-300"></td>
+                                        <td className="px-3 py-1.5 border border-slate-400 text-right font-black text-slate-900 bg-slate-100" style={{ backgroundColor: "#f1f5f9" }}>
+                                          {row.shiftTotalHrs != null ? Number(row.shiftTotalHrs).toFixed(1) : "0.0"}
+                                        </td>
+                                        <td className="border-b border-r border-slate-300"></td>
+                                      </tr>
+                                    );
+                                  }
+                                  if (row.isEmployeeRow) {
+                                    return (
+                                      <tr key={`row-${index}`} className="hover:bg-slate-50/50 font-medium">
+                                        {row.isFirstInShift !== false && (
+                                          <td
+                                            rowSpan={row.shiftCount || 1}
+                                            className="px-2 py-2 border border-slate-300 text-center font-bold text-indigo-700 align-top bg-white"
+                                          >
+                                            {row.shift}
+                                          </td>
+                                        )}
+                                        <td className="px-3 py-1.5 border border-slate-300 uppercase font-semibold text-slate-700">{row.department}</td>
+                                        <td className="px-2 py-1.5 border border-slate-300 text-center text-slate-600">{row.slNo}</td>
+                                        <td className="px-3 py-1.5 border border-slate-300 font-bold text-slate-900">{row.ticketNo}</td>
+                                        <td className="px-3 py-1.5 border border-slate-300 uppercase whitespace-nowrap">{row.employeeName}</td>
+                                        <td className="px-3 py-1.5 border border-slate-300 text-right font-bold text-slate-800">
+                                          {row.otHours != null ? Number(row.otHours).toFixed(1) : "0.0"}
+                                        </td>
+                                        <td className="px-2 py-1.5 border border-slate-300 text-center font-bold text-slate-700">{row.category}</td>
+                                      </tr>
+                                    );
+                                  }
+                                  return null;
+                                })}
+                              </tbody>
+                              <tfoot>
+                                <tr className="bg-slate-100 text-slate-800 font-bold border-t-2 border-slate-300" style={{ backgroundColor: "#f1f5f9" }}>
+                                  <td
+                                    colSpan={5}
+                                    className="px-3 py-2.5 border border-slate-300 text-left font-bold text-slate-800 uppercase tracking-wider bg-slate-100"
+                                    style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                  >
+                                    Grand Total
+                                  </td>
+                                  <td
+                                    className="px-3 py-2.5 border border-slate-300 text-right font-black text-slate-900 text-sm bg-slate-100"
+                                    style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                  >
+                                    {(reportResult.grandTotalHrs != null ? reportResult.grandTotalHrs : 0).toFixed(1)}
+                                  </td>
+                                  <td
+                                    className="border border-slate-300 bg-slate-100"
+                                    style={{ backgroundColor: "#f1f5f9", opacity: 1 }}
+                                  ></td>
+                                </tr>
+                              </tfoot>
+                            </table>
+
+                            {/* Signatures matching reference image */}
+                            <div className="flex justify-between items-center px-12 pt-8 pb-4 text-xs font-bold text-slate-700 uppercase tracking-wider">
+                              <div>HOD</div>
+                              <div>PM</div>
+                              <div>DGM</div>
+                            </div>
+                          </>
                         ) : reportResult.type === "Department Attendance" ? (
                           <table className="w-full border-collapse border border-slate-300 text-xs">
                             <thead>
@@ -2107,7 +2368,7 @@ const DepartmentReports = () => {
                       </div>
 
                       {/* Pagination Controls Footer */}
-                      {totalRows > 0 && reportResult.type !== "Over Time Report (Hours wise)" && reportResult.type !== "Department Attendance" && reportResult.type !== "Attendance Shift Wise Detail" && (
+                      {totalRows > 0 && reportResult.type !== "Over Time Report (Hours wise)" && reportResult.type !== "Department Attendance" && reportResult.type !== "Attendance Shift Wise Detail" && reportResult.type !== "Over Time Report (Abstract)" && (
                         <div className="mt-4 flex flex-wrap items-center justify-between gap-4 pt-3 border-t border-slate-200 text-xs text-slate-600 print:hidden">
                           <div className="flex items-center gap-2">
                             <span>Show</span>

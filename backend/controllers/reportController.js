@@ -2436,8 +2436,22 @@ module.exports = {
     }
 
     try {
-      const { OTHours, Department } = require("../models");
+      const { OTHours, Employee, Department, ShiftType, Category, Company } = require("../models");
       const moment = require("moment");
+
+      // Resolve selected shift name
+      let shiftName = "ALL";
+      if (shift) {
+        const sh = await ShiftType.findByPk(shift);
+        if (sh && sh.name) shiftName = sh.name;
+      }
+
+      // Fetch company name
+      let companyName = "KAYAAR EXPORTS (P) LTD";
+      if (companyId) {
+        const comp = await Company.findByPk(companyId);
+        if (comp && comp.companyname) companyName = comp.companyname;
+      }
 
       const whereClause = {
         date: {
@@ -2462,52 +2476,181 @@ module.exports = {
 
       const records = await OTHours.findAll({
         where: whereClause,
-        attributes: [
-          "departmentId",
-          "workedDeptId",
-          [Sequelize.fn("COUNT", Sequelize.fn("DISTINCT", Sequelize.col("employeeId"))), "employees"],
-          [Sequelize.fn("SUM", Sequelize.col("otHours")), "totalOtHours"]
+        include: [
+          {
+            model: Employee,
+            as: "employee",
+            attributes: [
+              "id", "curEmployeeCode", "newEmployeeCode", "firstName", "middleName", "lastName",
+              "departmentId", "categoryId", "workingType", "employeeType", "epfNumber", "providentFundNumber", "isHostel"
+            ],
+            include: [
+              {
+                model: Category,
+                as: "category",
+                attributes: ["id", "categoryName", "categoryCode"],
+                required: false
+              }
+            ],
+            required: false
+          },
+          {
+            model: Department,
+            as: "department",
+            attributes: ["id", "departmentname"],
+            required: false
+          },
+          {
+            model: Department,
+            as: "workedDepartment",
+            attributes: ["id", "departmentname"],
+            required: false
+          },
+          {
+            model: ShiftType,
+            as: "shift",
+            attributes: ["id", "name"],
+            required: false
+          }
         ],
-        group: ["workedDeptId", "departmentId"],
-        raw: true
+        order: [["date", "ASC"], ["id", "ASC"]]
       });
 
-      // Map department names in memory to bypass ONLY_FULL_GROUP_BY issues
-      const allDepts = await Department.findAll({ raw: true });
-      const deptMap = {};
-      allDepts.forEach(d => {
-        deptMap[d.id] = d.departmentname;
-      });
-
-      const abstractMap = {};
-      records.forEach(r => {
-        const resolvedDeptId = r.workedDeptId || r.departmentId;
-        const deptName = deptMap[resolvedDeptId] || "General";
-
-        if (!abstractMap[deptName]) {
-          abstractMap[deptName] = {
-            department: deptName,
-            deptId: resolvedDeptId,
-            employees: 0,
-            totalOtHours: 0
-          };
-        }
-        abstractMap[deptName].employees += parseInt(r.employees || 0);
-        abstractMap[deptName].totalOtHours += parseFloat(r.totalOtHours || 0);
-      });
-
-      // Filter post-reconciliation to only include records whose resolved department matches the filters (if filtered)
-      let formatted = Object.values(abstractMap);
+      // Filter post-reconciliation if departments array was passed
+      let filteredRecords = records;
       if (Array.isArray(departments) && departments.length > 0) {
         const deptIdSet = new Set(departments.map(id => parseInt(id)));
-        formatted = formatted.filter(r => r.deptId && deptIdSet.has(r.deptId));
+        filteredRecords = records.filter(r => {
+          const resolvedDeptId = r.workedDeptId || r.departmentId;
+          return resolvedDeptId && deptIdSet.has(parseInt(resolvedDeptId));
+        });
       }
 
-      const finalData = formatted.map(({ deptId, ...rest }) => rest);
+      // Preload all shifts for reliable shift name lookup
+      const allShifts = await ShiftType.findAll({ raw: true });
+      const shiftMapById = {};
+      allShifts.forEach(s => {
+        shiftMapById[s.id] = s;
+      });
+
+      // Helper: resolve category code (e.g. O, H, S-PF)
+      const resolveCategoryCode = (emp) => {
+        if (!emp) return "";
+        const catName = String(emp.category?.categoryName || "").toUpperCase();
+        if (catName.includes("HOSTEL") || emp.isHostel) return "H";
+        if (catName.includes("OTHER")) return "O";
+        if (catName.includes("STAFF") || emp.employeeType === "Staff") {
+          return emp.epfNumber || emp.providentFundNumber ? "S-PF" : "S";
+        }
+        if (emp.category?.categoryCode) return emp.category.categoryCode;
+        if (emp.category?.categoryName) return emp.category.categoryName.charAt(0);
+        return "";
+      };
+
+      // Helper for employee name formatting: only first name (no need last name)
+      const formatEmployeeName = (emp, fallbackName) => {
+        if (!emp) return (fallbackName || "").toUpperCase().trim();
+        return (emp.firstName || fallbackName || "").toUpperCase().trim();
+      };
+
+      // Group records by shift
+      const shiftGroups = {};
+      filteredRecords.forEach(r => {
+        const sh = r.shift || shiftMapById[r.shiftId] || shiftMapById[r.employee?.shiftTypeId];
+        let sName = (sh?.name || "").toUpperCase().trim();
+        if (!sName && (r.shiftId === 1 || r.shiftId === "1")) sName = "A";
+        if (!sName && (r.shiftId === 2 || r.shiftId === "2")) sName = "B";
+        if (!sName && (r.shiftId === 3 || r.shiftId === "3")) sName = "C";
+        if (!sName) sName = "OTHER";
+
+        if (!shiftGroups[sName]) {
+          shiftGroups[sName] = [];
+        }
+        shiftGroups[sName].push(r);
+      });
+
+      const shiftSortOrder = ["A", "B", "C", "SUP_A", "SUP_B", "SUP_C", "STAFF_A", "STAFF_B", "STAFF_C", "GENERAL_A", "GENERAL_B"];
+      const sortedShiftKeys = Object.keys(shiftGroups).sort((a, b) => {
+        const idxA = shiftSortOrder.indexOf(a);
+        const idxB = shiftSortOrder.indexOf(b);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+        return a.localeCompare(b);
+      });
+
+      let grandTotalHrs = 0;
+      const flatRows = [];
+
+      sortedShiftKeys.forEach(shiftKey => {
+        const recs = shiftGroups[shiftKey];
+        let shiftTotalHrs = 0;
+
+        // Group by (employeeId + resolvedDeptId) to aggregate hours per employee in that shift & department
+        const empAggMap = new Map();
+        recs.forEach(r => {
+          const emp = r.employee;
+          const empId = r.employeeId || r.ticketNo || r.id;
+          const deptName = (r.workedDepartment ? r.workedDepartment.departmentname : null)
+            || (r.department ? r.department.departmentname : "General");
+          const key = `${shiftKey}_${deptName}_${empId}`;
+
+          const hours = parseFloat(r.otHours) || 0;
+          if (!empAggMap.has(key)) {
+            const code = (emp ? (emp.curEmployeeCode || emp.newEmployeeCode) : "") || r.ticketNo || "";
+            const empName = formatEmployeeName(emp, r.empName);
+            const cat = resolveCategoryCode(emp);
+            empAggMap.set(key, {
+              shift: shiftKey,
+              department: deptName,
+              ticketNo: code,
+              employeeName: empName,
+              category: cat,
+              otHours: 0
+            });
+          }
+          const item = empAggMap.get(key);
+          item.otHours = Math.round((item.otHours + hours) * 100) / 100;
+        });
+
+        const aggregatedList = Array.from(empAggMap.values());
+        let empSlNo = 1;
+
+        aggregatedList.forEach((row, rIdx) => {
+          shiftTotalHrs = Math.round((shiftTotalHrs + row.otHours) * 100) / 100;
+          grandTotalHrs = Math.round((grandTotalHrs + row.otHours) * 100) / 100;
+
+          flatRows.push({
+            isEmployeeRow: true,
+            shift: row.shift,
+            isFirstInShift: rIdx === 0,
+            shiftCount: aggregatedList.length,
+            department: row.department,
+            slNo: empSlNo++,
+            ticketNo: row.ticketNo,
+            employeeName: row.employeeName,
+            otHours: row.otHours,
+            category: row.category
+          });
+        });
+
+        // Add shift subtotal row
+        flatRows.push({
+          isShiftSubtotal: true,
+          shift: shiftKey,
+          shiftTotalHrs: Math.round(shiftTotalHrs * 100) / 100
+        });
+      });
 
       return res.status(200).json({
         success: true,
-        data: finalData
+        companyName,
+        shiftName,
+        reportTitle: "OT Report for Production",
+        data: flatRows.filter(r => r.isEmployeeRow),
+        flatRows,
+        grandTotalHrs: Math.round(grandTotalHrs * 100) / 100,
+        totalRecords: filteredRecords.length
       });
     } catch (err) {
       console.error("Error generating abstract overtime report:", err);

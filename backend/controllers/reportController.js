@@ -1,6 +1,20 @@
 const { Op, Sequelize } = require("sequelize");
 const ExcelJS = require("exceljs");
 const PDFDocument = require("pdfkit");
+const jwt = require("jsonwebtoken");
+
+const getReqEntryScope = (req) => {
+  if (req.query?.entryScope) return req.query.entryScope;
+  if (req.body?.entryScope) return req.body.entryScope;
+  const authHeader = req.headers.authorization || req.header?.("Authorization");
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    try {
+      const decoded = jwt.verify(authHeader.split(" ")[1], process.env.JWT_SECRET || "your_jwt_secret_key");
+      if (decoded.role === "QC HR") return "QC";
+    } catch (e) {}
+  }
+  return "HR";
+};
 
 const REPORT_FIELDS = [
   {
@@ -1244,6 +1258,7 @@ module.exports = {
       if (shift && reportType !== "Attendance Shift Wise Abstract") {
         manualWhere.shiftId = parseInt(shift);
       }
+      manualWhere.entryScope = getReqEntryScope(req);
 
       const manualRecords = await DepartmentAttendance.findAll({
         where: manualWhere,
@@ -1916,6 +1931,7 @@ module.exports = {
       if (shift) {
         whereClause.shiftId = parseInt(shift);
       }
+      whereClause.entryScope = getReqEntryScope(req);
 
       const records = await OTHours.findAll({
         where: whereClause,
@@ -2029,6 +2045,7 @@ module.exports = {
       if (shift) {
         whereClause.shiftId = parseInt(shift);
       }
+      whereClause.entryScope = getReqEntryScope(req);
 
       const records = await OTHours.findAll({
         where: whereClause,
@@ -2470,6 +2487,7 @@ module.exports = {
       if (shift) {
         whereClause.shiftId = parseInt(shift);
       }
+      whereClause.entryScope = getReqEntryScope(req);
 
       const records = await OTHours.findAll({
         where: whereClause,
@@ -2643,6 +2661,7 @@ module.exports = {
       if (shift) {
         whereClause.shiftId = parseInt(shift);
       }
+      whereClause.entryScope = getReqEntryScope(req);
 
       const records = await OTHours.findAll({
         where: whereClause,

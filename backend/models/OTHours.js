@@ -97,6 +97,13 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: "Active",
       },
+
+      entryScope: {
+        type: DataTypes.STRING(20),
+        allowNull: false,
+        defaultValue: "HR",
+        comment: "Entry scope e.g. HR or QC",
+      },
     },
     {
       tableName: "ot_hours",
@@ -115,7 +122,10 @@ module.exports = (sequelize) => {
           fields: ["date"],
         },
         {
-          fields: ["employeeId", "date"],
+          fields: ["entryScope"],
+        },
+        {
+          fields: ["employeeId", "date", "entryScope"],
           unique: true,
         },
       ],

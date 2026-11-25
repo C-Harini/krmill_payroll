@@ -84,6 +84,12 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.INTEGER,
                 allowNull: true,
             },
+            entryScope: {
+                type: DataTypes.STRING(20),
+                allowNull: false,
+                defaultValue: "HR",
+                comment: "Entry scope e.g. HR or QC",
+            },
         },
         {
             tableName: "hr_department_attendance",
@@ -91,14 +97,15 @@ module.exports = (sequelize, DataTypes) => {
             indexes: [
                 {
                     unique: true,
-                    fields: ["employeeId", "attendanceDate", "shiftId"],
-                    name: "unique_dept_emp_date_shift",
+                    fields: ["employeeId", "attendanceDate", "shiftId", "entryScope"],
+                    name: "unique_dept_emp_date_shift_scope",
                 },
                 { fields: ["companyId"] },
                 { fields: ["departmentId"] },
                 { fields: ["workedDeptId"] },
                 { fields: ["attendanceDate"] },
                 { fields: ["status"] },
+                { fields: ["entryScope"] },
             ],
         }
     );

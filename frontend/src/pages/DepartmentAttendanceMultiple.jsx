@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
+import { jwtDecode } from "jwt-decode";
 import API from "../api";
 import { toast } from "react-toastify";
 import {
@@ -38,6 +39,16 @@ const DEFAULT_CATEGORIES = [
 
 const DepartmentAttendanceMultiple = () => {
   const navigate = useNavigate();
+
+  // Determine user role and entryScope
+  const token = sessionStorage.getItem("token") || localStorage.getItem("authToken") || localStorage.getItem("token");
+  let userRole = "";
+  if (token) {
+    try {
+      userRole = jwtDecode(token).role;
+    } catch (e) {}
+  }
+  const entryScope = userRole === "QC HR" ? "QC" : "HR";
 
   // --- Core Configuration States ---
   const [companies, setCompanies] = useState([]);
@@ -214,7 +225,8 @@ const DepartmentAttendanceMultiple = () => {
           departmentId: selectedDeptId,
           workedDeptId: selectedWorkedDeptId,
           attendanceDate: entryDate,
-          shiftId: selectedShiftId
+          shiftId: selectedShiftId,
+          entryScope,
         }
       });
 
@@ -422,6 +434,7 @@ const DepartmentAttendanceMultiple = () => {
         attendanceDate: entryDate,
         shiftId: selectedShiftId,
         status: statusVal,
+        entryScope,
         employees: Array.from(selectedLeftEmpIds).map((empId) => ({
           employeeId: empId,
           status: statusVal,
@@ -464,6 +477,7 @@ const DepartmentAttendanceMultiple = () => {
         companyId: selectedCompanyId,
         attendanceDate: entryDate,
         ids: Array.from(selectedSavedIds),
+        entryScope,
       };
 
       const { data } = await API.post("/attendance/multiple-entry/delete", payload);
@@ -587,7 +601,9 @@ const DepartmentAttendanceMultiple = () => {
               <h1 className="text-xl md:text-2xl font-black tracking-tight text-white drop-shadow-sm">
                 Department Attendance Multiple Entry
               </h1>
-              <p className="text-xs text-blue-200 font-medium">HR Module — Department Multi-Entry Attendance System</p>
+              <p className="text-xs text-blue-200 font-medium">
+                {entryScope === "QC" ? "QC HR Module" : "HR Module"} — Department Multi-Entry Attendance System
+              </p>
             </div>
           </div>
 
@@ -606,7 +622,7 @@ const DepartmentAttendanceMultiple = () => {
               </select>
             )}
             <span className="bg-blue-500/25 border border-blue-400/40 text-blue-200 text-[11px] px-3 py-1 rounded-full font-bold uppercase tracking-wider">
-              hr_department_attendance
+              {entryScope === "QC" ? "qc_department_attendance" : "hr_department_attendance"}
             </span>
           </div>
         </div>

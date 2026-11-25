@@ -41,6 +41,20 @@ const {
 } = require("../models");
 const { Op } = require("sequelize");
 const moment = require("moment");
+const jwt = require("jsonwebtoken");
+
+const getReqEntryScope = (req) => {
+  if (req.query?.entryScope) return req.query.entryScope;
+  if (req.body?.entryScope) return req.body.entryScope;
+  const authHeader = req.headers.authorization || req.header?.("Authorization");
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    try {
+      const decoded = jwt.verify(authHeader.split(" ")[1], process.env.JWT_SECRET || "your_jwt_secret_key");
+      if (decoded.role === "QC HR") return "QC";
+    } catch (e) {}
+  }
+  return "HR";
+};
 const { manualFinalize } = require("../services/attendenceCron");
 const {
   processRealtimePunch,
@@ -940,9 +954,11 @@ exports.getMultipleEntryAttendance = async (req, res) => {
 
     // 2. Fetch saved records from DepartmentAttendance (hr_department_attendance)
     // Filtered by worked department (matching OT multiple entry logic)
+    const entryScope = getReqEntryScope(req);
     const whereDeptAtt = {
       companyId,
       attendanceDate: formattedDate,
+      entryScope,
       [Op.or]: [
         { workedDeptId: filterWorkedDeptId },
         { workedDeptId: null, departmentId: filterWorkedDeptId },
@@ -974,6 +990,7 @@ exports.getMultipleEntryAttendance = async (req, res) => {
       where: {
         companyId,
         attendanceDate: formattedDate,
+        entryScope,
       },
       include: [
         {
@@ -1132,6 +1149,7 @@ exports.saveMultipleEntryAttendance = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
+    const entryScope = getReqEntryScope(req);
     const shift = await ShiftType.findByPk(shiftId);
     const shiftNameStr = shift ? shift.name : "B";
     const dateStr = moment(attendanceDate).format("YYYY-MM-DD");
@@ -1148,6 +1166,7 @@ exports.saveMultipleEntryAttendance = async (req, res) => {
         attendanceDate: dateStr,
         employeeId: { [Op.in]: empIdList },
         shiftId: { [Op.ne]: shiftId },
+        entryScope,
       },
       include: [
         { model: Employee, as: "employee", attributes: ["firstName", "curEmployeeCode", "newEmployeeCode"] },
@@ -1199,6 +1218,7 @@ exports.saveMultipleEntryAttendance = async (req, res) => {
           employeeId: empId,
           attendanceDate: dateStr,
           shiftId: shiftId,
+          entryScope,
         },
         defaults: {
           companyId,
@@ -1213,6 +1233,7 @@ exports.saveMultipleEntryAttendance = async (req, res) => {
           shiftId,
           shiftName: shiftNameStr,
           remarks: empRemarks || null,
+          entryScope,
           createdBy: userId || 1,
         },
         transaction,
@@ -1336,11 +1357,13 @@ exports.deleteMultipleEntryAttendance = async (req, res) => {
         transaction,
       });
     } else if (companyId && dateStr && Array.isArray(employeeIds) && employeeIds.length > 0) {
+      const entryScope = getReqEntryScope(req);
       await DepartmentAttendance.destroy({
         where: {
           companyId,
           attendanceDate: dateStr,
           employeeId: { [Op.in]: employeeIds },
+          entryScope,
         },
         transaction,
       });
@@ -1420,6 +1443,7 @@ exports.updateMultipleEntryAttendance = async (req, res) => {
           companyId: record.companyId,
           employeeId: record.employeeId,
           attendanceDate: targetDate,
+          entryScope: record.entryScope || "HR",
         },
       });
 

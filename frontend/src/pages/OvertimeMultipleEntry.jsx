@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { format, differenceInMinutes, parseISO } from "date-fns";
+import { jwtDecode } from "jwt-decode";
 import API from "../api";
 import { toast } from "react-toastify";
 import {
@@ -23,6 +24,16 @@ const OT_TYPE_OPTIONS = ["HOURS OT", "FULL TIME OT"];
 
 const OvertimeMultipleEntry = () => {
   const navigate = useNavigate();
+
+  // Determine user role and entryScope
+  const token = sessionStorage.getItem("token") || localStorage.getItem("authToken") || localStorage.getItem("token");
+  let userRole = "";
+  if (token) {
+    try {
+      userRole = jwtDecode(token).role;
+    } catch (e) {}
+  }
+  const entryScope = userRole === "QC HR" ? "QC" : "HR";
 
   // --- Core Configuration States ---
   const [companies, setCompanies] = useState([]);
@@ -204,7 +215,8 @@ const OvertimeMultipleEntry = () => {
           departmentId: selectedDeptId,
           workedDeptId: selectedWorkedDeptId,
           date: entryDate,
-          shiftId: selectedShiftId
+          shiftId: selectedShiftId,
+          entryScope,
         }
       });
 
@@ -379,6 +391,7 @@ const OvertimeMultipleEntry = () => {
         otType: selectedOtType,
         otHours: calculatedOtHours,
         employeeIds: Array.from(selectedLeftEmpIds),
+        entryScope,
       };
 
       const { data } = await API.post("/ot-hours/multiple-entry", payload);
@@ -411,6 +424,7 @@ const OvertimeMultipleEntry = () => {
     try {
       const payload = {
         ids: Array.from(selectedSavedIds),
+        entryScope,
       };
 
       const { data } = await API.post("/ot-hours/multiple-entry/delete", payload);
@@ -499,7 +513,9 @@ const OvertimeMultipleEntry = () => {
               <h1 className="text-xl md:text-2xl font-black tracking-tight text-white drop-shadow-sm">
                 Over Time Multiple Entry
               </h1>
-              <p className="text-xs text-blue-200 font-medium">HR Module — Over Time Processing & Auto Capping</p>
+              <p className="text-xs text-blue-200 font-medium">
+                {entryScope === "QC" ? "QC HR Module" : "HR Module"} — Over Time Processing & Auto Capping
+              </p>
             </div>
           </div>
 

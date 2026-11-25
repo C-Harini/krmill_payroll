@@ -379,6 +379,20 @@ const {
 } = require("../models");
 const { isDateLocked } = require("../utils/attendanceLockUtil");
 const moment = require("moment");
+const jwt = require("jsonwebtoken");
+
+const getReqEntryScope = (req) => {
+  if (req.query?.entryScope) return req.query.entryScope;
+  if (req.body?.entryScope) return req.body.entryScope;
+  const authHeader = req.headers.authorization || req.header?.("Authorization");
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    try {
+      const decoded = jwt.verify(authHeader.split(" ")[1], process.env.JWT_SECRET || "your_jwt_secret_key");
+      if (decoded.role === "QC HR") return "QC";
+    } catch (e) {}
+  }
+  return "HR";
+};
 
 // ✅ Helper: Get active basicSalary from EmployeeSalaryMasters
 const getActiveBasicSalary = (salaries) => {
@@ -778,8 +792,10 @@ exports.getOTHoursMultipleEntry = async (req, res) => {
     });
 
     // 2. Fetch already saved OT records matching the query config (filtering by worked department)
+    const entryScope = getReqEntryScope(req);
     const whereClause = {
       companyId,
+      entryScope,
       date: {
         [Op.gte]: moment(targetDate).startOf("day").toDate(),
         [Op.lte]: moment(targetDate).endOf("day").toDate(),
@@ -823,6 +839,7 @@ exports.getOTHoursMultipleEntry = async (req, res) => {
     const allSavedOTForDate = await OTHours.findAll({
       where: {
         companyId,
+        entryScope,
         date: {
           [Op.gte]: moment(targetDate).startOf("day").toDate(),
           [Op.lte]: moment(targetDate).endOf("day").toDate(),
@@ -872,6 +889,7 @@ exports.getOTHoursMultipleEntry = async (req, res) => {
       where: {
         companyId,
         attendanceDate: targetDate,
+        entryScope,
       },
       include: [
         {
@@ -1043,6 +1061,7 @@ exports.saveOTHoursMultipleEntry = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
+    const entryScope = getReqEntryScope(req);
     const targetDate = moment(date).format("YYYY-MM-DD");
     const shiftObj = await ShiftType.findByPk(shiftId);
 
@@ -1111,6 +1130,7 @@ exports.saveOTHoursMultipleEntry = async (req, res) => {
         },
         employeeId: { [Op.in]: empIdList },
         shiftId: { [Op.ne]: shiftId },
+        entryScope,
       },
       include: [
         { model: Employee, as: "employee", attributes: ["firstName", "curEmployeeCode", "newEmployeeCode"] },
@@ -1150,6 +1170,7 @@ exports.saveOTHoursMultipleEntry = async (req, res) => {
             [Op.gte]: moment(targetDate).startOf("day").toDate(),
             [Op.lte]: moment(targetDate).endOf("day").toDate(),
           },
+          entryScope,
         },
         transaction,
       });
@@ -1188,6 +1209,7 @@ exports.saveOTHoursMultipleEntry = async (req, res) => {
             otType: otType || "HOURS OT",
             ticketNo,
             empName,
+            entryScope,
             createdBy: userId || 1,
             status: "Active",
           },
@@ -1255,6 +1277,7 @@ exports.updateSingleOTEntry = async (req, res) => {
             [Op.gte]: moment(targetDate).startOf("day").toDate(),
             [Op.lte]: moment(targetDate).endOf("day").toDate(),
           },
+          entryScope: otRecord.entryScope || "HR",
         },
       });
 
@@ -1323,6 +1346,7 @@ exports.deleteOTHoursMultipleEntry = async (req, res) => {
         where: { id: { [Op.in]: ids } },
       });
     } else if (companyId && targetDate && Array.isArray(employeeIds) && employeeIds.length > 0) {
+      const entryScope = getReqEntryScope(req);
       await OTHours.destroy({
         where: {
           companyId,
@@ -1331,6 +1355,7 @@ exports.deleteOTHoursMultipleEntry = async (req, res) => {
             [Op.lte]: moment(targetDate).endOf("day").toDate(),
           },
           employeeId: { [Op.in]: employeeIds },
+          entryScope,
         },
       });
     } else {

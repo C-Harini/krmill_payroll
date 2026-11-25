@@ -455,6 +455,14 @@ exports.generateUserNumber = async (req, res) => {
             prefix = `${dept.departmentAckr || 'DEPT'}${companyId}_`;
             filter = { role: "Staff", companyId, departmentId };
         } 
+        else if (role === "HR") {
+            prefix = `HR${companyId}_`;
+            filter = { role: "HR", companyId };
+        }
+        else if (role === "QC HR") {
+            prefix = `QCHR${companyId}_`;
+            filter = { role: "QC HR", companyId };
+        }
         else {
             return res.status(400).json({ message: 'Invalid role' });
         }

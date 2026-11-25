@@ -133,9 +133,9 @@ function App() {
         <Route
           path="/dashboard"
           element={
-            // <PrivateRoute>
+            
             <Dashboard />
-            // </PrivateRoute>
+           
           }
         >
           {/* Default page after login */}
@@ -197,7 +197,7 @@ function App() {
           <Route
             path="attendance-multiple"
             element={
-              <PrivateRoute allowedRoles={["HR"]}>
+              <PrivateRoute allowedRoles={["HR", "QC HR"]}>
                 <DepartmentAttendanceMultiple />
               </PrivateRoute>
             }
@@ -205,7 +205,7 @@ function App() {
           <Route
             path="overtime-multiple"
             element={
-              <PrivateRoute allowedRoles={["HR"]}>
+              <PrivateRoute allowedRoles={["HR", "QC HR"]}>
                 <OvertimeMultipleEntry />
               </PrivateRoute>
             }
@@ -221,7 +221,7 @@ function App() {
           <Route
             path="lunch-download"
             element={
-              <PrivateRoute allowedRoles={["HR"]}>
+              <PrivateRoute allowedRoles={["HR", "QC HR"]}>
                 <LunchInOutDownload />
               </PrivateRoute>
             }
@@ -229,7 +229,7 @@ function App() {
           <Route
             path="dept-reports"
             element={
-              <PrivateRoute allowedRoles={["HR"]}>
+              <PrivateRoute allowedRoles={["HR", "QC HR"]}>
                 <DepartmentReports />
               </PrivateRoute>
             }

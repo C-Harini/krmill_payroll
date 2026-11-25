@@ -107,9 +107,9 @@ const Dashboard = () => {
     return currentPath === `/dashboard/${dest}` || currentPath === `/dashboard/${dest}/`;
   };
 
-  // Auto-redirect HR users to their dashboard screen
+  // Auto-redirect HR / QC HR users to their dashboard screen
   useEffect(() => {
-    if (userRole === "HR" && (window.location.pathname === "/dashboard" || window.location.pathname === "/dashboard/")) {
+    if ((userRole === "HR" || userRole === "QC HR") && (window.location.pathname === "/dashboard" || window.location.pathname === "/dashboard/")) {
       navigate("/dashboard/attendance-multiple");
     }
   }, [userRole, navigate]);
@@ -208,7 +208,7 @@ const Dashboard = () => {
 
         <ul className="py-4 space-y-1">
           {/* --- NON-HR SIDEBAR ITEMS (ADMINS & SUPER ADMINS) --- */}
-          {userRole !== "HR" && (
+          {userRole !== "HR" && userRole !== "QC HR" && (
             <>
               {/* Master Data Section */}
               <SectionHeader
@@ -853,11 +853,11 @@ const Dashboard = () => {
             </>
           )}
 
-          {/* --- HR ONLY SIDEBAR ITEMS --- */}
-          {userRole === "HR" && (
+          {/* --- HR & QC HR ONLY SIDEBAR ITEMS --- */}
+          {(userRole === "HR" || userRole === "QC HR") && (
             <>
               <SectionHeader
-                title="HR Multiple Entry Modules"
+                title={userRole === "QC HR" ? "QC HR Multiple Entry Modules" : "HR Multiple Entry Modules"}
                 emoji="🔮"
                 isOpen={expandedSections.hrModules}
                 onClick={() => toggleSection("hrModules")}

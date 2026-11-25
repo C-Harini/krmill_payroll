@@ -312,6 +312,7 @@ const UserManagement = ({ companyId }) => {
             'Department Admin': 'bg-cyan-100 text-cyan-700 border border-cyan-300',
             'Staff': 'bg-green-100 text-green-700 border border-green-300',
             'HR': 'bg-purple-100 text-purple-700 border border-purple-300',
+            'QC HR': 'bg-teal-100 text-teal-700 border border-teal-300',
         };
         return colors[role] || 'bg-gray-100 text-gray-700 border border-gray-300';
     };
@@ -439,6 +440,7 @@ const UserManagement = ({ companyId }) => {
                             <option value="Department Admin">Department Admin</option>
                             <option value="Staff">Staff</option>
                             <option value="HR">HR</option>
+                            <option value="QC HR">QC HR</option>
                         </select>
                     </div>
 
@@ -665,6 +667,7 @@ const UserManagement = ({ companyId }) => {
                                         <option value="Department Admin">Department Admin</option>
                                         <option value="Staff">Staff</option>
                                         <option value="HR">HR</option>
+                                        <option value="QC HR">QC HR</option>
                                     </select>
                                 </div>
 

@@ -158,6 +158,35 @@ async function seedDefaultUser() {
       console.warn("⚠️ Warning seeding default HR user:", err.message);
     }
 
+    try {
+      // Seed default QC HR User
+      const qchrEmail = "qchr@kayaar.com";
+      const qchrPassword = "password123";
+      const existingQCHR = await db.User.findOne({ where: { email: qchrEmail } });
+      if (!existingQCHR) {
+        const hashedQCHRPassword = await bcrypt.hash(qchrPassword, 10);
+        await db.User.create({
+          email: qchrEmail,
+          password: hashedQCHRPassword,
+          phoneNumber: "7777777777",
+          role: "QC HR",
+          status: "Active",
+          companyId: company.id,
+          firstName: "QC",
+          lastName: "HR"
+        });
+        console.log(`\n==========================================`);
+        console.log(`✅ Default QC HR user created successfully!`);
+        console.log(`📧 Email: ${qchrEmail}`);
+        console.log(`🔑 Password: ${qchrPassword}`);
+        console.log(`==========================================\n`);
+      } else {
+        console.log("ℹ️ Default QC HR user already exists.");
+      }
+    } catch (err) {
+      console.warn("⚠️ Warning seeding default QC HR user:", err.message);
+    }
+
     // Seed employment types
     const employmentTypesToSeed = ["staff", "worker", "staff-per-day", "supervisor"];
     for (const name of employmentTypesToSeed) {
@@ -205,11 +234,45 @@ async function syncDbChanges() {
   }
 
   try {
-    await db.sequelize.query("ALTER TABLE users MODIFY COLUMN role ENUM('Staff', 'Admin', 'Department Admin', 'Super Admin', 'HR') NOT NULL DEFAULT 'Staff';");
-    console.log("✅ Users table role ENUM updated successfully with 'HR'");
+    await db.sequelize.query("ALTER TABLE users MODIFY COLUMN role ENUM('Staff', 'Admin', 'Department Admin', 'Super Admin', 'HR', 'QC HR') NOT NULL DEFAULT 'Staff';");
+    console.log("✅ Users table role ENUM updated successfully with 'HR' and 'QC HR'");
   } catch (err) {
     console.log("ℹ️ Users table role ENUM update details:", err.message);
   }
+
+  // --- Department Attendance entryScope Alterations ---
+  try {
+    await db.sequelize.query("ALTER TABLE hr_department_attendance ADD COLUMN entryScope VARCHAR(20) NOT NULL DEFAULT 'HR';");
+    console.log("✅ Added entryScope column to hr_department_attendance");
+  } catch (err) { }
+
+  try {
+    await db.sequelize.query("ALTER TABLE hr_department_attendance ADD INDEX idx_dept_att_employee (employeeId);");
+  } catch (err) { }
+
+  try {
+    await db.sequelize.query("ALTER TABLE hr_department_attendance DROP INDEX unique_dept_emp_date_shift;");
+  } catch (err) { }
+
+  try {
+    await db.sequelize.query("ALTER TABLE hr_department_attendance ADD UNIQUE KEY unique_dept_emp_date_shift_scope (employeeId, attendanceDate, shiftId, entryScope);");
+    console.log("✅ Updated unique index on hr_department_attendance to include entryScope");
+  } catch (err) { }
+
+  // --- OTHours entryScope Alterations ---
+  try {
+    await db.sequelize.query("ALTER TABLE ot_hours ADD COLUMN entryScope VARCHAR(20) NOT NULL DEFAULT 'HR';");
+    console.log("✅ Added entryScope column to ot_hours");
+  } catch (err) { }
+
+  try {
+    await db.sequelize.query("ALTER TABLE ot_hours DROP INDEX ot_hours_employee_id_date;");
+  } catch (err) { }
+
+  try {
+    await db.sequelize.query("ALTER TABLE ot_hours ADD UNIQUE KEY ot_hours_employee_id_date_scope (employeeId, date, entryScope);");
+    console.log("✅ Updated unique index on ot_hours to include entryScope");
+  } catch (err) { }
 
   try {
     await db.sequelize.query("ALTER TABLE attendances ADD COLUMN departmentId INT NULL;");

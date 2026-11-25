@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
+import { jwtDecode } from "jwt-decode";
 import API from "../api";
 import { toast } from "react-toastify";
 import * as XLSX from "xlsx";
@@ -36,6 +37,16 @@ const getDayLabel = (d) => (typeof d === "object" && d ? (d.label || d.dateStr) 
 
 const DepartmentReports = () => {
   const navigate = useNavigate();
+
+  // Determine user role and entryScope
+  const token = sessionStorage.getItem("token") || localStorage.getItem("authToken") || localStorage.getItem("token");
+  let userRole = "";
+  if (token) {
+    try {
+      userRole = jwtDecode(token).role;
+    } catch (e) {}
+  }
+  const entryScope = userRole === "QC HR" ? "QC" : "HR";
 
   // --- Core States ---
   const [companies, setCompanies] = useState([]);
@@ -183,7 +194,8 @@ const DepartmentReports = () => {
         fromDate,
         toDate,
         departments: deptArray,
-        shift: selectedShiftId
+        shift: selectedShiftId,
+        entryScope,
       };
 
       let url = "/reports/attendance";
@@ -1842,7 +1854,9 @@ const DepartmentReports = () => {
       <div className="mb-6 bg-gradient-to-r from-blue-900 to-indigo-800 rounded-2xl shadow-xl p-6 text-white flex justify-between items-center transition-all duration-300 hover:shadow-2xl">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight">Department Reports</h1>
-          <p className="text-blue-100 text-sm mt-1">HR Management System — Generate Attendance & Overtime Reports</p>
+          <p className="text-blue-100 text-sm mt-1">
+            {entryScope === "QC" ? "QC HR Module" : "HR Management System"} — Generate Attendance & Overtime Reports
+          </p>
         </div>
         <div className="flex items-center gap-3">
           {companies.length > 1 && (

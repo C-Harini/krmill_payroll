@@ -29,7 +29,7 @@ module.exports = (sequelize, DataTypes) => {
             comment: 'Hashed password'
         },
         role: {
-            type: DataTypes.ENUM('Staff', 'Admin', 'Department Admin', 'Super Admin', 'HR'),
+            type: DataTypes.ENUM('Staff', 'Admin', 'Department Admin', 'Super Admin', 'HR', 'QC HR'),
             allowNull: false,
             defaultValue: 'Staff',
             comment: 'User role'

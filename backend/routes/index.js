@@ -38,6 +38,8 @@ const employeeLoanRoutes = require("./employeeLoan");
 const otHoursRoutes = require("./otHoursRoutes");
 const eightEightRoutes = require("./eightEightRoutes");
 const casteRoutes = require("./casteRoutes");
+const workloadMasterRoutes = require("./workloadMasterRoutes");
+const workloadEmployeeRoutes = require("./workloadEmployeeRoutes");
 const religionRoutes = require("./religionRoutes");
 const categoryRoutes = require("./categoryRoutes");
 const strengthReport = require("./strengthReportRoutes");
@@ -92,6 +94,8 @@ router.use('/employee-loans', employeeLoanRoutes); // Employee loan routes
 router.use("/ot-hours", otHoursRoutes);
 router.use("/eight-eight", eightEightRoutes);
 router.use("/castes", casteRoutes);
+router.use("/workload-master", workloadMasterRoutes);
+router.use("/workload-employees", workloadEmployeeRoutes);
 router.use("/religions", religionRoutes);
 router.use('/categories', categoryRoutes);
 router.use('/strength-report', strengthReport);

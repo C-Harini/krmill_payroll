@@ -16,6 +16,8 @@ db.Company = require('./Company')(sequelize);
 db.Category = require("./Category")(sequelize, Sequelize.DataTypes);
 db.Caste = require("./Caste")(sequelize, Sequelize.DataTypes);
 db.Religion = require("./Religion")(sequelize, Sequelize.DataTypes);
+db.WorkloadMaster = require("./WorkloadMaster")(sequelize, Sequelize.DataTypes);
+db.WorkloadEmployee = require("./WorkloadEmployee")(sequelize, Sequelize.DataTypes);
 db.Department = require('./Department')(sequelize, Sequelize.DataTypes);
 db.Designation = require('./Designation')(sequelize, Sequelize.DataTypes);
 db.EmploymentType = require('./EmploymentType')(sequelize, Sequelize.DataTypes);
@@ -786,6 +788,14 @@ db.ShiftType.hasMany(db.LunchAttendance, { foreignKey: 'shiftId', as: 'lunchAtte
 db.AttendanceIncentiveCondition.belongsTo(db.Company, { foreignKey: 'companyId', as: 'company' });
 db.AttendanceIncentiveCondition.belongsTo(db.Category, { foreignKey: 'categoryId', as: 'category' });
 db.AttendanceIncentiveCondition.belongsTo(db.Department, { foreignKey: 'departmentId', as: 'department' });
+
+// ==========================================
+// Workload Employee Associations
+// ==========================================
+if (db.WorkloadEmployee.associate) {
+  db.WorkloadEmployee.associate(db);
+}
+db.Employee.hasMany(db.WorkloadEmployee, { foreignKey: 'employeeId', as: 'workloadAssignments' });
 
 db.sequelize = sequelize;
 db.Sequelize = Sequelize;

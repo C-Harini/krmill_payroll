@@ -68,6 +68,13 @@ import DiscrepancyReport from "./pages/DiscrepancyReport";
 import BonusReport from "./pages/BonusReport";
 import WorkloadManagement from "./pages/WorkloadManagement";
 
+// HR2 Workload Management Module Components
+import WorkloadDashboardLayout from "./pages/workload/WorkloadDashboardLayout";
+import WorkloadMaster from "./pages/workload/WorkloadMaster";
+import WorkloadEmployee from "./pages/workload/WorkloadEmployee";
+import WorkloadEntry from "./pages/workload/WorkloadEntry";
+import WorkloadPlaceholder from "./pages/workload/WorkloadPlaceholder";
+
 function NotFound() {
   return (
     <div className="flex items-center justify-center h-screen bg-gradient-to-br from-slate-50 to-slate-100">
@@ -269,6 +276,90 @@ function App() {
 
         <Route path="/strength-report" element={<Navigate to="/dashboard/strength-report" replace />} />
         <Route path="/strength-report-old" element={<Navigate to="/dashboard/strength-report-old" replace />} />
+
+        {/* ===================== HR2 WORKLOAD MANAGEMENT MODULE ===================== */}
+        <Route path="/workload-dashboard" element={<WorkloadDashboardLayout />}>
+          <Route index element={<Navigate to="/workload-dashboard/workload/master" replace />} />
+          
+          {/* Main Tab 1: Workload */}
+          <Route path="workload/master" element={<WorkloadMaster />} />
+          <Route path="workload/employee" element={<WorkloadEmployee />} />
+          <Route path="workload/entry" element={<WorkloadEntry />} />
+
+          {/* Main Tab 2: Department Reports */}
+          <Route
+            path="department-reports"
+            element={
+              <WorkloadPlaceholder
+                title="Department Reports"
+                category="Reports"
+                description="Aggregated departmental workload reports, efficiency analysis, and machine allocation summaries."
+              />
+            }
+          />
+
+          {/* Main Tab 3: Study */}
+          <Route
+            path="study/preparatory"
+            element={
+              <WorkloadPlaceholder
+                title="Preparatory"
+                category="Study"
+                description="Workload time-study and allocation standards for Preparatory departments (Blow Room, Carding, Draw Frame, Simplex)."
+              />
+            }
+          />
+          <Route
+            path="study/preparatory-trainee"
+            element={
+              <WorkloadPlaceholder
+                title="Preparatory Trainee"
+                category="Study"
+                description="Trainee workload performance standards, training curve milestones, and supervisory evaluations for Preparatory."
+              />
+            }
+          />
+          <Route
+            path="study/sider"
+            element={
+              <WorkloadPlaceholder
+                title="Sider"
+                category="Study"
+                description="Ring spinning sider workload study, spindle break frequencies, piecing duration, and patrolling cycle analysis."
+              />
+            }
+          />
+          <Route
+            path="study/sider-trainee"
+            element={
+              <WorkloadPlaceholder
+                title="Sider Trainee"
+                category="Study"
+                description="Ring spinning sider trainee workload progression, side allocation benchmarks, and efficiency tracking."
+              />
+            }
+          />
+          <Route
+            path="study/auto"
+            element={
+              <WorkloadPlaceholder
+                title="Auto"
+                category="Study"
+                description="Autoconer and automated winding machinery workload studies, drum assignment capacities, and bobbin feed tracking."
+              />
+            }
+          />
+          <Route
+            path="study/auto-trainee"
+            element={
+              <WorkloadPlaceholder
+                title="Auto Trainee"
+                category="Study"
+                description="Autoconer trainee operator workload benchmarks, magazine replenishment speed, and quality checks."
+              />
+            }
+          />
+        </Route>
 
         <Route path="*" element={<NotFound />} />
       </Routes>

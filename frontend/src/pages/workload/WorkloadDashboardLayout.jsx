@@ -269,18 +269,11 @@ const WorkloadDashboardLayout = () => {
           </SectionWrapper>
         </nav>
 
-        {/* Sidebar Footer: Back Link & Logout */}
-        <div className="p-3 border-t border-blue-700/60 flex-shrink-0 space-y-2">
-          <Link
-            to="/dashboard"
-            className="flex items-center justify-center gap-2 px-4 py-2 text-xs text-blue-200 hover:text-white hover:bg-blue-900/50 rounded-lg transition duration-200"
-          >
-            <span>⬅️</span>
-            <span>Return to Payroll Dashboard</span>
-          </Link>
+        {/* Sidebar Footer: Logout */}
+        <div className="p-3 border-t border-blue-700/60 flex-shrink-0">
           <button
             onClick={handleLogout}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-950/40 hover:bg-red-800 transition duration-200 rounded-lg w-full text-red-200 hover:text-white font-semibold text-sm"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-950/40 hover:bg-red-800 transition duration-200 rounded-lg w-full text-red-200 hover:text-white font-semibold text-sm cursor-pointer shadow-sm"
           >
             <span>🚪</span>
             <span>Logout</span>

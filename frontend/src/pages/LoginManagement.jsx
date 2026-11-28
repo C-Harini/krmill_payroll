@@ -42,9 +42,13 @@ export default function LoginPage() {
       }
 
       setTimeout(() => {
-        const role = jwtDecode(token).role;
-        navigate("/dashboard");
-        // navigate(adminRoles.includes(role) ? "/dashboard" : "/companies");
+        const decoded = jwtDecode(token);
+        const userEmail = (decoded.email || identifier || "").toLowerCase().trim();
+        if (userEmail === "hr2@kayaar.com") {
+          navigate("/workload-dashboard");
+        } else {
+          navigate("/dashboard");
+        }
       }, 0);
       toast.success("Login Success");
     } catch (err) {

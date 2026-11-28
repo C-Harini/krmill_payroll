@@ -18,6 +18,7 @@ db.Caste = require("./Caste")(sequelize, Sequelize.DataTypes);
 db.Religion = require("./Religion")(sequelize, Sequelize.DataTypes);
 db.WorkloadMaster = require("./WorkloadMaster")(sequelize, Sequelize.DataTypes);
 db.WorkloadEmployee = require("./WorkloadEmployee")(sequelize, Sequelize.DataTypes);
+db.WorkloadDailyEntry = require("./WorkloadDailyEntry")(sequelize, Sequelize.DataTypes);
 db.Department = require('./Department')(sequelize, Sequelize.DataTypes);
 db.Designation = require('./Designation')(sequelize, Sequelize.DataTypes);
 db.EmploymentType = require('./EmploymentType')(sequelize, Sequelize.DataTypes);
@@ -796,6 +797,15 @@ if (db.WorkloadEmployee.associate) {
   db.WorkloadEmployee.associate(db);
 }
 db.Employee.hasMany(db.WorkloadEmployee, { foreignKey: 'employeeId', as: 'workloadAssignments' });
+
+// ==========================================
+// Workload Daily Entry Associations
+// ==========================================
+if (db.WorkloadDailyEntry.associate) {
+  db.WorkloadDailyEntry.associate(db);
+}
+db.Employee.hasMany(db.WorkloadDailyEntry, { foreignKey: 'employeeId', as: 'workloadDailyEntries' });
+db.WorkloadMaster.hasMany(db.WorkloadDailyEntry, { foreignKey: 'workloadMasterId', as: 'dailyEntries' });
 
 db.sequelize = sequelize;
 db.Sequelize = Sequelize;

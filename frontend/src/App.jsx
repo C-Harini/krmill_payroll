@@ -111,7 +111,10 @@ function PublicRoute({ children }) {
   const token = sessionStorage.getItem("token");
   if (token) {
     try {
-      const role = jwtDecode(token).role;
+      const decoded = jwtDecode(token);
+      if (decoded.email && decoded.email.toLowerCase() === "hr2@kayaar.com") {
+        return <Navigate to="/workload-dashboard" />;
+      }
       return <Navigate to="/dashboard" />;
     } catch {
       sessionStorage.removeItem("token");
@@ -278,7 +281,14 @@ function App() {
         <Route path="/strength-report-old" element={<Navigate to="/dashboard/strength-report-old" replace />} />
 
         {/* ===================== HR2 WORKLOAD MANAGEMENT MODULE ===================== */}
-        <Route path="/workload-dashboard" element={<WorkloadDashboardLayout />}>
+        <Route
+          path="/workload-dashboard"
+          element={
+            <PrivateRoute>
+              <WorkloadDashboardLayout />
+            </PrivateRoute>
+          }
+        >
           <Route index element={<Navigate to="/workload-dashboard/workload/master" replace />} />
           
           {/* Main Tab 1: Workload */}
